@@ -19,6 +19,7 @@ export interface ServerProcessConfig {
     fireworks: boolean;
     particles: boolean;
   };
+  mode?: 'popup_audio' | 'popup_only' | 'audio_only';
 }
 
 export interface JobStatus {

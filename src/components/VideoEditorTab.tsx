@@ -92,6 +92,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [popupFullscreen, setPopupFullscreen] = useState(false);
   const [popupTransform, setPopupTransform] = useState<PopupTransform>(normalizePopupTransform());
   const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
+  const [editMode, setEditMode] = useState<'popup_audio' | 'popup_only' | 'audio_only'>('popup_audio');
   const [previewVideoSrc, setPreviewVideoSrc] = useState<string | undefined>("/test-popup.mp4");
   const [previewThumbnailSrc, setPreviewThumbnailSrc] = useState<string | undefined>(undefined);
   const previewObjectUrlRef = useRef<string | null>(null);
@@ -512,7 +513,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
-    if (!popupMedia && !popupAudio && !bgMusic) {
+    if (editMode === 'popup_only' && !popupMedia) {
+      toast({ title: "Popup necessário", description: "Adicione uma imagem ou vídeo de popup.", variant: "destructive" });
+      return;
+    }
+    if (editMode === 'audio_only' && !popupAudio) {
+      toast({ title: "Áudio necessário", description: "Adicione um áudio para o modo Só Áudio.", variant: "destructive" });
+      return;
+    }
+    if (editMode === 'popup_audio' && !popupMedia && !popupAudio && !bgMusic) {
       toast({ title: "Nada configurado", description: "Adicione pelo menos uma edição (popup ou música).", variant: "destructive" });
       return;
     }
@@ -585,8 +594,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           setProcessingStatus(statusLabel);
           addLog('Enviando assets (popup, áudio) para o servidor...', 'info');
           sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
-            popupMedia: popupMedia || undefined,
-            popupAudio: popupAudio || undefined,
+            popupMedia: editMode !== 'audio_only' ? (popupMedia || undefined) : undefined,
+            popupAudio: editMode !== 'popup_only' ? (popupAudio || undefined) : undefined,
             bgMusic: bgMusic || undefined,
           });
           videosSinceLastAssetRefresh = 0;
@@ -631,14 +640,26 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         })();
 
         const effectiveVolume = muteEntireAudio ? 0 : videoVolumeAfterPopup;
+
+        const effectiveDuration = (editMode === 'popup_audio' || editMode === 'audio_only')
+          ? (detectedAudioDuration || popupDuration)
+          : popupDuration;
+
         const processConfig: ServerProcessConfig = {
-          appearAt, popupDuration, endVideoWithPopup, opacity,
-          popupAudioVolume, videoVolumeAfterPopup: effectiveVolume,
+          appearAt,
+          popupDuration: effectiveDuration,
+          endVideoWithPopup: editMode !== 'popup_only' ? true : endVideoWithPopup,
+          opacity,
+          popupAudioVolume,
+          videoVolumeAfterPopup: effectiveVolume,
           muteEntireAudio,
-          backgroundMusicVolume: bgMusicVolume, popupMediaType, popupFullscreen,
+          backgroundMusicVolume: bgMusicVolume,
+          popupMediaType,
+          popupFullscreen,
           popupTransform: normalizedPopupTransform,
-          requirePopupMedia: Boolean(popupMedia),
+          requirePopupMedia: editMode !== 'audio_only' && Boolean(popupMedia),
           effects: effectiveEffects,
+          mode: editMode,
         };
 
         const browserFallbackConfig: VideoEditConfig = {
@@ -1323,33 +1344,53 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
       {/* ===== PREVIEW + UPLOAD AREA ===== */}
       <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%)' }}>
+        {/* Mode selector */}
+        <div className="px-5 py-3 border-b border-white/[0.06] flex gap-2">
+          {([
+            { key: 'popup_audio' as const, label: '🎬 Popup + Áudio' },
+            { key: 'popup_only' as const, label: '🖼️ Só Popup' },
+            { key: 'audio_only' as const, label: '🔊 Só Áudio' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setEditMode(key)}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${editMode === key ? 'bg-primary text-primary-foreground' : 'bg-white/[0.04] text-muted-foreground hover:bg-white/[0.08]'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {/* Upload strip */}
         <div className="px-5 py-3 border-b border-white/[0.06] flex items-center gap-3">
           <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,video/mp4,video/webm,video/quicktime" className="hidden" onChange={handleMediaUpload} />
           <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
-          <button
-            onClick={() => imageInputRef.current?.click()}
-            className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group"
-          >
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-              <Upload className="h-4 w-4 text-primary" />
-            </div>
-            <div className="text-left min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">
-                {popupMedia ? `${popupMediaType === 'video' ? '🎬' : '🖼️'} ${popupMedia.name}` : 'Popup (imagem ou vídeo)'}
-              </p>
-              <p className="text-[10px] text-muted-foreground/50">PNG, JPG, MP4, WEBM</p>
-            </div>
-          </button>
-          <button
-            onClick={() => audioInputRef.current?.click()}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group"
-          >
-            <Volume2 className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors truncate max-w-[80px]">
-              {popupAudio ? popupAudio.name : 'Áudio'}
-            </span>
-          </button>
+          {editMode !== 'audio_only' && (
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group"
+            >
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <Upload className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-left min-w-0">
+                <p className="text-xs font-medium text-foreground truncate">
+                  {popupMedia ? `${popupMediaType === 'video' ? '🎬' : '🖼️'} ${popupMedia.name}` : 'Popup (imagem ou vídeo)'}
+                </p>
+                <p className="text-[10px] text-muted-foreground/50">PNG, JPG, MP4, WEBM</p>
+              </div>
+            </button>
+          )}
+          {editMode !== 'popup_only' && (
+            <button
+              onClick={() => audioInputRef.current?.click()}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group ${editMode === 'audio_only' ? 'flex-1' : ''}`}
+            >
+              <Volume2 className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors truncate max-w-[80px]">
+                {popupAudio ? popupAudio.name : 'Áudio'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Preview */}
@@ -1387,21 +1428,31 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           {/* Timing row */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Aparece em</label>
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{editMode === 'audio_only' ? 'Começa em' : 'Aparece em'}</label>
               <div className="relative">
                 <Input type="number" min={0} value={appearAt} onChange={(e) => setAppearAt(Number(e.target.value) || 0)} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">s</span>
               </div>
               <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Maior = popup aparece mais tarde no vídeo</p>
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Duração</label>
-              <div className="relative">
-                <Input type="number" min={1} value={popupDuration} onChange={(e) => setPopupDuration(Math.max(1, Number(e.target.value) || 1))} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">s</span>
+            {editMode === 'popup_only' ? (
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Duração</label>
+                <div className="relative">
+                  <Input type="number" min={1} value={popupDuration} onChange={(e) => setPopupDuration(Math.max(1, Number(e.target.value) || 1))} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">s</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Maior = popup fica visível por mais tempo</p>
               </div>
-              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Maior = popup fica visível por mais tempo</p>
-            </div>
+            ) : (
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Duração</label>
+                <div className="flex items-center h-9 px-3 rounded-md border border-white/[0.08] bg-white/[0.03]">
+                  <span className="text-sm font-mono text-muted-foreground">{detectedAudioDuration ? `${detectedAudioDuration}s (auto)` : 'Auto (áudio)'}</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground/70 leading-tight">Detectada do áudio automaticamente</p>
+              </div>
+            )}
             <div className="space-y-1">
               <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Opacidade</label>
               <div className="relative">
@@ -1414,42 +1465,48 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
           {/* Toggles */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-              <div>
-                <span className="text-xs font-medium text-foreground block">Encerrar com popup</span>
-                <span className="text-[10px] text-muted-foreground/70">Corta o vídeo quando o popup sumir</span>
+            {editMode !== 'audio_only' && (
+              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                <div>
+                  <span className="text-xs font-medium text-foreground block">Encerrar com popup</span>
+                  <span className="text-[10px] text-muted-foreground/70">Corta o vídeo quando o popup sumir</span>
+                </div>
+                <Switch checked={endVideoWithPopup} onCheckedChange={setEndVideoWithPopup} />
               </div>
-              <Switch checked={endVideoWithPopup} onCheckedChange={setEndVideoWithPopup} />
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-              <div>
-                <span className="text-xs font-medium text-foreground block">Tela inteira</span>
-                <span className="text-[10px] text-muted-foreground/70">Popup ocupa todo o vídeo</span>
+            )}
+            {editMode !== 'audio_only' && (
+              <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                <div>
+                  <span className="text-xs font-medium text-foreground block">Tela inteira</span>
+                  <span className="text-[10px] text-muted-foreground/70">Popup ocupa todo o vídeo</span>
+                </div>
+                <Switch checked={popupFullscreen} onCheckedChange={setPopupFullscreen} />
               </div>
-              <Switch checked={popupFullscreen} onCheckedChange={setPopupFullscreen} />
-            </div>
-            <div className={`flex items-center justify-between rounded-xl border px-3 py-2.5 col-span-2 transition-colors ${endWithAudio ? 'border-primary/30 bg-primary/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
-              <div className="flex-1">
-                <span className="text-xs font-medium text-foreground block">🔊 Encerrar com áudio</span>
-                <span className="text-[10px] text-muted-foreground/70">
-                  {popupAudio
-                    ? detectedAudioDuration
-                      ? `Áudio detectado: ${detectedAudioDuration}s — vídeo encerra quando o áudio do popup terminar`
-                      : 'Detectando duração do áudio...'
-                    : 'Adicione um áudio de popup para usar esta opção'}
-                </span>
+            )}
+            {editMode !== 'popup_only' && (
+              <div className={`flex items-center justify-between rounded-xl border px-3 py-2.5 col-span-2 transition-colors ${endWithAudio ? 'border-primary/30 bg-primary/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+                <div className="flex-1">
+                  <span className="text-xs font-medium text-foreground block">🔊 Encerrar com áudio</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {popupAudio
+                      ? detectedAudioDuration
+                        ? `Áudio detectado: ${detectedAudioDuration}s — vídeo encerra quando o áudio do popup terminar`
+                        : 'Detectando duração do áudio...'
+                      : 'Adicione um áudio de popup para usar esta opção'}
+                  </span>
+                </div>
+                <Switch
+                  checked={endWithAudio}
+                  onCheckedChange={(v) => {
+                    if (v && !popupAudio) {
+                      toast({ title: 'Sem áudio', description: 'Adicione um áudio de popup primeiro.', variant: 'destructive' });
+                      return;
+                    }
+                    setEndWithAudio(v);
+                  }}
+                />
               </div>
-              <Switch
-                checked={endWithAudio}
-                onCheckedChange={(v) => {
-                  if (v && !popupAudio) {
-                    toast({ title: 'Sem áudio', description: 'Adicione um áudio de popup primeiro.', variant: 'destructive' });
-                    return;
-                  }
-                  setEndWithAudio(v);
-                }}
-              />
-            </div>
+            )}
           </div>
 
           {/* Mute original video audio */}
