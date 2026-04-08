@@ -684,15 +684,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               if (error || !data?.success || !data?.download_url) return null;
               urlCount++;
               setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
-              return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url };
+              return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url, sourceUrl: videoUrl };
             } catch { return null; }
             finally { releaseUrlSlot(); }
           })
-        )).filter((r): r is { id: string; title: string; downloadUrl: string } => r !== null);
+        )).filter((r): r is { id: string; title: string; downloadUrl: string; sourceUrl: string } => r !== null);
         addLog(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}`, 'info');
 
         // Deduplicate by normalized download URL to avoid repeated processing
-        const dedupeMap = new Map<string, { id: string; title: string; downloadUrl: string }>();
+        const dedupeMap = new Map<string, { id: string; title: string; downloadUrl: string; sourceUrl: string }>();
         for (const item of videoUrls) {
           const key = item.downloadUrl.split('?')[0] || item.downloadUrl;
           if (!dedupeMap.has(key)) dedupeMap.set(key, item);
@@ -841,7 +841,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           prefetchedJobs.set(nextVideo.id, ''); // sentinel: prefetch in flight
           try {
             const nextJobId = await submitVideoJob(
-              serverConfig.url, serverConfig.apiKey, sessionId, nextVideo.downloadUrl, processConfig,
+              serverConfig.url, serverConfig.apiKey, sessionId, nextVideo.downloadUrl, processConfig, nextVideo.sourceUrl,
             );
             prefetchedJobs.set(nextVideo.id, nextJobId);
           } catch {
@@ -892,7 +892,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                       addLog(`[${videoNum}] Job pré-carregado: ${jobId.slice(0, 8)}... (pipeline overlap)`, 'info');
                     } else {
                       jobId = await submitVideoJob(
-                        serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
+                        serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig, video.sourceUrl,
                       );
                       if (jobAttempt > 0) {
                         addLog(`[${videoNum}] Re-submetido (tentativa ${jobAttempt + 1}): ${jobId.slice(0, 8)}...`, 'warn');
@@ -1131,7 +1131,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
             try {
               const jobId = await submitVideoJob(
-                serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
+                serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig, video.sourceUrl,
               );
               addLog(`[Retry ${retryNum}] Job: ${jobId.slice(0, 8)}...`, 'info');
 

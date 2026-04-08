@@ -148,6 +148,7 @@ export async function submitVideoJob(
   sessionId: string,
   videoUrl: string,
   config: ServerProcessConfig,
+  sourceUrl?: string,
 ): Promise<string> {
   const baseUrl = serverUrl.replace(/\/$/, '');
   let res: Response;
@@ -159,7 +160,7 @@ export async function submitVideoJob(
         'Content-Type': 'application/json',
         ...(apiKey ? { 'x-api-key': apiKey } : {}),
       },
-      body: JSON.stringify({ sessionId, videoUrl, config }),
+      body: JSON.stringify({ sessionId, videoUrl, sourceUrl: sourceUrl || null, config }),
       signal: AbortSignal.timeout(15000),
     });
   } catch (error: any) {
