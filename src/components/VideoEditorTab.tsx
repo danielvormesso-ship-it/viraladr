@@ -528,7 +528,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
-    if (editMode === 'popup_only' && !popupMedia) {
+    if (editMode === 'popup_only' && !popupMedia && !(rotationEnabled && rotationPopups.length > 0)) {
       toast({ title: "Popup necessário", description: "Adicione uma imagem ou vídeo de popup.", variant: "destructive" });
       return;
     }
@@ -622,7 +622,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           'info'
         );
         const shouldRequirePopup = Boolean(popupMedia);
-        const ASSET_SESSION_REFRESH_EVERY = shouldRequirePopup ? 3 : Number.POSITIVE_INFINITY;
+        // In rotation mode, slot loop manages sessions — disable mid-batch asset refresh
+        const ASSET_SESSION_REFRESH_EVERY = (!rotationEnabled && shouldRequirePopup) ? 3 : Number.POSITIVE_INFINITY;
 
         const refreshAssetSession = async (statusLabel: string) => {
           setProcessingStatus(statusLabel);
@@ -636,7 +637,16 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           addLog(`Assets enviados com sucesso. Session: ${sessionId.slice(0, 8)}...`, 'success');
         };
 
-        await refreshAssetSession('Enviando assets para o servidor...');
+        if (rotationEnabled && rotationPopups.length > 0) {
+          addLog('Rotação de assets ativa: assets serão enviados por slot.', 'info');
+          // Upload bgMusic + create initial session without popup/audio (slot loop will upload per-slot assets)
+          sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
+            bgMusic: bgMusic || undefined,
+          });
+          addLog(`Sessão inicial criada. Session: ${sessionId.slice(0, 8)}...`, 'success');
+        } else {
+          await refreshAssetSession('Enviando assets para o servidor...');
+        }
 
         const normalizedPopupTransform = popupFullscreen ? undefined : normalizePopupTransform(popupTransform);
         if (normalizedPopupTransform && (
@@ -691,7 +701,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           popupMediaType,
           popupFullscreen,
           popupTransform: normalizedPopupTransform,
-          requirePopupMedia: editMode !== 'audio_only' && Boolean(popupMedia),
+          requirePopupMedia: editMode !== 'audio_only' && (Boolean(popupMedia) || (rotationEnabled && rotationPopups.length > 0)),
           effects: effectiveEffects,
           mode: editMode,
         };
@@ -1190,10 +1200,12 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           addLog(`\n🔄 Retry: tentando ${retryableFailedVideos.length} vídeo(s) que falharam...`, 'info');
           setProcessingStatus(`Retry: 0/${retryableFailedVideos.length} vídeos com erro...`);
 
-          // Refresh assets before retry phase
-          try {
-            await refreshAssetSession('Renovando assets para retry...');
-          } catch {}
+          // Refresh assets before retry phase (skip in rotation mode — slot loop already set sessionId)
+          if (!rotationEnabled || rotationPopups.length === 0) {
+            try {
+              await refreshAssetSession('Renovando assets para retry...');
+            } catch {}
+          }
 
           let retrySuccess = 0;
           let retryFail = 0;
