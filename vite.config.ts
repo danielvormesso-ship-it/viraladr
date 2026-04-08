@@ -8,21 +8,8 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
-  },
-  server: {
-    host: "::",
-    port: 8080,
-    hmr: { overlay: false },
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
   build: {
     outDir: "dist",
-    rollupOptions: {
-      input: "./index.html",
-    },
   },
 });
