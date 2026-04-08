@@ -841,7 +841,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           prefetchedJobs.set(nextVideo.id, ''); // sentinel: prefetch in flight
           try {
             const nextJobId = await submitVideoJob(
-              serverConfig.url, serverConfig.apiKey, sessionId, nextVideo.downloadUrl, processConfig, nextVideo.sourceUrl,
+              serverConfig.url, serverConfig.apiKey, sessionId, nextVideo.downloadUrl, processConfig,
             );
             prefetchedJobs.set(nextVideo.id, nextJobId);
           } catch {
@@ -892,7 +892,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                       addLog(`[${videoNum}] Job pré-carregado: ${jobId.slice(0, 8)}... (pipeline overlap)`, 'info');
                     } else {
                       jobId = await submitVideoJob(
-                        serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig, video.sourceUrl,
+                        serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
                       );
                       if (jobAttempt > 0) {
                         addLog(`[${videoNum}] Re-submetido (tentativa ${jobAttempt + 1}): ${jobId.slice(0, 8)}...`, 'warn');
@@ -1131,7 +1131,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
             try {
               const jobId = await submitVideoJob(
-                serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig, video.sourceUrl,
+                serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
               );
               addLog(`[Retry ${retryNum}] Job: ${jobId.slice(0, 8)}...`, 'info');
 
