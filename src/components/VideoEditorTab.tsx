@@ -93,6 +93,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [popupTransform, setPopupTransform] = useState<PopupTransform>(normalizePopupTransform());
   const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
   const [editMode, setEditMode] = useState<'popup_audio' | 'popup_only' | 'audio_only'>('popup_audio');
+  // A4: Automatic renaming
+  const [editorTag, setEditorTag] = useState('');
+  // A1: Asset rotation
+  const [rotationEnabled, setRotationEnabled] = useState(false);
+  const [rotationEvery, setRotationEvery] = useState(5);
+  const [rotationPopups, setRotationPopups] = useState<File[]>([]);
+  const [rotationAudios, setRotationAudios] = useState<File[]>([]);
   const [previewVideoSrc, setPreviewVideoSrc] = useState<string | undefined>("/test-popup.mp4");
   const [previewThumbnailSrc, setPreviewThumbnailSrc] = useState<string | undefined>(undefined);
   const previewObjectUrlRef = useRef<string | null>(null);
@@ -511,6 +518,14 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const BATCH_PRESETS = [50, 100, 150, 200, 250, 300, 350, 400];
   const batchQuantity = Math.min(editBatchQuantity, videos.length);
 
+  // A4: date string and file namer (computed once per render — stable within a session)
+  const _today = new Date();
+  const zipDateStr = `${String(_today.getDate()).padStart(2, '0')}/${String(_today.getMonth() + 1).padStart(2, '0')}`;
+  const getZipFileName = (seqNum: number, tag: string): string => {
+    const safe = tag.trim().slice(0, 20);
+    return safe ? `${seqNum} ${zipDateStr} ${safe}.mp4` : `${String(seqNum).padStart(2, '0')}_editado.mp4`;
+  };
+
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
     if (editMode === 'popup_only' && !popupMedia) {
@@ -539,6 +554,25 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     if (videosToProcess.length === 0) {
       toast({ title: "Sem vídeos", description: "Busque vídeos primeiro.", variant: "destructive" });
       return;
+    }
+
+    // A1: Rotation confirmation
+    if (!isPreview && rotationEnabled && rotationPopups.length > 0) {
+      const totalSlots = Math.ceil(videosToProcess.length / rotationEvery);
+      const audioWarning = rotationAudios.length === 0
+        ? '\n⚠️ Nenhum áudio configurado para rotação.'
+        : rotationAudios.length < totalSlots
+          ? `\n⚠️ Apenas ${rotationAudios.length} áudio(s) para ${totalSlots} grupos (serão reutilizados).`
+          : '';
+      const confirmed = window.confirm(
+        `Rotação de assets ativada:\n` +
+        `• ${totalSlots} grupo(s) de até ${rotationEvery} vídeo(s)\n` +
+        `• ${rotationPopups.length} popup(s) disponíveis\n` +
+        `• ${rotationAudios.length} áudio(s) disponíveis` +
+        audioWarning +
+        `\n\nConfirma o processamento?`
+      );
+      if (!confirmed) return;
     }
 
     if (checkingServer) {
@@ -829,7 +863,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const SERVER_PARALLEL = 8; // Pipeline: enquanto job 1 processa, job 2 já baixa
         const retryableFailedVideos: typeof finalTargets = [];
 
-        const processQueue = [...finalTargets];
+        const processQueue: typeof finalTargets = [];
         const MIN_SAMPLES_FOR_BREAKER = 20;
         const MAX_FAILURE_RATE = 0.6;
         const MAX_JOB_RETRIES = 2;
@@ -1032,8 +1066,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
                 successCount++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                const paddedNum = String(successCount).padStart(2, '0');
-                zip.file(`${paddedNum}_${safeName}_editado.mp4`, new Uint8Array(result));
+                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result));
                 successfulVideoIds.add(video.id);
                 success = true;
                 updateVideoStatus(video.id, { status: 'done', progress: 100 });
@@ -1096,41 +1129,61 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           }
         };
 
-        const workerCount = Math.min(SERVER_PARALLEL, finalTargets.length);
-        const workers: Promise<void>[] = [];
-        for (let w = 0; w < workerCount; w++) {
-          // Stagger workers by 200ms only when using many parallel workers (>3)
-          if (w > 0 && workerCount > 3) await new Promise(r => setTimeout(r, 200));
-          workers.push(processOne());
-        }
-
-        // Watchdog: every 2 min check if completedCount advanced.
-        // After 4 min of no progress, drain the queue so stuck workers don't block new ones.
-        // The withJobTimeout (3 min) ensures stuck workers eventually resolve.
-        let watchdogLastCompleted = completedCount;
-        let watchdogStuckCycles = 0;
-        const watchdogTimer = setInterval(() => {
-          if (completedCount < finalTargets.length) {
-            if (completedCount === watchdogLastCompleted) {
-              watchdogStuckCycles++;
-              addLog(`⚠ Watchdog [${watchdogStuckCycles}]: nenhum vídeo concluído no último 1 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 3 min.`, 'warn');
-              if (watchdogStuckCycles >= 2) {
-                // 4 min of no progress — drain the queue so no new items are picked up
-                // Stuck workers will be killed by withJobTimeout (3 min)
-                if (processQueue.length > 0) {
-                  addLog(`⚠ Watchdog: drenando fila (${processQueue.length} pendentes) — workers travados serão interrompidos pelo timeout.`, 'error');
+        // Runs parallel workers for a given group of videos, with watchdog protection
+        const runWorkersForGroup = async (groupVideos: typeof finalTargets) => {
+          processQueue.length = 0;
+          processQueue.push(...groupVideos);
+          const wCount = Math.min(SERVER_PARALLEL, groupVideos.length);
+          const grpWorkers: Promise<void>[] = [];
+          for (let w = 0; w < wCount; w++) {
+            if (w > 0 && wCount > 3) await new Promise(r => setTimeout(r, 200));
+            grpWorkers.push(processOne());
+          }
+          let wdLast = completedCount;
+          let wdStuck = 0;
+          const wdTimer = setInterval(() => {
+            if (completedCount < finalTargets.length) {
+              if (completedCount === wdLast) {
+                wdStuck++;
+                addLog(`⚠ Watchdog [${wdStuck}]: sem progresso no último 1 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 3 min.`, 'warn');
+                if (wdStuck >= 2 && processQueue.length > 0) {
+                  addLog(`⚠ Watchdog: drenando fila (${processQueue.length} pendentes) — workers serão interrompidos pelo timeout.`, 'error');
                   processQueue.length = 0;
                 }
+              } else {
+                wdStuck = 0;
               }
-            } else {
-              watchdogStuckCycles = 0;
+              wdLast = completedCount;
             }
-            watchdogLastCompleted = completedCount;
-          }
-        }, 1 * 60 * 1000);
+          }, 1 * 60 * 1000);
+          await Promise.all(grpWorkers);
+          clearInterval(wdTimer);
+        };
 
-        await Promise.all(workers);
-        clearInterval(watchdogTimer);
+        // A1: Slot-based processing when rotation is active
+        if (rotationEnabled && rotationPopups.length > 0) {
+          const totalSlots = Math.ceil(finalTargets.length / rotationEvery);
+          let slotStart = 0;
+          for (let slotIdx = 0; slotStart < finalTargets.length; slotIdx++) {
+            const slotEnd = Math.min(slotStart + rotationEvery, finalTargets.length);
+            const slotVideos = finalTargets.slice(slotStart, slotEnd);
+            const slotPopup = rotationPopups[slotIdx % rotationPopups.length] || null;
+            const slotAudio = rotationAudios.length > 0 ? (rotationAudios[slotIdx % rotationAudios.length] || null) : null;
+            addLog(`\n🔄 Slot ${slotIdx + 1}/${totalSlots}: ${slotVideos.length} vídeos — popup: ${slotPopup?.name || 'nenhum'}, áudio: ${slotAudio?.name || 'nenhum'}`, 'info');
+            setProcessingStatus(`Slot ${slotIdx + 1}/${totalSlots}: enviando assets...`);
+            sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
+              popupMedia: editMode !== 'audio_only' ? (slotPopup || undefined) : undefined,
+              popupAudio: editMode !== 'popup_only' ? (slotAudio || undefined) : undefined,
+              bgMusic: bgMusic || undefined,
+            });
+            videosSinceLastAssetRefresh = 0;
+            addLog(`Assets slot ${slotIdx + 1} enviados. Session: ${sessionId.slice(0, 8)}...`, 'success');
+            await runWorkersForGroup(slotVideos);
+            slotStart = slotEnd;
+          }
+        } else {
+          await runWorkersForGroup(finalTargets);
+        }
 
         // === RETRY PHASE: retry failed videos one by one ===
         if (retryableFailedVideos.length > 0 && !stoppedByBreaker) {
@@ -1174,8 +1227,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 failCount--;
                 retrySuccess++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                const paddedNum = String(successCount).padStart(2, '0');
-                zip.file(`${paddedNum}_${safeName}_editado.mp4`, new Uint8Array(result));
+                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result));
                 successfulVideoIds.add(video.id);
                 addLog(`✓ Retry OK: ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
               } else {
@@ -1390,6 +1442,74 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 {popupAudio ? popupAudio.name : 'Áudio'}
               </span>
             </button>
+          )}
+        </div>
+
+        {/* A1: Asset rotation */}
+        <div className="border-t border-white/[0.06]">
+          <button
+            onClick={() => setRotationEnabled(v => !v)}
+            className="w-full px-5 py-2.5 flex items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="flex items-center gap-2"><span>🔄</span> Rotação de assets {rotationEnabled && rotationPopups.length > 0 && <span className="text-primary font-bold">({rotationPopups.length} popups)</span>}</span>
+            <span>{rotationEnabled ? '▲' : '▼'}</span>
+          </button>
+          {rotationEnabled && (
+            <div className="px-5 pb-4 space-y-3 border-t border-white/[0.06] pt-3">
+              <div className="flex items-center gap-3">
+                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider whitespace-nowrap">Trocar a cada</label>
+                <Input type="number" min={1} value={rotationEvery} onChange={(e) => setRotationEvery(Math.max(1, Number(e.target.value) || 1))} className="w-20 h-8 text-sm font-mono bg-white/[0.03] border-white/[0.08]" />
+                <span className="text-[10px] text-muted-foreground">vídeo(s)</span>
+              </div>
+              {/* Rotation popups */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Popups ({rotationPopups.length})</label>
+                <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
+                  <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Adicionar popups (múltiplos)</span>
+                  <input type="file" multiple accept="image/png,image/jpeg,video/mp4,video/webm" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationPopups(p => [...p, ...f]); e.target.value = ''; }} />
+                </label>
+                {rotationPopups.length > 0 && (
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {rotationPopups.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
+                        <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
+                        <button onClick={() => setRotationPopups(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Rotation audios */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Áudios ({rotationAudios.length})</label>
+                <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
+                  <Music className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Adicionar áudios (múltiplos)</span>
+                  <input type="file" multiple accept="audio/*" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationAudios(p => [...p, ...f]); e.target.value = ''; }} />
+                </label>
+                {rotationAudios.length > 0 && (
+                  <div className="space-y-1 max-h-24 overflow-y-auto">
+                    {rotationAudios.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
+                        <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
+                        <button onClick={() => setRotationAudios(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Summary */}
+              {rotationPopups.length > 0 && (
+                <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-[10px] text-muted-foreground space-y-0.5">
+                  <p>📊 {Math.ceil(batchQuantity / rotationEvery)} grupo(s) · até {rotationEvery} vídeos cada</p>
+                  <p>🖼️ {rotationPopups.length} popup(s) · 🔊 {rotationAudios.length} áudio(s)</p>
+                  {rotationAudios.length > 0 && rotationAudios.length < Math.ceil(batchQuantity / rotationEvery) && (
+                    <p className="text-yellow-400">⚠️ Menos áudios que grupos — serão reutilizados em ciclo</p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1665,6 +1785,26 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           {videos.length >= editBatchQuantity
             ? `✅ ${editBatchQuantity} vídeo${editBatchQuantity > 1 ? 's' : ''} ${editBatchQuantity > 1 ? 'serão processados' : 'será processado'}`
             : `⚠️ Apenas ${videos.length} vídeos disponíveis (de ${editBatchQuantity} selecionados)`}
+        </p>
+      </div>
+
+      {/* A4: Editor TAG */}
+      <div className="rounded-xl border border-white/[0.06] bg-card p-4 space-y-2">
+        <label className="text-xs font-bold text-foreground flex items-center gap-2">
+          🏷️ TAG do editor <span className="text-muted-foreground font-normal text-[10px]">(opcional)</span>
+        </label>
+        <Input
+          type="text"
+          placeholder="Ex: IG, TT, CANAL"
+          value={editorTag}
+          onChange={(e) => setEditorTag(e.target.value.replace(/[^a-zA-Z0-9_\-\.]/g, '').slice(0, 20))}
+          className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08]"
+          disabled={processing}
+        />
+        <p className="text-[10px] text-muted-foreground/60">
+          {editorTag.trim()
+            ? <>Arquivos: <span className="font-mono text-foreground/70">1 {zipDateStr} {editorTag.trim()}.mp4</span>, <span className="font-mono text-foreground/70">2 {zipDateStr} {editorTag.trim()}.mp4</span>, ...</>
+            : 'Sem TAG: 01_editado.mp4, 02_editado.mp4, ...'}
         </p>
       </div>
 
