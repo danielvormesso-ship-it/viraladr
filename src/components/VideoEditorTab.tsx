@@ -100,6 +100,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [rotationEvery, setRotationEvery] = useState(5);
   const [rotationPopups, setRotationPopups] = useState<File[]>([]);
   const [rotationAudios, setRotationAudios] = useState<File[]>([]);
+  const [rotationConfirmData, setRotationConfirmData] = useState<{
+    totalVideos: number;
+    totalSlots: number;
+    slotSize: number;
+    popupCount: number;
+    audioCount: number;
+    audioWarning: string;
+  } | null>(null);
+  const rotationConfirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
   const [previewVideoSrc, setPreviewVideoSrc] = useState<string | undefined>("/test-popup.mp4");
   const [previewThumbnailSrc, setPreviewThumbnailSrc] = useState<string | undefined>(undefined);
   const previewObjectUrlRef = useRef<string | null>(null);
@@ -559,22 +568,25 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       return;
     }
 
-    // A1: Rotation confirmation
+    // A1: Rotation confirmation modal
     if (!isPreview && rotationEnabled && rotationPopups.length > 0) {
       const totalSlots = Math.ceil(videosToProcess.length / rotationEvery);
       const audioWarning = rotationAudios.length === 0
-        ? '\n⚠️ Nenhum áudio configurado para rotação.'
+        ? 'Nenhum áudio configurado para rotação.'
         : rotationAudios.length < totalSlots
-          ? `\n⚠️ Apenas ${rotationAudios.length} áudio(s) para ${totalSlots} grupos (serão reutilizados).`
+          ? `Apenas ${rotationAudios.length} áudio(s) para ${totalSlots} grupos (serão reutilizados).`
           : '';
-      const confirmed = window.confirm(
-        `Rotação de assets ativada:\n` +
-        `• ${totalSlots} grupo(s) de até ${rotationEvery} vídeo(s)\n` +
-        `• ${rotationPopups.length} popup(s) disponíveis\n` +
-        `• ${rotationAudios.length} áudio(s) disponíveis` +
-        audioWarning +
-        `\n\nConfirma o processamento?`
-      );
+      const confirmed = await new Promise<boolean>((resolve) => {
+        rotationConfirmResolveRef.current = resolve;
+        setRotationConfirmData({
+          totalVideos: videosToProcess.length,
+          totalSlots,
+          slotSize: rotationEvery,
+          popupCount: rotationPopups.length,
+          audioCount: rotationAudios.length,
+          audioWarning,
+        });
+      });
       if (!confirmed) return;
     }
 
@@ -1352,6 +1364,70 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   return (
     <div className="space-y-5">
+      {/* ===== ROTATION CONFIRM MODAL ===== */}
+      {rotationConfirmData && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          onClick={() => { rotationConfirmResolveRef.current?.(false); setRotationConfirmData(null); }}
+        >
+          <div
+            style={{ background: '#1a1a1a', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 16, padding: '28px 32px', maxWidth: 420, width: '90%', boxShadow: '0 25px 60px rgba(0,0,0,0.7)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🔄</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>Confirmar processamento</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>Rotação de assets ativada</div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+              {[
+                { label: 'Vídeos', value: rotationConfirmData.totalVideos },
+                { label: 'Grupos', value: rotationConfirmData.totalSlots },
+                { label: 'Popups', value: rotationConfirmData.popupCount },
+                { label: 'Áudios', value: rotationConfirmData.audioCount },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#f97316' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: rotationConfirmData.audioWarning ? 12 : 20 }}>
+              Cada grupo processa até <strong style={{ color: 'rgba(255,255,255,0.65)' }}>{rotationConfirmData.slotSize} vídeo(s)</strong> com o mesmo popup.
+            </div>
+
+            {/* Audio warning */}
+            {rotationConfirmData.audioWarning && (
+              <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 14, marginTop: 1 }}>⚠️</span>
+                <span style={{ fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>{rotationConfirmData.audioWarning}</span>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { rotationConfirmResolveRef.current?.(false); setRotationConfirmData(null); }}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { rotationConfirmResolveRef.current?.(true); setRotationConfirmData(null); }}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'linear-gradient(135deg,#f97316,#ea580c)', border: 'none', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(249,115,22,0.35)' }}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== HEADER ===== */}
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-black tracking-tight text-foreground">
