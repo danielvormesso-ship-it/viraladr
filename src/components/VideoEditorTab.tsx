@@ -538,7 +538,9 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
-    const rotationActive = rotationEnabled && rotationPopups.length > 0;
+    const rotationActive = rotationEnabled && (
+      editMode === 'audio_only' ? rotationAudios.length > 0 : rotationPopups.length > 0
+    );
     if (!rotationActive) {
       if (editMode === 'popup_only' && !popupMedia) {
         toast({ title: "Popup necessário", description: "Adicione uma imagem ou vídeo de popup.", variant: "destructive" });
@@ -653,7 +655,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           addLog(`Assets enviados com sucesso. Session: ${sessionId.slice(0, 8)}...`, 'success');
         };
 
-        if (rotationEnabled && rotationPopups.length > 0) {
+        if (rotationActive) {
           addLog('Rotação de assets ativa: assets serão enviados por slot.', 'info');
           // Upload bgMusic + create initial session without popup/audio (slot loop will upload per-slot assets)
           sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
@@ -1187,13 +1189,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         };
 
         // A1: Slot-based processing when rotation is active
-        if (rotationEnabled && rotationPopups.length > 0) {
+        if (rotationActive) {
           const totalSlots = Math.ceil(finalTargets.length / rotationEvery);
           let slotStart = 0;
           for (let slotIdx = 0; slotStart < finalTargets.length; slotIdx++) {
             const slotEnd = Math.min(slotStart + rotationEvery, finalTargets.length);
             const slotVideos = finalTargets.slice(slotStart, slotEnd);
-            const slotPopup = rotationPopups[slotIdx % rotationPopups.length] || null;
+            const slotPopup = rotationPopups.length > 0 ? (rotationPopups[slotIdx % rotationPopups.length] || null) : null;
             const slotAudio = rotationAudios.length > 0 ? (rotationAudios[slotIdx % rotationAudios.length] || null) : null;
             addLog(`\n🔄 Slot ${slotIdx + 1}/${totalSlots}: ${slotVideos.length} vídeos — popup: ${slotPopup?.name || 'nenhum'}, áudio: ${slotAudio?.name || 'nenhum'}`, 'info');
             setProcessingStatus(`Slot ${slotIdx + 1}/${totalSlots}: enviando assets...`);
@@ -1217,7 +1219,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           setProcessingStatus(`Retry: 0/${retryableFailedVideos.length} vídeos com erro...`);
 
           // Refresh assets before retry phase (skip in rotation mode — slot loop already set sessionId)
-          if (!rotationEnabled || rotationPopups.length === 0) {
+          if (!rotationActive) {
             try {
               await refreshAssetSession('Renovando assets para retry...');
             } catch {}
@@ -1903,7 +1905,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       {/* U1: Preview Button */}
       <Button
         onClick={() => handleProcess({ previewMode: true })}
-        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && rotationPopups.length > 0))}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && (rotationPopups.length > 0 || (editMode === 'audio_only' && rotationAudios.length > 0))))}
         variant="outline"
         className="w-full h-10 gap-2 text-sm"
       >
@@ -1914,7 +1916,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       {/* Process Button */}
       <Button
         onClick={() => handleProcess()}
-        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && rotationPopups.length > 0))}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && (rotationPopups.length > 0 || (editMode === 'audio_only' && rotationAudios.length > 0))))}
         className="w-full h-14 gap-2 text-sm font-bold"
         size="lg"
       >
