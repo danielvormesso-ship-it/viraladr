@@ -823,7 +823,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         };
 
         // Hard timeout wrapper: if pollJobStatus hangs beyond 15 min, reject so the worker continues
-        const withJobTimeout = <T>(p: Promise<T>, label: string): Promise<T> =>
+        const withJobTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
           Promise.race([
             p,
             new Promise<T>((_, reject) =>
