@@ -106,9 +106,11 @@ async function processVideo(id: string, videoData: ArrayBuffer, config: WorkerMe
         ? `between(t\\,${appearSec}\\,${appearSec + config.popupDuration})`
         : `gte(t\\,${appearSec})`;
 
+      // scale2ref scales popup to match main video dimensions (adaptive, not hardcoded)
       filterParts.push(
-        `[${inputIdx}:v]scale=1080:1920:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${opacityVal}[ovr]`,
-        `[0:v][ovr]overlay=(W-w)/2:(H-h)/2:enable='${endCondition}'[vout]`
+        `[${inputIdx}:v][0:v]scale2ref=flags=lanczos[ovr_sized][bg_ref]`,
+        `[ovr_sized]format=rgba,colorchannelmixer=aa=${opacityVal}[ovr]`,
+        `[bg_ref][ovr]overlay=0:0:enable='${endCondition}'[vout]`
       );
       videoOut = '[vout]';
       inputIdx++;
@@ -189,19 +191,13 @@ async function processVideo(id: string, videoData: ArrayBuffer, config: WorkerMe
 
     await ffmpeg.exec(cmd);
 
-    ffmpeg.off('progress', progressHandler);
-
     // Read output
     const outputData = await ffmpeg.readFile('output.mp4');
     const outputBuffer = (outputData as Uint8Array).buffer;
 
-    if (outputBuffer.byteLength < 1024) {
+    if (outputBuffer.byteLength < 512) {
       throw new Error('Output file too small');
     }
-
-    // Cleanup
-    try { await ffmpeg.deleteFile('input.mp4'); } catch {}
-    try { await ffmpeg.deleteFile('output.mp4'); } catch {}
 
     self.postMessage(
       { type: 'done', id, data: outputBuffer },
@@ -210,6 +206,10 @@ async function processVideo(id: string, videoData: ArrayBuffer, config: WorkerMe
     );
   } catch (err: any) {
     self.postMessage({ type: 'error', id, error: err?.message || String(err) });
+  } finally {
+    ffmpeg.off('progress', progressHandler);
+    try { await ffmpeg.deleteFile('input.mp4'); } catch {}
+    try { await ffmpeg.deleteFile('output.mp4'); } catch {}
   }
 }
 

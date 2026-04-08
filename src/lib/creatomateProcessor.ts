@@ -19,17 +19,28 @@ async function uploadAsset(file: File, userId: string, label: string): Promise<s
   const ext = file.name.split('.').pop() || 'bin';
   const path = `${userId}/${Date.now()}_${label}.${ext}`;
 
-  const { error } = await supabase.storage
-    .from('editor-assets')
-    .upload(path, file, { upsert: true });
+  const MAX_ATTEMPTS = 3;
+  let lastError: Error | null = null;
 
-  if (error) throw new Error(`Falha ao enviar ${label}: ${error.message}`);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const { error } = await supabase.storage
+      .from('editor-assets')
+      .upload(path, file, { upsert: true });
 
-  const { data } = supabase.storage
-    .from('editor-assets')
-    .getPublicUrl(path);
+    if (!error) {
+      const { data } = supabase.storage
+        .from('editor-assets')
+        .getPublicUrl(path);
+      return data.publicUrl;
+    }
 
-  return data.publicUrl;
+    lastError = new Error(`Falha ao enviar ${label}: ${error.message}`);
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+
+  throw lastError!;
 }
 
 /**

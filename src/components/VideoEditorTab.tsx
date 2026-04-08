@@ -162,19 +162,25 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         .single();
       if (data?.config) {
         const c = data.config as any;
-        if (c.appearAt !== undefined) setAppearAt(c.appearAt);
-        if (c.popupDuration !== undefined) setPopupDuration(c.popupDuration);
-        if (c.endVideoWithPopup !== undefined) setEndVideoWithPopup(c.endVideoWithPopup);
-        if (c.opacity !== undefined) setOpacity(c.opacity);
-        if (c.popupAudioVolume !== undefined) setPopupAudioVolume(c.popupAudioVolume);
-        if (c.videoVolumeAfterPopup !== undefined) setVideoVolumeAfterPopup(c.videoVolumeAfterPopup);
-        if (c.muteEntireAudio !== undefined) setMuteEntireAudio(c.muteEntireAudio);
-        if (c.bgMusicVolume !== undefined) setBgMusicVolume(c.bgMusicVolume);
-        if (c.editBatchQuantity !== undefined) setEditBatchQuantity(c.editBatchQuantity);
-        if (c.parallelWorkers !== undefined) setParallelWorkers(c.parallelWorkers);
-        if (c.popupFullscreen !== undefined) setPopupFullscreen(c.popupFullscreen);
+        const toNum = (v: any, def: number, min: number, max: number) => {
+          const n = Number(v);
+          return Number.isFinite(n) ? clamp(n, min, max) : def;
+        };
+        const toBool = (v: any, def: boolean) => (typeof v === 'boolean' ? v : def);
+
+        if (c.appearAt !== undefined) setAppearAt(toNum(c.appearAt, 5, 0, 3600));
+        if (c.popupDuration !== undefined) setPopupDuration(toNum(c.popupDuration, 10, 0.1, 120));
+        if (c.endVideoWithPopup !== undefined) setEndVideoWithPopup(toBool(c.endVideoWithPopup, true));
+        if (c.opacity !== undefined) setOpacity(toNum(c.opacity, 100, 0, 100));
+        if (c.popupAudioVolume !== undefined) setPopupAudioVolume(toNum(c.popupAudioVolume, 100, 0, 100));
+        if (c.videoVolumeAfterPopup !== undefined) setVideoVolumeAfterPopup(toNum(c.videoVolumeAfterPopup, 100, 0, 100));
+        if (c.muteEntireAudio !== undefined) setMuteEntireAudio(toBool(c.muteEntireAudio, false));
+        if (c.bgMusicVolume !== undefined) setBgMusicVolume(toNum(c.bgMusicVolume, 100, 0, 100));
+        if (c.editBatchQuantity !== undefined) setEditBatchQuantity(toNum(c.editBatchQuantity, 50, 1, 1000));
+        if (c.parallelWorkers !== undefined) setParallelWorkers(toNum(c.parallelWorkers, 2, 1, 32));
+        if (c.popupFullscreen !== undefined) setPopupFullscreen(toBool(c.popupFullscreen, true));
         if (c.popupTransform) setPopupTransform(normalizePopupTransform(c.popupTransform));
-        if (c.effects) setEffects({ ...defaultEffects, ...c.effects });
+        if (c.effects && typeof c.effects === 'object') setEffects({ ...defaultEffects, ...c.effects });
       }
       setConfigLoaded(true);
     };

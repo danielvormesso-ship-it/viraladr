@@ -44,7 +44,15 @@ export function getServerConfig(): { url: string; apiKey: string } {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.url && typeof parsed.url === 'string') return parsed;
+      if (parsed.url && typeof parsed.url === 'string') {
+        const parsedUrl = new URL(parsed.url);
+        if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+          return {
+            url: parsed.url.replace(/\/$/, ''),
+            apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : DEFAULT_API_KEY,
+          };
+        }
+      }
     }
   } catch {}
   return { url: DEFAULT_SERVER_URL, apiKey: DEFAULT_API_KEY };
@@ -194,8 +202,7 @@ export async function pollJobStatus(
   };
   const KNOWN_STATUSES: JobStatus['status'][] = ['queued', 'downloading', 'probing', 'processing', 'done', 'failed'];
   const pollStartedAt = Date.now();
-  let transientErrors = 0;
-  let consecutiveErrors = 0;
+  let consecutiveErrors = 0; // errors since last success — used for both backoff and circuit breaker
   let lastProgressKey = '';
   let lastProgressAt = Date.now();
   let lastStatus: JobStatus['status'] | null = null;
@@ -233,11 +240,10 @@ export async function pollJobStatus(
       };
       consecutiveErrors = 0;
     } catch (err: any) {
-      transientErrors++;
       consecutiveErrors++;
-      if (transientErrors >= MAX_TRANSIENT_ERRORS) {
+      if (consecutiveErrors >= MAX_TRANSIENT_ERRORS) {
         throw new Error(
-          `Falha ao consultar status do job após ${MAX_TRANSIENT_ERRORS} erros: ${String(err?.message || err)}`,
+          `Falha ao consultar status do job após ${MAX_TRANSIENT_ERRORS} erros consecutivos: ${String(err?.message || err)}`,
         );
       }
       const backoff = Math.min(BASE_POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors - 1), 30000);

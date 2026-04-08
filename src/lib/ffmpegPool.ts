@@ -34,10 +34,10 @@ export class FFmpegWorkerPool {
   async init(concurrency: number, onProgress?: (msg: string) => void): Promise<void> {
     if (concurrency < 1) throw new Error('Concurrency inválida');
 
-    // FFmpeg Worker Pool depends on cross-origin isolation in many browser/sandbox setups.
-    // If unavailable, fail fast so UI can immediately switch to compatibility mode.
+    // FFmpeg Worker Pool benefits from cross-origin isolation for SharedArrayBuffer.
+    // If unavailable, log a warning but continue — single-threaded mode may still work.
     if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
-      throw new Error('Ambiente sem isolamento de origem (crossOriginIsolated=false)');
+      console.warn('[FFmpegPool] crossOriginIsolated=false — pool may run slower or fail on some browsers');
     }
 
     onProgress?.(`Iniciando ${concurrency} processador(es)...`);
@@ -55,6 +55,9 @@ export class FFmpegWorkerPool {
         );
 
         await Promise.race([loadPromise, timeoutPromise]);
+
+        // Validate the instance actually works with a no-op probe
+        await ffmpeg.exec(['-hide_banner', '-version']);
 
         this.instances.push({ ffmpeg, busy: false });
         onProgress?.(`Processador ${i + 1}/${concurrency} pronto ✓`);
@@ -150,6 +153,9 @@ export class FFmpegWorkerPool {
         } catch (err) {
           completed++;
           videoProgress.delete(job.id);
+          // Cleanup temp files left by a failed job
+          try { await inst.ffmpeg.deleteFile('input.mp4'); } catch {}
+          try { await inst.ffmpeg.deleteFile('output.mp4'); } catch {}
           onJobError(job.id, err instanceof Error ? err.message : String(err));
         }
 

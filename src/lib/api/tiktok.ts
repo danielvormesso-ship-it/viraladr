@@ -55,22 +55,24 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 async function triggerBrowserDownload(url: string, filename: string) {
+  let blobUrl: string | null = null;
   try {
     const res = await fetch(url);
     const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
+    blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
     return true;
   } catch {
     // Fallback: open in new tab
     window.open(url, '_blank');
     return true;
+  } finally {
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
   }
 }
 
