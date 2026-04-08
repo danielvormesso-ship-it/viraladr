@@ -1811,7 +1811,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       {/* U1: Preview Button */}
       <Button
         onClick={() => handleProcess({ previewMode: true })}
-        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic)}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && rotationPopups.length > 0))}
         variant="outline"
         className="w-full h-10 gap-2 text-sm"
       >
@@ -1822,7 +1822,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       {/* Process Button */}
       <Button
         onClick={() => handleProcess()}
-        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic)}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic && !(rotationEnabled && rotationPopups.length > 0))}
         className="w-full h-14 gap-2 text-sm font-bold"
         size="lg"
       >
