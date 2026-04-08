@@ -586,15 +586,12 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           popupTransform: normalizedPopupTransform,
         };
 
-        // Get download URLs for all videos (10 at a time for speed)
+        // Get download URLs for all videos in parallel
         addLog('Obtendo URLs de download dos vídeos...', 'info');
         setProcessingStatus('Obtendo URLs dos vídeos...');
-        const videoUrls: { id: string; title: string; downloadUrl: string }[] = [];
-        const DOWNLOAD_BATCH = 10;
-
-        for (let i = 0; i < videosToProcess.length; i += DOWNLOAD_BATCH) {
-          const batch = videosToProcess.slice(i, i + DOWNLOAD_BATCH);
-          const results = await Promise.all(batch.map(async (video) => {
+        let urlCount = 0;
+        const videoUrls = (await Promise.all(
+          videosToProcess.map(async (video) => {
             try {
               const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
               if (!videoUrl) return null;
@@ -602,13 +599,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 body: { video_url: videoUrl, tiktok_id: video.tiktok_id, mode: 'url' },
               });
               if (error || !data?.success || !data?.download_url) return null;
+              urlCount++;
+              setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
               return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url };
             } catch { return null; }
-          }));
-          results.forEach(r => { if (r) videoUrls.push(r); });
-          setProcessingStatus(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}...`);
-          addLog(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}`, 'info');
-        }
+          })
+        )).filter((r): r is { id: string; title: string; downloadUrl: string } => r !== null);
+        addLog(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}`, 'info');
 
         // Deduplicate by normalized download URL to avoid repeated processing
         const dedupeMap = new Map<string, { id: string; title: string; downloadUrl: string }>();
@@ -713,7 +710,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         let completedCount = 0;
         let startedCount = 0;
         const successfulVideoIds = new Set<string>();
-        const SERVER_PARALLEL = 6; // Pipeline: enquanto job 1 processa, job 2 já baixa
+        const SERVER_PARALLEL = 8; // Pipeline: enquanto job 1 processa, job 2 já baixa
         const retryableFailedVideos: typeof finalTargets = [];
 
         const processQueue = [...finalTargets];
