@@ -572,7 +572,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     }
 
     // A1: Rotation confirmation modal
-    if (!isPreview && rotationEnabled && rotationPopups.length > 0) {
+    if (!isPreview && rotationActive) {
       const totalSlots = Math.ceil(videosToProcess.length / rotationEvery);
       const audioWarning = editMode === 'popup_only'
         ? ''
@@ -587,7 +587,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           totalVideos: videosToProcess.length,
           totalSlots,
           slotSize: rotationEvery,
-          popupCount: rotationPopups.length,
+          popupCount: editMode === 'audio_only' ? 0 : rotationPopups.length,
           audioCount: rotationAudios.length,
           audioWarning,
         });
@@ -709,7 +709,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           ? (detectedAudioDuration || popupDuration)
           : popupDuration;
 
-        const processConfig: ServerProcessConfig = {
+        let processConfig: ServerProcessConfig = {
           appearAt,
           popupDuration: effectiveDuration,
           endVideoWithPopup: editMode !== 'popup_only' ? true : endVideoWithPopup,
@@ -1190,6 +1190,16 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           clearInterval(wdTimer);
         };
 
+        // Helper: detect real duration of an audio File via the browser Audio API
+        const getAudioFileDuration = (file: File): Promise<number> =>
+          new Promise((resolve) => {
+            const url = URL.createObjectURL(file);
+            const audio = new Audio();
+            audio.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(audio.duration || 0); };
+            audio.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+            audio.src = url;
+          });
+
         // A1: Slot-based processing when rotation is active
         if (rotationActive) {
           const totalSlots = Math.ceil(finalTargets.length / rotationEvery);
@@ -1200,6 +1210,18 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             const slotPopup = rotationPopups.length > 0 ? (rotationPopups[slotIdx % rotationPopups.length] || null) : null;
             const slotAudio = rotationAudios.length > 0 ? (rotationAudios[slotIdx % rotationAudios.length] || null) : null;
             addLog(`\n🔄 Slot ${slotIdx + 1}/${totalSlots}: ${slotVideos.length} vídeos — popup: ${slotPopup?.name || 'nenhum'}, áudio: ${slotAudio?.name || 'nenhum'}`, 'info');
+
+            // Per-slot duration: detect real audio duration for audio-based modes
+            if ((editMode === 'popup_audio' || editMode === 'audio_only') && slotAudio) {
+              const slotAudioDuration = await getAudioFileDuration(slotAudio);
+              const slotDuration = slotAudioDuration > 0 ? slotAudioDuration : popupDuration;
+              processConfig = { ...processConfig, popupDuration: slotDuration };
+              addLog(`Slot ${slotIdx + 1}: duração = ${slotDuration.toFixed(1)}s (${slotAudio.name})`, 'info');
+            } else if (editMode === 'popup_only') {
+              // popup_only: always use the manually configured duration
+              processConfig = { ...processConfig, popupDuration: popupDuration };
+            }
+
             setProcessingStatus(`Slot ${slotIdx + 1}/${totalSlots}: enviando assets...`);
             sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
               popupMedia: editMode !== 'audio_only' ? (slotPopup || undefined) : undefined,
