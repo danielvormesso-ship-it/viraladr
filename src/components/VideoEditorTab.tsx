@@ -523,7 +523,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const zipDateStr = `${String(_today.getDate()).padStart(2, '0')}/${String(_today.getMonth() + 1).padStart(2, '0')}`;
   const getZipFileName = (seqNum: number, tag: string): string => {
     const safe = tag.trim().slice(0, 20);
-    return safe ? `${seqNum} ${zipDateStr} ${safe}.mp4` : `${String(seqNum).padStart(2, '0')}_editado.mp4`;
+    return safe ? `${seqNum} ${zipDateStr} ${safe}.mp4` : `${seqNum} ${zipDateStr}.mp4`;
   };
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
@@ -1795,7 +1795,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         </label>
         <Input
           type="text"
-          placeholder="Ex: IG, TT, CANAL"
+          placeholder="IG"
           value={editorTag}
           onChange={(e) => setEditorTag(e.target.value.replace(/[^a-zA-Z0-9_\-\.]/g, '').slice(0, 20))}
           className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08]"
@@ -1804,7 +1804,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         <p className="text-[10px] text-muted-foreground/60">
           {editorTag.trim()
             ? <>Arquivos: <span className="font-mono text-foreground/70">1 {zipDateStr} {editorTag.trim()}.mp4</span>, <span className="font-mono text-foreground/70">2 {zipDateStr} {editorTag.trim()}.mp4</span>, ...</>
-            : 'Sem TAG: 01_editado.mp4, 02_editado.mp4, ...'}
+            : <>Sem TAG: <span className="font-mono text-foreground/70">1 {zipDateStr}.mp4</span>, <span className="font-mono text-foreground/70">2 {zipDateStr}.mp4</span>, ...</>}
         </p>
       </div>
 
