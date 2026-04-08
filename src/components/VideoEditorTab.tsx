@@ -586,12 +586,24 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           popupTransform: normalizedPopupTransform,
         };
 
-        // Get download URLs for all videos in parallel
+        // Get download URLs for all videos in parallel (max 20 concurrent to avoid Supabase rate limit)
         addLog('Obtendo URLs de download dos vídeos...', 'info');
         setProcessingStatus('Obtendo URLs dos vídeos...');
         let urlCount = 0;
+        const URL_CONCURRENCY = 20;
+        let urlActive = 0;
+        const urlQueue: (() => void)[] = [];
+        const acquireUrlSlot = () => new Promise<void>(resolve => {
+          if (urlActive < URL_CONCURRENCY) { urlActive++; resolve(); }
+          else urlQueue.push(() => { urlActive++; resolve(); });
+        });
+        const releaseUrlSlot = () => {
+          urlActive--;
+          if (urlQueue.length > 0) urlQueue.shift()!();
+        };
         const videoUrls = (await Promise.all(
           videosToProcess.map(async (video) => {
+            await acquireUrlSlot();
             try {
               const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
               if (!videoUrl) return null;
@@ -603,6 +615,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
               return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url };
             } catch { return null; }
+            finally { releaseUrlSlot(); }
           })
         )).filter((r): r is { id: string; title: string; downloadUrl: string } => r !== null);
         addLog(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}`, 'info');
