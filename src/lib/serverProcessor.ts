@@ -278,8 +278,11 @@ export async function pollJobStatus(
     if (data.status === 'done') return data;
     if (data.status === 'failed') throw new Error(data.error || 'Processing failed');
 
-    const interval = data.status === 'queued' ? 4000 : BASE_POLL_INTERVAL_MS;
-    await new Promise((r) => setTimeout(r, interval));
+    // Adaptive polling: start at 1s for early/fast stages, ramp up to 5s as job progresses
+    const adaptiveInterval = data.status === 'queued'
+      ? 3000
+      : Math.min(5000, 1000 + Math.floor((data.progress ?? 0) / 25) * 1000);
+    await new Promise((r) => setTimeout(r, adaptiveInterval));
   }
 
   throw new Error('Job excedeu o tempo limite de 30 minutos');

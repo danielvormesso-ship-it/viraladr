@@ -874,7 +874,11 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                     if (isTransient && jobAttempt < MAX_JOB_RETRIES) {
                       const waitSec = Math.round(2500 * (jobAttempt + 1) / 1000);
                       addLog(`[${videoNum}] Falha transitória — tentando novamente em ${waitSec}s (tentativa ${jobAttempt + 2}/${MAX_JOB_RETRIES + 1})...`, 'warn');
-                      await new Promise(r => setTimeout(r, 2500 * (jobAttempt + 1)));
+                      // Countdown regressivo visível na UI
+                      for (let remaining = waitSec; remaining > 0; remaining--) {
+                        setProcessingStatus(`[${videoNum}] Retry em ${remaining}s... (tentativa ${jobAttempt + 2}/${MAX_JOB_RETRIES + 1})`);
+                        await new Promise(r => setTimeout(r, 1000));
+                      }
                       continue;
                     }
                     throw pollErr;
@@ -975,8 +979,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const workerCount = Math.min(SERVER_PARALLEL, finalTargets.length);
         const workers: Promise<void>[] = [];
         for (let w = 0; w < workerCount; w++) {
-          // Stagger workers by 200ms to avoid overwhelming the server queue
-          if (w > 0) await new Promise(r => setTimeout(r, 200));
+          // Stagger workers by 200ms only when using many parallel workers (>3)
+          if (w > 0 && workerCount > 3) await new Promise(r => setTimeout(r, 200));
           workers.push(processOne());
         }
         await Promise.all(workers);
