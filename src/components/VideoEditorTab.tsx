@@ -362,7 +362,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     const tempAudio = new Audio();
     tempAudio.preload = 'metadata';
     tempAudio.src = objectUrl;
-    tempAudio.addEventListener('loadedmetadata', () => {
+    const onLoadedMetadata = () => {
       if (tempAudio.duration && isFinite(tempAudio.duration)) {
         const dur = Math.round(tempAudio.duration * 10) / 10;
         setDetectedAudioDuration(dur);
@@ -372,9 +372,11 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           return prev;
         });
       }
-    });
+    };
+    tempAudio.addEventListener('loadedmetadata', onLoadedMetadata);
 
     return () => {
+      tempAudio.removeEventListener('loadedmetadata', onLoadedMetadata);
       URL.revokeObjectURL(objectUrl);
     };
   }, [popupAudio]);
@@ -941,8 +943,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const workerCount = Math.min(SERVER_PARALLEL, finalTargets.length);
         const workers: Promise<void>[] = [];
         for (let w = 0; w < workerCount; w++) {
-          // Stagger workers by 500ms to avoid overwhelming the server queue
-          if (w > 0) await new Promise(r => setTimeout(r, 500));
+          // Stagger workers by 200ms to avoid overwhelming the server queue
+          if (w > 0) await new Promise(r => setTimeout(r, 200));
           workers.push(processOne());
         }
         await Promise.all(workers);

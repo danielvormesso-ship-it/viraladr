@@ -94,10 +94,10 @@ export async function probeVideoCodec(
       body: JSON.stringify({ videoUrl }),
       signal: AbortSignal.timeout(30000),
     });
-    if (!res.ok) return { compatible: true, codecName: 'unknown', codecTag: 'unknown' };
+    if (!res.ok) return { compatible: false, codecName: 'unknown', codecTag: 'unknown' };
     return await res.json();
   } catch {
-    return { compatible: true, codecName: 'unknown', codecTag: 'unknown' };
+    throw new Error('Probe failed: network error');
   }
 }
 
@@ -182,7 +182,7 @@ export async function pollJobStatus(
   onProgress?: (status: JobStatus) => void,
 ): Promise<JobStatus> {
   const baseUrl = serverUrl.replace(/\/$/, '');
-  const BASE_POLL_INTERVAL_MS = 2000;
+  const BASE_POLL_INTERVAL_MS = 3000;
   const MAX_POLL_DURATION_MS = 30 * 60 * 1000; // 30 min por job
   const MAX_TRANSIENT_ERRORS = 20;
   const MAX_STALLED_PROGRESS_MS = 4 * 60 * 1000; // 4 min sem avanço real
@@ -240,7 +240,7 @@ export async function pollJobStatus(
           `Falha ao consultar status do job após ${MAX_TRANSIENT_ERRORS} erros: ${String(err?.message || err)}`,
         );
       }
-      const backoff = Math.min(BASE_POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors - 1), 15000);
+      const backoff = Math.min(BASE_POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors - 1), 30000);
       await new Promise((r) => setTimeout(r, backoff));
       continue;
     }

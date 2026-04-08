@@ -92,11 +92,19 @@ export async function getFFmpeg(onProgress?: (msg: string) => void): Promise<FFm
   return loadingPromise;
 }
 
-// Pre-load popup/audio assets once for batch processing
-let assetsLoaded = false;
+// Pre-load popup/audio assets once per unique config (keyed by file sizes + type)
+let assetsLoadedKey: string | null = null;
+
+function getAssetsConfigKey(config: VideoEditConfig): string {
+  const popupSize = config.popupMedia instanceof Blob ? config.popupMedia.size : String(config.popupMedia ?? '');
+  const audioSize = config.popupAudio instanceof Blob ? config.popupAudio.size : String(config.popupAudio ?? '');
+  const musicSize = config.backgroundMusic instanceof Blob ? config.backgroundMusic.size : String(config.backgroundMusic ?? '');
+  return [popupSize, config.popupMediaType ?? '', audioSize, musicSize].join('|');
+}
 
 export async function preloadAssets(ffmpeg: FFmpeg, config: VideoEditConfig): Promise<void> {
-  if (assetsLoaded) return;
+  const key = getAssetsConfigKey(config);
+  if (assetsLoadedKey === key) return;
 
   if (config.popupMedia) {
     const isVideo = config.popupMediaType === 'video';
@@ -110,11 +118,11 @@ export async function preloadAssets(ffmpeg: FFmpeg, config: VideoEditConfig): Pr
     await ffmpeg.writeFile('bg_music.mp3', await fetchFile(config.backgroundMusic));
   }
 
-  assetsLoaded = true;
+  assetsLoadedKey = key;
 }
 
 export function resetAssets() {
-  assetsLoaded = false;
+  assetsLoadedKey = null;
 }
 
 export async function processVideo(
