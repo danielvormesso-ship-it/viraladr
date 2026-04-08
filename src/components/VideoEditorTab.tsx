@@ -828,8 +828,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             p,
             new Promise<T>((_, reject) =>
               setTimeout(
-                () => reject(new Error(`Timeout global de 15 minutos excedido — job sem resposta (${label})`)),
-                15 * 60 * 1000,
+                () => reject(new Error(`Timeout global de 3 minutos excedido — job sem resposta (${label})`)),
+                3 * 60 * 1000,
               )
             ),
           ]);
@@ -1085,17 +1085,17 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         // Watchdog: every 2 min check if completedCount advanced.
         // After 4 min of no progress, drain the queue so stuck workers don't block new ones.
-        // The withJobTimeout (15 min) ensures stuck workers eventually resolve.
+        // The withJobTimeout (3 min) ensures stuck workers eventually resolve.
         let watchdogLastCompleted = completedCount;
         let watchdogStuckCycles = 0;
         const watchdogTimer = setInterval(() => {
           if (completedCount < finalTargets.length) {
             if (completedCount === watchdogLastCompleted) {
               watchdogStuckCycles++;
-              addLog(`⚠ Watchdog [${watchdogStuckCycles}]: nenhum vídeo concluído nos últimos 2 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 15 min.`, 'warn');
+              addLog(`⚠ Watchdog [${watchdogStuckCycles}]: nenhum vídeo concluído no último 1 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 3 min.`, 'warn');
               if (watchdogStuckCycles >= 2) {
                 // 4 min of no progress — drain the queue so no new items are picked up
-                // Stuck workers will be killed by withJobTimeout
+                // Stuck workers will be killed by withJobTimeout (3 min)
                 if (processQueue.length > 0) {
                   addLog(`⚠ Watchdog: drenando fila (${processQueue.length} pendentes) — workers travados serão interrompidos pelo timeout.`, 'error');
                   processQueue.length = 0;
@@ -1106,7 +1106,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             }
             watchdogLastCompleted = completedCount;
           }
-        }, 2 * 60 * 1000);
+        }, 1 * 60 * 1000);
 
         await Promise.all(workers);
         clearInterval(watchdogTimer);
