@@ -1,0 +1,1482 @@
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { TikTokVideo } from "@/lib/api/tiktok";
+import { supabase } from "@/integrations/supabase/client";
+import { processVideo, type VideoEditConfig, type PopupTransform } from "@/lib/videoProcessor";
+import { PopupPreviewEditor } from "@/components/PopupPreviewEditor";
+import { type VisualEffects, defaultEffects } from "@/components/EffectsPreview";
+import { TemplateManager, type EditorTemplate } from "@/components/TemplateManager";
+import {
+  getServerConfig, checkServerHealth,
+  uploadAssetsToServer, submitVideoJob, pollJobStatus, downloadJobResult, processVideoLegacyUrl, cleanupServerSession, probeVideoCodec,
+  type ServerProcessConfig,
+} from "@/lib/serverProcessor";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface EditorConfig {
+  appearAt: number;
+  popupDuration: number;
+  endVideoWithPopup: boolean;
+  opacity: number;
+  popupAudioVolume: number;
+  videoVolumeAfterPopup: number;
+  bgMusicVolume: number;
+  editBatchQuantity: number;
+  parallelWorkers: number;
+  popupFullscreen: boolean;
+  popupTransform?: PopupTransform;
+}
+
+interface VideoEditorTabProps {
+  videos: TikTokVideo[];
+  setVideos: React.Dispatch<React.SetStateAction<TikTokVideo[]>>;
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const normalizePopupTransform = (raw?: Partial<PopupTransform> | null): PopupTransform => {
+  const defaultTransform: PopupTransform = { x: 25, y: 25, width: 50, height: 50, rotation: 0 };
+
+  const xRaw = Number(raw?.x ?? defaultTransform.x);
+  const yRaw = Number(raw?.y ?? defaultTransform.y);
+  const widthRaw = Number(raw?.width ?? defaultTransform.width);
+  const heightRaw = Number(raw?.height ?? defaultTransform.height);
+  const rotationRaw = Number(raw?.rotation ?? defaultTransform.rotation);
+
+  const width = clamp(Number.isFinite(widthRaw) ? widthRaw : defaultTransform.width, 5, 100);
+  const height = clamp(Number.isFinite(heightRaw) ? heightRaw : defaultTransform.height, 5, 100);
+  const x = clamp(Number.isFinite(xRaw) ? xRaw : defaultTransform.x, 0, 100 - width);
+  const y = clamp(Number.isFinite(yRaw) ? yRaw : defaultTransform.y, 0, 100 - height);
+  const rotation = Number.isFinite(rotationRaw) ? rotationRaw : defaultTransform.rotation;
+
+  return { x, y, width, height, rotation };
+};
+
+export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const configSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Popup config
+  const [popupMedia, setPopupMedia] = useState<File | null>(null);
+  const [popupMediaType, setPopupMediaType] = useState<'image' | 'video'>('image');
+  const [popupMediaPreview, setPopupMediaPreview] = useState<string | null>(null);
+  const [popupAudio, setPopupAudio] = useState<File | null>(null);
+  const [popupAudioPreview, setPopupAudioPreview] = useState<string | null>(null);
+  const [appearAt, setAppearAt] = useState(5);
+  const [popupDuration, setPopupDuration] = useState(10);
+  const [endVideoWithPopup, setEndVideoWithPopup] = useState(true);
+  const [endWithAudio, setEndWithAudio] = useState(false);
+  const [detectedAudioDuration, setDetectedAudioDuration] = useState<number | null>(null);
+  const [opacity, setOpacity] = useState(100);
+  const [popupAudioVolume, setPopupAudioVolume] = useState(100);
+  const [videoVolumeAfterPopup, setVideoVolumeAfterPopup] = useState(100);
+  const [muteEntireAudio, setMuteEntireAudio] = useState(false);
+  const [popupFullscreen, setPopupFullscreen] = useState(false);
+  const [popupTransform, setPopupTransform] = useState<PopupTransform>(normalizePopupTransform());
+  const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
+  const [previewVideoSrc, setPreviewVideoSrc] = useState<string | undefined>("/test-popup.mp4");
+  const [previewThumbnailSrc, setPreviewThumbnailSrc] = useState<string | undefined>(undefined);
+  const previewObjectUrlRef = useRef<string | null>(null);
+
+  // Background music
+  const [bgMusic, setBgMusic] = useState<File | null>(null);
+  const [bgMusicVolume, setBgMusicVolume] = useState(100);
+
+  // Processing
+  const [editBatchQuantity, setEditBatchQuantity] = useState(50);
+  const [parallelWorkers, setParallelWorkers] = useState(() => {
+    const ram = (navigator as any).deviceMemory as number | undefined;
+    const cores = navigator.hardwareConcurrency || 4;
+    if (ram && ram >= 16) return Math.min(6, cores);
+    if (ram && ram >= 8) return Math.min(4, cores);
+    if (ram && ram >= 4) return Math.min(2, cores);
+    if (ram) return 1;
+    // No deviceMemory API — estimate from cores
+    if (cores >= 8) return 4;
+    if (cores >= 4) return 3;
+    return 2;
+  });
+  const detectedRAM = (navigator as any).deviceMemory as number | undefined;
+  const detectedCores = navigator.hardwareConcurrency || 0;
+
+  const serverConfig = getServerConfig();
+  const [serverConnected, setServerConnected] = useState<boolean | null>(null);
+  const [checkingServer, setCheckingServer] = useState(false);
+
+  const [processing, setProcessing] = useState(false);
+  const [processProgress, setProcessProgress] = useState({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
+  const [processingStatus, setProcessingStatus] = useState('');
+  const [processLogs, setProcessLogs] = useState<{ time: string; msg: string; type: 'info' | 'success' | 'error' | 'warn' }[]>([]);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [processStartTime, setProcessStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  const addLog = useCallback((msg: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
+    const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setProcessLogs(prev => {
+      const next = [...prev, { time, msg, type }];
+      return next.length > 500 ? next.slice(-500) : next;
+    });
+  }, []);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: processing ? 'auto' : 'smooth' });
+  }, [processLogs, processing]);
+
+  // Timer effect
+  useEffect(() => {
+    if (!processing || !processStartTime) return;
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - processStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [processing, processStartTime]);
+
+  // Load config from DB on mount
+  useEffect(() => {
+    if (!user) return;
+    const loadConfig = async () => {
+      const { data } = await supabase
+        .from('editor_configs')
+        .select('config')
+        .eq('user_id', user.id)
+        .single();
+      if (data?.config) {
+        const c = data.config as any;
+        if (c.appearAt !== undefined) setAppearAt(c.appearAt);
+        if (c.popupDuration !== undefined) setPopupDuration(c.popupDuration);
+        if (c.endVideoWithPopup !== undefined) setEndVideoWithPopup(c.endVideoWithPopup);
+        if (c.opacity !== undefined) setOpacity(c.opacity);
+        if (c.popupAudioVolume !== undefined) setPopupAudioVolume(c.popupAudioVolume);
+        if (c.videoVolumeAfterPopup !== undefined) setVideoVolumeAfterPopup(c.videoVolumeAfterPopup);
+        if (c.muteEntireAudio !== undefined) setMuteEntireAudio(c.muteEntireAudio);
+        if (c.bgMusicVolume !== undefined) setBgMusicVolume(c.bgMusicVolume);
+        if (c.editBatchQuantity !== undefined) setEditBatchQuantity(c.editBatchQuantity);
+        if (c.parallelWorkers !== undefined) setParallelWorkers(c.parallelWorkers);
+        if (c.popupFullscreen !== undefined) setPopupFullscreen(c.popupFullscreen);
+        if (c.popupTransform) setPopupTransform(normalizePopupTransform(c.popupTransform));
+        if (c.effects) setEffects({ ...defaultEffects, ...c.effects });
+      }
+      setConfigLoaded(true);
+    };
+    loadConfig();
+  }, [user]);
+
+  // Resolve a guaranteed playable video for preview
+  useEffect(() => {
+    let cancelled = false;
+
+    const clearPreviewObjectUrl = () => {
+      if (previewObjectUrlRef.current) {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+        previewObjectUrlRef.current = null;
+      }
+    };
+
+    const resolvePreviewVideo = async () => {
+      const firstVideo = videos[0];
+      if (!firstVideo) {
+        if (!cancelled) {
+          clearPreviewObjectUrl();
+          setPreviewVideoSrc('/test-popup.mp4');
+          setPreviewThumbnailSrc(undefined);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setPreviewThumbnailSrc(firstVideo.thumbnail || undefined);
+      }
+
+      const videoUrl = firstVideo.source_url || (firstVideo.tiktok_id ? `https://www.tiktok.com/@user/video/${firstVideo.tiktok_id}` : null);
+      if (!videoUrl) {
+        if (!cancelled) {
+          clearPreviewObjectUrl();
+          setPreviewVideoSrc('/test-popup.mp4');
+        }
+        return;
+      }
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const proxyRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/download-tiktok`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+          },
+          body: JSON.stringify({ video_url: videoUrl, tiktok_id: firstVideo.tiktok_id, mode: 'proxy' }),
+        });
+
+        if (proxyRes.ok) {
+          const contentType = proxyRes.headers.get('content-type') || '';
+          if (contentType.includes('video/')) {
+            const proxyBlob = await proxyRes.blob();
+            if (proxyBlob.size > 1024 && !cancelled) {
+              clearPreviewObjectUrl();
+              const blobUrl = URL.createObjectURL(proxyBlob);
+              previewObjectUrlRef.current = blobUrl;
+              setPreviewVideoSrc(blobUrl);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Falha no proxy de preview, tentando URL direta:', err);
+      }
+
+      try {
+        const { data, error } = await supabase.functions.invoke('download-tiktok', {
+          body: { video_url: videoUrl, tiktok_id: firstVideo.tiktok_id, mode: 'url' },
+        });
+
+        if (!cancelled && !error && data?.success && data?.download_url) {
+          clearPreviewObjectUrl();
+          setPreviewVideoSrc(data.download_url);
+          return;
+        }
+      } catch (err) {
+        console.warn('Falha ao resolver URL de preview, usando fallback local:', err);
+      }
+
+      if (!cancelled) {
+        clearPreviewObjectUrl();
+        setPreviewVideoSrc('/test-popup.mp4');
+      }
+    };
+
+    resolvePreviewVideo();
+
+    return () => {
+      cancelled = true;
+      clearPreviewObjectUrl();
+    };
+  }, [videos]);
+
+  // Auto-save config to DB when settings change (debounced)
+  const saveConfig = useCallback(() => {
+    if (!user || !configLoaded) return;
+    if (configSaveTimeout.current) clearTimeout(configSaveTimeout.current);
+    configSaveTimeout.current = setTimeout(async () => {
+      const config = {
+        appearAt, popupDuration, endVideoWithPopup, opacity,
+        popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume: bgMusicVolume,
+        editBatchQuantity, parallelWorkers, popupFullscreen,
+        popupTransform: normalizePopupTransform(popupTransform),
+        effects,
+      };
+      await supabase.from('editor_configs').upsert(
+        { user_id: user.id, config: config as any, updated_at: new Date().toISOString() } as any,
+        { onConflict: 'user_id' }
+      );
+    }, 1500);
+  }, [user, configLoaded, appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects]);
+
+  useEffect(() => {
+    saveConfig();
+  }, [saveConfig]);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  const runWithTimeout = useCallback(async <T,>(
+    promiseFactory: () => Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${label} excedeu ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promiseFactory(), timeoutPromise]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }, []);
+
+  const processLocalVideoWithSafeguards = useCallback(async (
+    inputBlob: Blob,
+    baseConfig: VideoEditConfig,
+    onProgress?: (progress: number) => void,
+  ): Promise<Blob> => {
+    const LOCAL_TIMEOUT_MS = 600000;
+
+    return await runWithTimeout(
+      () => processVideo(inputBlob, baseConfig, onProgress),
+      LOCAL_TIMEOUT_MS,
+      'Processamento local',
+    );
+  }, [runWithTimeout]);
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const musicInputRef = useRef<HTMLInputElement>(null);
+
+  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    setPopupMedia(file);
+    setPopupMediaType(isVideo ? 'video' : 'image');
+    if (isVideo) {
+      setPopupMediaPreview(URL.createObjectURL(file));
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => setPopupMediaPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setPopupAudio(file);
+  };
+
+  useEffect(() => {
+    if (!popupAudio) {
+      setPopupAudioPreview(null);
+      setDetectedAudioDuration(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(popupAudio);
+    setPopupAudioPreview(objectUrl);
+
+    const tempAudio = new Audio();
+    tempAudio.preload = 'metadata';
+    tempAudio.src = objectUrl;
+    tempAudio.addEventListener('loadedmetadata', () => {
+      if (tempAudio.duration && isFinite(tempAudio.duration)) {
+        const dur = Math.round(tempAudio.duration * 10) / 10;
+        setDetectedAudioDuration(dur);
+        // If endWithAudio is on, auto-set popup duration
+        setPopupDuration(prev => {
+          // Only auto-set if endWithAudio is currently on
+          return prev;
+        });
+      }
+    });
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [popupAudio]);
+
+  // When endWithAudio is toggled on, set popupDuration to audio duration
+  useEffect(() => {
+    if (endWithAudio && detectedAudioDuration) {
+      setPopupDuration(Math.ceil(detectedAudioDuration));
+      setEndVideoWithPopup(true);
+    }
+  }, [endWithAudio, detectedAudioDuration]);
+
+  const handleLoadTestPopup = async () => {
+    try {
+      const res = await fetch('/test-popup.mp4', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('Vídeo de teste não encontrado');
+      const blob = await res.blob();
+      const file = new File([blob], 'test-popup.mp4', { type: blob.type || 'video/mp4' });
+      setPopupMedia(file);
+      setPopupMediaType('video');
+      setPopupMediaPreview(URL.createObjectURL(file));
+      toast({ title: 'Vídeo de teste carregado', description: 'Popup configurado automaticamente.' });
+    } catch (err) {
+      console.error('Erro ao carregar vídeo de teste:', err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar o vídeo de teste.', variant: 'destructive' });
+    }
+  };
+
+  const handleLoadTestPopupAudio = async () => {
+    try {
+      const res = await fetch('/test-popup-audio.mp3', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('Áudio de teste não encontrado');
+      const blob = await res.blob();
+      const file = new File([blob], 'test-popup-audio.mp3', { type: blob.type || 'audio/mpeg' });
+      setPopupAudio(file);
+      toast({ title: 'Áudio de teste carregado', description: 'Áudio do popup configurado automaticamente.' });
+    } catch (err) {
+      console.error('Erro ao carregar áudio de teste:', err);
+      toast({ title: 'Erro', description: 'Não foi possível carregar o áudio de teste.', variant: 'destructive' });
+    }
+  };
+
+  const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setBgMusic(file);
+  };
+
+  // Check server connection on mount
+  useEffect(() => {
+    if (serverConfig.url) {
+      setCheckingServer(true);
+      checkServerHealth(serverConfig.url).then(ok => {
+        setServerConnected(ok);
+        setCheckingServer(false);
+      });
+    }
+  }, []);
+
+  const handleRetryServer = async () => {
+    setCheckingServer(true);
+    const ok = await checkServerHealth(serverConfig.url);
+    setServerConnected(ok);
+    toast({
+      title: ok ? "Servidor online" : "Servidor offline",
+      description: ok ? "Servidor Railway disponível como fallback." : "Processamento será feito via Creatomate ou navegador.",
+      variant: ok ? "default" : "destructive",
+    });
+    setCheckingServer(false);
+  };
+
+  const BATCH_PRESETS = [50, 100, 150, 200, 250, 300, 350, 400];
+  const batchQuantity = Math.min(editBatchQuantity, videos.length);
+
+  const handleProcess = async () => {
+    if (!popupMedia && !popupAudio && !bgMusic) {
+      toast({ title: "Nada configurado", description: "Adicione pelo menos uma edição (popup ou música).", variant: "destructive" });
+      return;
+    }
+
+    if (popupMedia && popupMediaType === 'image' && opacity <= 0) {
+      toast({
+        title: "Popup invisível",
+        description: "A opacidade do popup está em 0%. Ajuste para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const videosToProcess = videos.slice(0, batchQuantity);
+    if (videosToProcess.length === 0) {
+      toast({ title: "Sem vídeos", description: "Busque vídeos primeiro.", variant: "destructive" });
+      return;
+    }
+
+    if (checkingServer) {
+      toast({
+        title: "Aguarde",
+        description: "Ainda estamos verificando a conexão com o servidor.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!serverConnected || !serverConfig.url) {
+      toast({
+        title: "Servidor offline",
+        description: "O servidor de processamento não está disponível. Tente novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setProcessing(true);
+    setProcessStartTime(Date.now());
+    setElapsedTime(0);
+    setProcessLogs([]);
+    setProcessProgress({ current: 0, total: videosToProcess.length, videoProgress: 0, activeWorkers: 0 });
+    addLog(`Iniciando processamento de ${videosToProcess.length} vídeos...`, 'info');
+
+
+
+    // ====== SERVER-SIDE PROCESSING ======
+    if (serverConnected && serverConfig.url) {
+      let sessionId = '';
+      let videosSinceLastAssetRefresh = 0;
+      try {
+        addLog(
+          muteEntireAudio
+            ? `Modo: Servidor Railway com mute total (${serverConfig.url})`
+            : `Modo: Servidor Railway (${serverConfig.url})`,
+          'info'
+        );
+        const shouldRequirePopup = Boolean(popupMedia);
+        const ASSET_SESSION_REFRESH_EVERY = shouldRequirePopup ? 3 : Number.POSITIVE_INFINITY;
+
+        const refreshAssetSession = async (statusLabel: string) => {
+          setProcessingStatus(statusLabel);
+          addLog('Enviando assets (popup, áudio) para o servidor...', 'info');
+          sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
+            popupMedia: popupMedia || undefined,
+            popupAudio: popupAudio || undefined,
+            bgMusic: bgMusic || undefined,
+          });
+          videosSinceLastAssetRefresh = 0;
+          addLog(`Assets enviados com sucesso. Session: ${sessionId.slice(0, 8)}...`, 'success');
+        };
+
+        await refreshAssetSession('Enviando assets para o servidor...');
+
+        const normalizedPopupTransform = popupFullscreen ? undefined : normalizePopupTransform(popupTransform);
+        if (normalizedPopupTransform && (
+          Math.abs(normalizedPopupTransform.x - popupTransform.x) > 0.001 ||
+          Math.abs(normalizedPopupTransform.y - popupTransform.y) > 0.001 ||
+          Math.abs(normalizedPopupTransform.width - popupTransform.width) > 0.001 ||
+          Math.abs(normalizedPopupTransform.height - popupTransform.height) > 0.001 ||
+          Math.abs(normalizedPopupTransform.rotation - popupTransform.rotation) > 0.001
+        )) {
+          setPopupTransform(normalizedPopupTransform);
+          addLog('⚠ Ajuste automático aplicado no popup para manter dentro da área visível.', 'warn');
+        }
+
+        const effectiveEffects: VisualEffects = (() => {
+          const hasOpaqueFullscreenImagePopup = Boolean(
+            popupMedia &&
+            popupMediaType === 'image' &&
+            popupFullscreen &&
+            opacity >= 99
+          );
+
+          if (!hasOpaqueFullscreenImagePopup) return effects;
+
+          const hadVisibleEffects = Boolean(effects.darkOverlay || effects.fireworks || effects.particles);
+          if (hadVisibleEffects) {
+            addLog('ℹ Tela cheia + imagem opaca: desativando efeitos nesse job para evitar travamento no servidor.', 'warn');
+          }
+
+          return {
+            ...effects,
+            darkOverlay: false,
+            fireworks: false,
+            particles: false,
+          };
+        })();
+
+        const effectiveVolume = muteEntireAudio ? 0 : videoVolumeAfterPopup;
+        const processConfig: ServerProcessConfig = {
+          appearAt, popupDuration, endVideoWithPopup, opacity,
+          popupAudioVolume, videoVolumeAfterPopup: effectiveVolume,
+          muteEntireAudio,
+          backgroundMusicVolume: bgMusicVolume, popupMediaType, popupFullscreen,
+          popupTransform: normalizedPopupTransform,
+          requirePopupMedia: Boolean(popupMedia),
+          effects: effectiveEffects,
+        };
+
+        const browserFallbackConfig: VideoEditConfig = {
+          popupMedia: popupMedia || undefined,
+          popupMediaType,
+          popupAudio: popupAudio || undefined,
+          backgroundMusic: bgMusic || undefined,
+          appearAt,
+          popupDuration,
+          endVideoWithPopup,
+          opacity,
+          popupAudioVolume,
+          videoVolumeAfterPopup: muteEntireAudio ? 0 : videoVolumeAfterPopup,
+          backgroundMusicVolume: bgMusicVolume,
+          popupFullscreen,
+          popupTransform: normalizedPopupTransform,
+        };
+
+        // Get download URLs for all videos (10 at a time for speed)
+        addLog('Obtendo URLs de download dos vídeos...', 'info');
+        setProcessingStatus('Obtendo URLs dos vídeos...');
+        const videoUrls: { id: string; title: string; downloadUrl: string }[] = [];
+        const DOWNLOAD_BATCH = 10;
+
+        for (let i = 0; i < videosToProcess.length; i += DOWNLOAD_BATCH) {
+          const batch = videosToProcess.slice(i, i + DOWNLOAD_BATCH);
+          const results = await Promise.all(batch.map(async (video) => {
+            try {
+              const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
+              if (!videoUrl) return null;
+              const { data, error } = await supabase.functions.invoke('download-tiktok', {
+                body: { video_url: videoUrl, tiktok_id: video.tiktok_id, mode: 'url' },
+              });
+              if (error || !data?.success || !data?.download_url) return null;
+              return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url };
+            } catch { return null; }
+          }));
+          results.forEach(r => { if (r) videoUrls.push(r); });
+          setProcessingStatus(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}...`);
+          addLog(`URLs obtidas: ${videoUrls.length}/${videosToProcess.length}`, 'info');
+        }
+
+        // Deduplicate by normalized download URL to avoid repeated processing
+        const dedupeMap = new Map<string, { id: string; title: string; downloadUrl: string }>();
+        for (const item of videoUrls) {
+          const key = item.downloadUrl.split('?')[0] || item.downloadUrl;
+          if (!dedupeMap.has(key)) dedupeMap.set(key, item);
+        }
+        const processTargets = Array.from(dedupeMap.values());
+        const duplicateCount = Math.max(0, videoUrls.length - processTargets.length);
+        if (duplicateCount > 0) {
+          setProcessingStatus(`Removidos ${duplicateCount} vídeos duplicados antes do processamento...`);
+          addLog(`Removidos ${duplicateCount} vídeos duplicados`, 'warn');
+        }
+        addLog(`${processTargets.length} vídeos únicos para processar`, 'info');
+
+        let localFallbackCount = 0;
+
+        if (processTargets.length === 0) {
+          addLog('Nenhum vídeo válido encontrado para processar', 'error');
+          toast({ title: "Sem vídeos válidos", description: "Nenhum vídeo pôde ser baixado.", variant: "destructive" });
+          return;
+        }
+
+        // Pre-check codec compatibility before processing
+        addLog('🔍 Verificando compatibilidade de codec dos vídeos...', 'info');
+        setProcessingStatus('Verificando codecs...');
+        const compatibleTargets: typeof processTargets = [];
+        const incompatibleVideos: { title: string; codec: string }[] = [];
+
+        for (let i = 0; i < processTargets.length; i++) {
+          const video = processTargets[i];
+          try {
+            const probe = await probeVideoCodec(serverConfig.url, serverConfig.apiKey, video.downloadUrl);
+
+            // Verificar codec incompatível
+            if (!probe.compatible) {
+              incompatibleVideos.push({ title: video.title.slice(0, 40), codec: probe.codecTag || probe.codecName });
+              addLog(`⏭ ${video.title.slice(0, 40)} — codec incompatível (${probe.codecTag || probe.codecName}), removido da fila`, 'warn');
+            }
+            // Verificar resolução problemática (ímpar ou muito pequena/grande)
+            else if (typeof probe.width === 'number' && typeof probe.height === 'number') {
+              const hasOddDimension = probe.width % 2 !== 0 || probe.height % 2 !== 0;
+              const tooSmall = probe.width < 120 || probe.height < 120;
+              const tooLarge = probe.width > 3840 || probe.height > 3840;
+
+              if (hasOddDimension || tooSmall || tooLarge) {
+                const reason = hasOddDimension
+                  ? `resolução ímpar (${probe.width}x${probe.height})`
+                  : tooSmall
+                    ? `muito pequeno (${probe.width}x${probe.height})`
+                    : `muito grande (${probe.width}x${probe.height})`;
+                incompatibleVideos.push({ title: video.title.slice(0, 40), codec: reason });
+                addLog(`⏭ ${video.title.slice(0, 40)} — ${reason}, removido da fila`, 'warn');
+              } else {
+                compatibleTargets.push(video);
+              }
+            } else {
+              compatibleTargets.push(video);
+              addLog(`⚠ ${video.title.slice(0, 40)} — resolução não detectada no probe, mantendo na fila`, 'warn');
+            }
+          } catch {
+            compatibleTargets.push(video);
+            addLog(`⚠ ${video.title.slice(0, 40)} — falha no probe, mantendo na fila`, 'warn');
+          }
+          setProcessingStatus(`Verificando codecs: ${i + 1}/${processTargets.length}...`);
+        }
+
+        if (incompatibleVideos.length > 0) {
+          addLog(`⚠ ${incompatibleVideos.length} vídeo(s) removido(s) por codec incompatível: ${incompatibleVideos.map(v => `${v.title} (${v.codec})`).join(', ')}`, 'warn');
+          toast({
+            title: `${incompatibleVideos.length} vídeo(s) com codec incompatível`,
+            description: `Removidos da fila. Codecs: ${[...new Set(incompatibleVideos.map(v => v.codec))].join(', ')}`,
+          });
+        }
+
+        if (compatibleTargets.length === 0) {
+          addLog('Nenhum vídeo compatível encontrado após verificação de codec', 'error');
+          toast({ title: "Sem vídeos compatíveis", description: "Todos os vídeos possuem codecs incompatíveis.", variant: "destructive" });
+          return;
+        }
+
+        addLog(`✓ ${compatibleTargets.length} vídeos compatíveis prontos para processar`, 'info');
+        // Replace processTargets with filtered list
+        const finalTargets = compatibleTargets;
+
+        // Process videos on server (safe mode: low parallelism + minimal retries)
+        const zip = new JSZip();
+        let successCount = 0;
+        let failCount = 0;
+        let completedCount = 0;
+        let startedCount = 0;
+        const successfulVideoIds = new Set<string>();
+        const SERVER_PARALLEL = 2; // Pipeline: enquanto job 1 processa, job 2 já baixa
+        const retryableFailedVideos: typeof finalTargets = [];
+
+        const processQueue = [...finalTargets];
+        const MIN_SAMPLES_FOR_BREAKER = 20;
+        const MAX_FAILURE_RATE = 0.6;
+        const MAX_JOB_RETRIES = 2;
+        let stoppedByBreaker = false;
+        const statusLabels: Record<string, string> = {
+          queued: '⏳ Na fila',
+          downloading: '⬇️ Baixando vídeo',
+          probing: '🔍 Analisando codec',
+          processing: '⚙️ Processando FFmpeg',
+          done: '✅ Concluído',
+          failed: '❌ Falhou',
+        };
+
+        const processOne = async (): Promise<void> => {
+          while (processQueue.length > 0) {
+            const video = processQueue.shift()!;
+            let success = false;
+            const videoNum = ++startedCount;
+            addLog(`[${videoNum}/${finalTargets.length}] Enviando job: ${video.title.slice(0, 40)}...`, 'info');
+
+            try {
+              if (videosSinceLastAssetRefresh >= ASSET_SESSION_REFRESH_EVERY) {
+                addLog(`[${videoNum}] Renovando sessão de assets para evitar expiração...`, 'info');
+                await refreshAssetSession(`Renovando assets (${videoNum}/${finalTargets.length})...`);
+              }
+
+              // Submit async job with retry on erros transitórios
+              let result: ArrayBuffer;
+              let finalStatus: {
+                safeAudioFallback: boolean;
+                fileSize: number | null;
+                fallbackMode?: 'none' | 'audio_simplified' | 'no_popup';
+                attemptErrors?: string[];
+              } | null = null;
+              let usedLegacyEndpoint = false;
+              const POPUP_MISSING_PATTERNS = [
+                'popup obrigatório não foi enviado',
+                'popup obrigatorio nao foi enviado',
+              ];
+
+              try {
+                let jobId = '';
+                let pollSuccess = false;
+
+                for (let jobAttempt = 0; jobAttempt <= MAX_JOB_RETRIES; jobAttempt++) {
+                  try {
+                    jobId = await submitVideoJob(
+                      serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
+                    );
+                    if (jobAttempt > 0) {
+                      addLog(`[${videoNum}] Re-submetido (tentativa ${jobAttempt + 1}): ${jobId.slice(0, 8)}...`, 'warn');
+                    } else {
+                      addLog(`[${videoNum}] Job criado: ${jobId.slice(0, 8)}... — aguardando processamento`, 'info');
+                    }
+
+                    // Poll for completion with live status updates
+                    finalStatus = await pollJobStatus(
+                      serverConfig.url, serverConfig.apiKey, jobId,
+                      (status) => {
+                        const label = statusLabels[status.status] || status.status;
+                        setProcessingStatus(`${label} — ${videoNum}/${finalTargets.length} (${status.progress}%)`);
+                        setProcessProgress({
+                          current: completedCount,
+                          total: finalTargets.length,
+                          videoProgress: status.progress,
+                          activeWorkers: Math.min(SERVER_PARALLEL, finalTargets.length - completedCount),
+                        });
+                      },
+                    );
+                    pollSuccess = true;
+                    break;
+                  } catch (pollErr: any) {
+                    const errMsg = String(pollErr?.message || '');
+                    const transientPatterns = [
+                      'HTTP 404',
+                      'Falha ao consultar',
+                      'temporarily unavailable',
+                    ];
+                    const stallPatterns = [
+                      'sem progresso',
+                      'travado em',
+                      'excedeu o tempo limite',
+                      'timeout',
+                      'timed out',
+                    ];
+                    const isPopupMissing = POPUP_MISSING_PATTERNS.some((p) =>
+                      errMsg.toLowerCase().includes(p.toLowerCase())
+                    );
+                    const isLikelyStall = stallPatterns.some((p) =>
+                      errMsg.toLowerCase().includes(p.toLowerCase())
+                    );
+
+                    if (isPopupMissing && jobAttempt < MAX_JOB_RETRIES) {
+                      addLog(`[${videoNum}] Popup ausente no servidor; reenviando assets e tentando novamente...`, 'warn');
+
+                      try {
+                        await refreshAssetSession(`Reenviando popup para o servidor (${videoNum}/${finalTargets.length})...`);
+                      } catch (uploadErr: any) {
+                        throw new Error(`Falha ao reenviar assets: ${String(uploadErr?.message || uploadErr)}`);
+                      }
+
+                      await new Promise(r => setTimeout(r, 1500));
+                      continue;
+                    }
+
+                    if (isLikelyStall) {
+                      addLog(`[${videoNum}] Job travado/timeout detectado; abortando este vídeo para não congelar o lote.`, 'error');
+                      throw new Error(`Job travado no servidor: ${errMsg}`);
+                    }
+
+                    const isTransient = transientPatterns.some((p) => errMsg.toLowerCase().includes(p.toLowerCase()));
+                    if (isTransient && jobAttempt < MAX_JOB_RETRIES) {
+                      addLog(`[${videoNum}] Falha transitória, re-submetendo (tentativa ${jobAttempt + 2})...`, 'warn');
+                      await new Promise(r => setTimeout(r, 2500 * (jobAttempt + 1)));
+                      continue;
+                    }
+                    throw pollErr;
+                  }
+                }
+
+                if (!pollSuccess) {
+                  throw new Error('Job falhou após todas as tentativas');
+                }
+
+                // Download result
+                addLog(`[${videoNum}] Baixando resultado (${finalStatus!.fileSize ? (finalStatus!.fileSize / 1024 / 1024).toFixed(1) + 'MB' : '?'})...`, 'info');
+                result = await downloadJobResult(serverConfig.url, serverConfig.apiKey, jobId);
+              } catch (submitOrPollErr: any) {
+                const errMsg = String(submitOrPollErr?.message || submitOrPollErr || '');
+                if (!errMsg.includes('ASYNC_ENDPOINT_UNAVAILABLE')) {
+                  throw submitOrPollErr;
+                }
+
+                usedLegacyEndpoint = true;
+                addLog(`[${videoNum}] Servidor sem endpoint assíncrono. Usando modo compatibilidade...`, 'warn');
+                setProcessingStatus(`Compatibilidade: processando ${videoNum}/${finalTargets.length}...`);
+                result = await processVideoLegacyUrl(
+                  serverConfig.url,
+                  serverConfig.apiKey,
+                  sessionId,
+                  video.downloadUrl,
+                  processConfig,
+                );
+              }
+
+              if (result.byteLength > 1024) {
+                const fallbackMode = finalStatus?.fallbackMode || 'none';
+
+                successCount++;
+                const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
+                const paddedNum = String(successCount).padStart(2, '0');
+                zip.file(`${paddedNum}_${safeName}_editado.mp4`, new Uint8Array(result));
+                successfulVideoIds.add(video.id);
+                success = true;
+                addLog(`✓ ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
+                if (usedLegacyEndpoint) {
+                  addLog(`ℹ Vídeo processado no endpoint legado (/api/process-url)`, 'info');
+                }
+              } else {
+                addLog(`⚠ ${video.title.slice(0, 30)} — arquivo muito pequeno`, 'warn');
+              }
+            } catch (err: any) {
+              const errMsg = String(err?.message || err || '');
+              addLog(`✗ Erro servidor: ${errMsg.slice(0, 900)}`, 'error');
+              console.error(`Video ${video.id} failed:`, errMsg);
+
+              // Erros não-recuperáveis: pular fallback e continuar a fila
+              const NON_RETRYABLE_PATTERNS = [
+                'codec não suportado', 'codec not supported', 'bvc2', 'bytevc2', 'bytevc1',
+                'unsupported codec', 'decoder not found', 'invalid data',
+              ];
+              const isNonRetryable = NON_RETRYABLE_PATTERNS.some(p => errMsg.toLowerCase().includes(p.toLowerCase()));
+
+              if (isNonRetryable) {
+                addLog(`⏭ Vídeo ignorado (erro permanente): ${errMsg.slice(0, 120)}`, 'warn');
+              } else {
+                addLog(`⏭ Marcado para retry: ${video.title.slice(0, 40)}`, 'warn');
+                retryableFailedVideos.push(video);
+              }
+            }
+
+            if (!success) {
+              failCount++;
+              addLog(`✗ Falha: ${video.title.slice(0, 40)}`, 'error');
+            }
+            completedCount++;
+            videosSinceLastAssetRefresh++;
+
+            if (!stoppedByBreaker && completedCount >= MIN_SAMPLES_FOR_BREAKER) {
+              const failureRate = failCount / completedCount;
+              if (failureRate >= MAX_FAILURE_RATE) {
+                stoppedByBreaker = true;
+                processQueue.length = 0;
+                addLog(`⚠ Parado automaticamente: taxa de falha ${Math.round(failureRate * 100)}%`, 'error');
+                setProcessingStatus(`Parado automaticamente: taxa de falha ${Math.round(failureRate * 100)}%`);
+              }
+            }
+
+            const remaining = finalTargets.length - completedCount;
+            setProcessProgress({
+              current: completedCount,
+              total: finalTargets.length,
+              videoProgress: 0,
+              activeWorkers: Math.min(SERVER_PARALLEL, remaining),
+            });
+            if (!stoppedByBreaker) {
+              setProcessingStatus(`Servidor: ${completedCount}/${finalTargets.length} (✓${successCount} ✗${failCount})`);
+            }
+          }
+        };
+
+        const workerCount = Math.min(SERVER_PARALLEL, finalTargets.length);
+        const workers: Promise<void>[] = [];
+        for (let w = 0; w < workerCount; w++) {
+          // Stagger workers by 4s to avoid overwhelming the server queue
+          if (w > 0) await new Promise(r => setTimeout(r, 4000));
+          workers.push(processOne());
+        }
+        await Promise.all(workers);
+
+        // === RETRY PHASE: retry failed videos one by one ===
+        if (retryableFailedVideos.length > 0 && !stoppedByBreaker) {
+          addLog(`\n🔄 Retry: tentando ${retryableFailedVideos.length} vídeo(s) que falharam...`, 'info');
+          setProcessingStatus(`Retry: 0/${retryableFailedVideos.length} vídeos com erro...`);
+
+          // Refresh assets before retry phase
+          try {
+            await refreshAssetSession('Renovando assets para retry...');
+          } catch {}
+
+          let retrySuccess = 0;
+          let retryFail = 0;
+
+          for (const video of retryableFailedVideos) {
+            const retryNum = retrySuccess + retryFail + 1;
+            addLog(`[Retry ${retryNum}/${retryableFailedVideos.length}] ${video.title.slice(0, 40)}...`, 'info');
+            setProcessingStatus(`Retry: ${retryNum}/${retryableFailedVideos.length}...`);
+
+            try {
+              const jobId = await submitVideoJob(
+                serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
+              );
+              addLog(`[Retry ${retryNum}] Job: ${jobId.slice(0, 8)}...`, 'info');
+
+              await pollJobStatus(
+                serverConfig.url, serverConfig.apiKey, jobId,
+                (status) => {
+                  const label = statusLabels[status.status] || status.status;
+                  setProcessingStatus(`Retry ${retryNum}/${retryableFailedVideos.length}: ${label} (${status.progress}%)`);
+                },
+              );
+
+              const result = await downloadJobResult(serverConfig.url, serverConfig.apiKey, jobId);
+
+              if (result.byteLength > 1024) {
+                successCount++;
+                failCount--;
+                retrySuccess++;
+                const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
+                const paddedNum = String(successCount).padStart(2, '0');
+                zip.file(`${paddedNum}_${safeName}_editado.mp4`, new Uint8Array(result));
+                successfulVideoIds.add(video.id);
+                addLog(`✓ Retry OK: ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
+              } else {
+                retryFail++;
+                addLog(`⚠ Retry falhou: arquivo muito pequeno`, 'warn');
+              }
+            } catch (err: any) {
+              retryFail++;
+              addLog(`✗ Retry falhou: ${String(err?.message || err).slice(0, 200)}`, 'error');
+            }
+
+            // Small delay between retries
+            await new Promise(r => setTimeout(r, 2000));
+          }
+
+          addLog(`Retry concluído: ${retrySuccess} recuperados, ${retryFail} permaneceram com erro`, retrySuccess > 0 ? 'success' : 'warn');
+        }
+
+        // === ALWAYS deliver ZIP if we have any successes ===
+        if (successCount > 0) {
+          addLog(`Compactando ${successCount} vídeos em ZIP...`, 'info');
+          setProcessingStatus('Compactando ZIP...');
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const zipName = `editados_${successCount}videos_${timestamp}.zip`;
+          saveAs(zipBlob, zipName);
+          addLog(`ZIP baixado: ${zipName} (${(zipBlob.size / 1024 / 1024).toFixed(1)}MB)`, 'success');
+          
+          // Remove processed videos from the list
+          if (successfulVideoIds.size > 0) {
+            setVideos(prev => prev.filter(v => !successfulVideoIds.has(v.id)));
+            addLog(`${successfulVideoIds.size} vídeos editados removidos da lista.`, 'success');
+          }
+        }
+        addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');
+
+        toast({
+          title: successCount > 0 ? "Processamento concluído!" : "Falha no processamento",
+          description: successCount > 0
+            ? `${successCount} vídeos editados e baixados.${localFallbackCount > 0 ? ` ${localFallbackCount} foram processados no navegador após falha no servidor.` : ''}${duplicateCount > 0 ? ` ${duplicateCount} duplicados ignorados.` : ''}${stoppedByBreaker ? ' Processamento interrompido automaticamente para evitar desperdício.' : ''}`
+            : "Não foi possível processar nenhum vídeo.",
+          variant: successCount > 0 ? "default" : "destructive",
+        });
+      } catch (err) {
+        console.error('Server processing error:', err);
+        addLog(`Erro geral no servidor: ${String(err).slice(0, 160)}`, 'error');
+        toast({ title: "Erro no servidor", description: String(err), variant: "destructive" });
+      } finally {
+        if (sessionId) cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId);
+        setProcessing(false);
+        setProcessStartTime(null);
+        setProcessingStatus('');
+        setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
+      }
+      return;
+    }
+
+    // Server offline fallback
+    toast({ title: "Servidor offline", description: "O servidor de processamento não está disponível. Tente novamente.", variant: "destructive" });
+  };
+
+  const overallProgress = processProgress.total > 0
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          ((processProgress.current + processProgress.videoProgress / 100) / processProgress.total) * 100
+        )
+      )
+    : 0;
+
+  return (
+    <div className="space-y-5">
+      {/* ===== HEADER ===== */}
+      <div className="text-center space-y-1">
+        <h1 className="text-2xl font-black tracking-tight text-foreground">
+          Video <span className="text-primary">Editor</span>
+        </h1>
+        <p className="text-xs text-muted-foreground/60">Configure o popup, efeitos e processe em lote</p>
+      </div>
+
+      {/* ===== TEMPLATES (TOP) ===== */}
+      <TemplateManager
+        currentConfig={{
+          appearAt, popupDuration, endVideoWithPopup, opacity,
+          popupAudioVolume, videoVolumeAfterPopup, popupFullscreen,
+          popupTransform, effects,
+        }}
+        popupMedia={popupMedia}
+        popupMediaType={popupMediaType}
+        popupAudio={popupAudio}
+        onLoadTemplate={async (t) => {
+          setAppearAt(t.appearAt);
+          setPopupDuration(t.popupDuration);
+          setEndVideoWithPopup(t.endVideoWithPopup);
+          setOpacity(t.opacity);
+          setPopupAudioVolume(t.popupAudioVolume);
+          setVideoVolumeAfterPopup(t.videoVolumeAfterPopup);
+          setPopupFullscreen(t.popupFullscreen);
+          setPopupTransform(normalizePopupTransform(t.popupTransform));
+          setEffects({ ...defaultEffects, ...t.effects });
+          // Load popup file from URL if available
+          if (t.popupFileUrl) {
+            try {
+              const res = await fetch(t.popupFileUrl);
+              const blob = await res.blob();
+              const ext = t.popupMediaType === 'video' ? 'mp4' : 'png';
+              const file = new File([blob], `popup.${ext}`, { type: blob.type });
+              setPopupMedia(file);
+              setPopupMediaType(t.popupMediaType || 'image');
+              setPopupMediaPreview(URL.createObjectURL(blob));
+            } catch (e) {
+              console.error('Failed to load popup from template:', e);
+            }
+          }
+          // Load audio file from URL if available
+          if (t.audioFileUrl) {
+            try {
+              const res = await fetch(t.audioFileUrl);
+              const blob = await res.blob();
+              const file = new File([blob], `audio.mp3`, { type: blob.type });
+              setPopupAudio(file);
+              setPopupAudioPreview(URL.createObjectURL(blob));
+            } catch (e) {
+              console.error('Failed to load audio from template:', e);
+            }
+          }
+        }}
+      />
+
+      {/* ===== PREVIEW + UPLOAD AREA ===== */}
+      <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%)' }}>
+        {/* Upload strip */}
+        <div className="px-5 py-3 border-b border-white/[0.06] flex items-center gap-3">
+          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,video/mp4,video/webm,video/quicktime" className="hidden" onChange={handleMediaUpload} />
+          <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="flex-1 flex items-center gap-3 px-4 py-2.5 rounded-xl border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group"
+          >
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+              <Upload className="h-4 w-4 text-primary" />
+            </div>
+            <div className="text-left min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">
+                {popupMedia ? `${popupMediaType === 'video' ? '🎬' : '🖼️'} ${popupMedia.name}` : 'Popup (imagem ou vídeo)'}
+              </p>
+              <p className="text-[10px] text-muted-foreground/50">PNG, JPG, MP4, WEBM</p>
+            </div>
+          </button>
+          <button
+            onClick={() => audioInputRef.current?.click()}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/10 hover:border-primary/30 bg-white/[0.02] hover:bg-primary/[0.04] transition-all duration-200 group"
+          >
+            <Volume2 className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors truncate max-w-[80px]">
+              {popupAudio ? popupAudio.name : 'Áudio'}
+            </span>
+          </button>
+        </div>
+
+        {/* Preview */}
+        <div className="p-5">
+          <PopupPreviewEditor
+            videoSrc={previewVideoSrc}
+            thumbnailSrc={previewThumbnailSrc}
+            popupMediaSrc={popupMediaPreview}
+            popupAudioSrc={popupAudioPreview}
+            popupMediaType={popupMediaType}
+            popupFullscreen={popupFullscreen}
+            transform={popupTransform}
+            onTransformChange={(next) => setPopupTransform(normalizePopupTransform(next))}
+            appearAt={appearAt}
+            popupDuration={popupDuration}
+            endVideoWithPopup={endVideoWithPopup}
+            opacity={opacity}
+            popupAudioVolume={popupAudioVolume}
+            videoVolumeAfterPopup={videoVolumeAfterPopup}
+            effects={effects}
+          />
+        </div>
+      </div>
+
+
+      {/* ===== CONFIGURAÇÕES ===== */}
+      <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%)' }}>
+        <div className="px-5 py-3 border-b border-white/[0.06]">
+          <p className="text-xs font-bold text-foreground tracking-wide uppercase flex items-center gap-2">
+            <Settings2 className="h-3.5 w-3.5 text-primary" /> Configurações
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Timing row */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Aparece em</label>
+              <div className="relative">
+                <Input type="number" min={0} value={appearAt} onChange={(e) => setAppearAt(Number(e.target.value) || 0)} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">s</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Maior = popup aparece mais tarde no vídeo</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Duração</label>
+              <div className="relative">
+                <Input type="number" min={1} value={popupDuration} onChange={(e) => setPopupDuration(Math.max(1, Number(e.target.value) || 1))} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">s</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Maior = popup fica visível por mais tempo</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Opacidade</label>
+              <div className="relative">
+                <Input type="number" min={0} max={100} value={opacity} onChange={(e) => setOpacity(Math.min(100, Math.max(0, Number(e.target.value) || 0)))} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">%</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ 100% = sólido · ↓ 0% = invisível</p>
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <div>
+                <span className="text-xs font-medium text-foreground block">Encerrar com popup</span>
+                <span className="text-[10px] text-muted-foreground/70">Corta o vídeo quando o popup sumir</span>
+              </div>
+              <Switch checked={endVideoWithPopup} onCheckedChange={setEndVideoWithPopup} />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <div>
+                <span className="text-xs font-medium text-foreground block">Tela inteira</span>
+                <span className="text-[10px] text-muted-foreground/70">Popup ocupa todo o vídeo</span>
+              </div>
+              <Switch checked={popupFullscreen} onCheckedChange={setPopupFullscreen} />
+            </div>
+            <div className={`flex items-center justify-between rounded-xl border px-3 py-2.5 col-span-2 transition-colors ${endWithAudio ? 'border-primary/30 bg-primary/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+              <div className="flex-1">
+                <span className="text-xs font-medium text-foreground block">🔊 Encerrar com áudio</span>
+                <span className="text-[10px] text-muted-foreground/70">
+                  {popupAudio
+                    ? detectedAudioDuration
+                      ? `Áudio detectado: ${detectedAudioDuration}s — vídeo encerra quando o áudio do popup terminar`
+                      : 'Detectando duração do áudio...'
+                    : 'Adicione um áudio de popup para usar esta opção'}
+                </span>
+              </div>
+              <Switch
+                checked={endWithAudio}
+                onCheckedChange={(v) => {
+                  if (v && !popupAudio) {
+                    toast({ title: 'Sem áudio', description: 'Adicione um áudio de popup primeiro.', variant: 'destructive' });
+                    return;
+                  }
+                  setEndWithAudio(v);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Mute original video audio */}
+          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <VolumeX className="h-4 w-4 text-destructive" />
+              <div>
+                <p className="text-xs font-medium text-foreground">Mutar áudio original</p>
+                <p className="text-[10px] text-muted-foreground/70">Remove o áudio do vídeo inteiro, mantendo apenas o áudio do popup</p>
+              </div>
+            </div>
+            <Switch
+              checked={muteEntireAudio}
+              onCheckedChange={setMuteEntireAudio}
+            />
+          </div>
+
+          {/* Volume row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Vol. áudio do popup</label>
+              <div className="relative">
+                <Input type="number" min={0} max={100} value={popupAudioVolume} onChange={(e) => setPopupAudioVolume(Math.min(100, Math.max(0, Number(e.target.value) || 0)))} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">%</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Mais alto = áudio do popup mais forte · ↓ 0% = mudo</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Vol. vídeo durante popup</label>
+              {!muteEntireAudio && (
+                <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] font-medium text-foreground">Mutar durante popup</span>
+                  </div>
+                  <Switch
+                    checked={videoVolumeAfterPopup === 0}
+                    onCheckedChange={(muted) => setVideoVolumeAfterPopup(muted ? 0 : 100)}
+                  />
+                </div>
+              )}
+              {muteEntireAudio ? (
+                <p className="text-[10px] text-muted-foreground/70 leading-tight">🔇 Áudio inteiro mutado — controle desativado</p>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Input type="number" min={0} max={100} value={videoVolumeAfterPopup} onChange={(e) => setVideoVolumeAfterPopup(Math.min(100, Math.max(0, Number(e.target.value) || 0)))} disabled={videoVolumeAfterPopup === 0} className="h-9 text-sm font-mono bg-white/[0.03] border-white/[0.08] pr-6" />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">%</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70 leading-tight">{videoVolumeAfterPopup === 0 ? '🔇 Áudio mutado apenas durante o popup' : '↑ 100% = mantém áudio · ↓ 0% = silencia durante popup'}</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== EFEITOS VISUAIS ===== */}
+      <div className="rounded-2xl border border-white/[0.06] overflow-hidden" style={{ background: 'linear-gradient(145deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%)' }}>
+        <div className="px-5 py-3 border-b border-white/[0.06]">
+          <p className="text-xs font-bold text-foreground tracking-wide uppercase flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-primary" /> Efeitos visuais
+          </p>
+        </div>
+        <div className="p-4 space-y-2">
+          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <span>🌑</span>
+              <div>
+                <p className="text-xs font-medium text-foreground">Fundo fosco</p>
+                <p className="text-[10px] text-muted-foreground/70">Escurece o fundo do vídeo enquanto o popup aparece</p>
+              </div>
+            </div>
+            <Switch checked={effects.darkOverlay} onCheckedChange={(v) => setEffects(e => ({ ...e, darkOverlay: v }))} />
+          </div>
+          {effects.darkOverlay && (
+            <div className="pl-11 pr-4 pb-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground font-medium">Intensidade: {effects.darkOverlayIntensity}%</span>
+              </div>
+              <input type="range" min={10} max={90} value={effects.darkOverlayIntensity} onChange={(e) => setEffects(ef => ({ ...ef, darkOverlayIntensity: Number(e.target.value) }))} className="w-full h-1.5 rounded-full appearance-none bg-white/[0.08] accent-primary cursor-pointer" />
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Aumentar = vídeo fica mais escuro atrás do popup · ↓ Diminuir = escurecimento mais suave</p>
+            </div>
+          )}
+          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <span>🎆</span>
+              <div>
+                <p className="text-xs font-medium text-foreground">Fogos de artifício</p>
+                <p className="text-[10px] text-muted-foreground/70">Explosões coloridas durante o popup</p>
+              </div>
+            </div>
+            <Switch checked={effects.fireworks} onCheckedChange={(v) => setEffects(e => ({ ...e, fireworks: v }))} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <span>✨</span>
+              <div>
+                <p className="text-xs font-medium text-foreground">Partículas</p>
+                <p className="text-[10px] text-muted-foreground/70">Brilhos flutuantes durante o popup</p>
+              </div>
+            </div>
+            <Switch checked={effects.particles} onCheckedChange={(v) => setEffects(e => ({ ...e, particles: v }))} />
+          </div>
+        </div>
+      </div>
+
+
+      <div className="flex items-center gap-2 justify-center py-2 text-sm font-medium">
+        🖥️ Servidor —{' '}
+        {checkingServer ? 'verificando...' : serverConnected ? <span className="text-primary">✅ Online</span> : <span className="text-destructive">❌ Offline</span>}
+        {!serverConnected && !checkingServer && (
+          <Button variant="link" size="sm" className="h-auto p-0 ml-2 text-xs" onClick={handleRetryServer}>
+            Reconectar
+          </Button>
+        )}
+      </div>
+      {/* Batch Quantity Selector */}
+      <div className="rounded-xl border-2 border-primary/40 bg-card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Scissors className="h-4 w-4 text-primary" />
+          <label className="text-base font-bold text-foreground">Quantos vídeos editar?</label>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2">
+          {[1, ...BATCH_PRESETS].map(preset => (
+            <button
+              key={preset}
+              onClick={() => setEditBatchQuantity(preset)}
+              disabled={processing}
+              className={`py-2.5 rounded-lg text-sm font-bold border-2 transition-all
+                ${editBatchQuantity === preset
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20 scale-105'
+                  : 'bg-secondary text-foreground border-border hover:border-primary/40 hover:bg-secondary/80'
+                } disabled:opacity-50`}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Ou digite:</span>
+          <Input
+            type="number"
+            min={1}
+            max={videos.length || 400}
+            value={editBatchQuantity}
+            onChange={(e) => setEditBatchQuantity(Math.max(1, Math.min(videos.length || 400, Number(e.target.value) || 1)))}
+            className="w-24 h-9 text-center text-sm font-bold bg-secondary border-primary/30"
+            disabled={processing}
+          />
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center bg-secondary/50 rounded-lg py-2">
+          {videos.length >= editBatchQuantity
+            ? `✅ ${editBatchQuantity} vídeo${editBatchQuantity > 1 ? 's' : ''} ${editBatchQuantity > 1 ? 'serão processados' : 'será processado'}`
+            : `⚠️ Apenas ${videos.length} vídeos disponíveis (de ${editBatchQuantity} selecionados)`}
+        </p>
+      </div>
+
+      {/* Process Button */}
+      <Button
+        onClick={handleProcess}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic)}
+        className="w-full h-14 gap-2 text-sm font-bold"
+        size="lg"
+      >
+        {processing ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <Server className="h-5 w-5" />
+        )}
+        {processing
+          ? `Processando ${processProgress.current}/${processProgress.total}...`
+          : `🚀 Processar ${batchQuantity} vídeos`}
+      </Button>
+
+      {/* Progress */}
+      {processing && (
+        <div className="space-y-3 rounded-xl border border-primary/30 bg-card p-4 animate-pulse-slow">
+          {/* Status text */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-primary">{processingStatus}</span>
+            <span className="text-sm font-mono text-muted-foreground">⏱ {formatTime(elapsedTime)}</span>
+          </div>
+
+          {/* Overall progress bar */}
+          <div className="space-y-1">
+            <div className="w-full bg-secondary rounded-full h-4 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-primary to-primary/70 h-full transition-all duration-500 rounded-full relative"
+                style={{ width: `${overallProgress}%` }}
+              >
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-primary-foreground">
+                  {Math.round(overallProgress)}%
+                </span>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center">
+              {processProgress.current} de {processProgress.total} concluídos • {processProgress.activeWorkers > 0 ? `${processProgress.activeWorkers} processadores ativos` : ''}
+            </p>
+          </div>
+
+          {/* Video progress bar */}
+          <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-accent h-full transition-all duration-300 rounded-full"
+              style={{ width: `${processProgress.videoProgress}%` }}
+            />
+          </div>
+
+          {/* Estimated info */}
+          {processProgress.current > 1 && (
+            <p className="text-[10px] text-muted-foreground text-center">
+              ~{formatTime(Math.round((elapsedTime / processProgress.current) * (processProgress.total - processProgress.current)))} restantes
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Detailed Log Panel */}
+      {processLogs.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="bg-secondary/50 px-4 py-2 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-bold text-foreground">📋 Log detalhado</span>
+            <span className="text-[10px] text-muted-foreground">{processLogs.length} entradas</span>
+          </div>
+          <div className="max-h-60 overflow-y-auto p-3 space-y-1 font-mono text-[11px]">
+            {processLogs.map((log, i) => (
+              <div key={i} className={`flex gap-2 ${
+                log.type === 'success' ? 'text-green-400' :
+                log.type === 'error' ? 'text-red-400' :
+                log.type === 'warn' ? 'text-yellow-400' :
+                'text-muted-foreground'
+              }`}>
+                <span className="text-muted-foreground/60 flex-shrink-0">{log.time}</span>
+                <span>{log.msg}</span>
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="rounded-xl border border-border bg-primary/10 p-4">
+        <div className="flex items-center justify-center gap-2 text-sm text-primary font-medium">
+          <Image className="h-4 w-4" />
+          {videos.length} vídeos disponíveis para edição
+        </div>
+      </div>
+    </div>
+  );
+};

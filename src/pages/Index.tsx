@@ -1,0 +1,2299 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Download, ChevronUp, ChevronDown, Eye, Heart, MessageCircle, Share2, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { activityTracker } from "@/lib/activityTracker";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { tiktokApi, TikTokVideo } from "@/lib/api/tiktok";
+import { VideoEditorTab } from "@/components/VideoEditorTab";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+// Groups that are too generic and should SKIP niche/thumbnail AI filters
+const GENERIC_GROUPS = new Set(["viral"]);
+
+const PRESET_HASHTAGS = [
+  // Humor & Entretenimento
+  { tag: "pegadinha,pegadinhas,pegadinhaviral,pegadinhadetiktok,pegadinhaengraçada,trollagempesada,pegadinhacaseira,pegadinhanorua,peganinguem", emoji: "😂", label: "Pegadinha", group: "humor" },
+  { tag: "humor,humorbrasil,humorbr,engraçado,piada,piadas,coisasengraçadas,videoengraçado,humornegro,rir", emoji: "🤣", label: "Humor", group: "humor" },
+  { tag: "comedia,comediante,standupbr,comediabrasil,esquete,standup,comediabrasileira,humorista,parodiabr,imitacao", emoji: "😆", label: "Comédia", group: "humor" },
+  { tag: "memes,memesbr,memesbrasil,memestiktok,memeviral,meme,memesengracados,memebrasileiro,memezeiro,shitpost", emoji: "🐸", label: "Memes", group: "humor" },
+  { tag: "zoeira,zueira,zueirabr,zoeirasemfim,zoou,zuou,zoando,zuando,zoeirabrasil,bagunceiro", emoji: "😜", label: "Zoeira", group: "humor" },
+  { tag: "risada,risadasgarantidas,morrendoderir,rachandoderir,morriderir,risadacontagiante,naoaguento,rirdemais,gargalhada,chorei", emoji: "😹", label: "Risada", group: "humor" },
+  { tag: "fail,fails,epicfail,failarmy,deuruim,deuerrado,foimalfeito,errou,failbrasil,queda", emoji: "🤦", label: "Fail", group: "humor" },
+  { tag: "trollbr,trollei,trollando,trollou,zuando,troll,trollagemboa,trolleigeral,prankbr,brincadeira", emoji: "👹", label: "Trollagem", group: "humor" },
+  // Trends & Viral
+  { tag: "viral,viralbrasil,viralizou,viralvideo,ficouViral,videosviral,oqueviralizou,bombou,estourou,viralhoje", emoji: "🔥", label: "Viral", group: "viral" },
+  { tag: "fyp,foryou,foryoupage,fy,fypシ,pfrvc,paravocê,recomendado,fypbrasil,apareca", emoji: "⭐", label: "FYP", group: "viral" },
+  { tag: "trending,trend,trendbr,trendtiktok,emalta,tendencia,tendencias,trendingnow,trendbrasil,hypado", emoji: "📈", label: "Trending", group: "viral" },
+  { tag: "storytime,storytimebr,minhahistoria,contando,relato,desabafo,historia,historiareal,confissao,storytelling", emoji: "📖", label: "Storytime", group: "viral" },
+  { tag: "parati,paravoce,recomendados,prapagina,aparecapramim,pravc,pfrvc,tepareceu,recomendo,vaipracima,paratipage,paratibrasil,recomendado,sugestao,apareceu,foryoubr,pyvbr,paravocepage", emoji: "🎯", label: "ParaTi", group: "viral" },
+  { tag: "viraltiktok,tiktokviral,tiktokbrasil,tiktokbr,tiktokers,tiktokmemes,tiktok2024,tiktokhits,tiktokfamous,conteudoviral,viralizou,viralizando,bombou,bombando,estourou,hitdotiktok,topviral,trendingbr,viralbr,tiktok2025", emoji: "💥", label: "ViralTikTok", group: "viral" },
+  // Lifestyle
+  { tag: "dancinha,dancinhastiktok,dancinhaviral,danca,dançando,passinhos,coreografia,dancabr,dancatiktok,passinho,dancinhanova,dancetrend,coreografiafacil,dancabrasileira,dancinhafacil,dancinhafunk,dancinhapop,dancandoem,dancandosozinha,passosdedanca,dancinhahoje,dancaviraltiktok,dancefit,dancetiktokbr,dancinhaquente", emoji: "💃", label: "Dancinha", group: "lifestyle" },
+  { tag: "novelinha,novelinhatiktok,atuando,cenadetiktok,dramatiktok,atuacaotiktok,dublagemtiktok,novelinhabr,atriz,ator,cena,novelinhadrama,tiktoknovela,novelinharomance,novelinhaviral,encenacao,encenando,dramatizacao,cenabr,atuacaobr,dublagemoriginal,dublandocenas,novelinhacomica,novelinhatriste", emoji: "🎬", label: "Novelinha", group: "lifestyle" },
+  { tag: "satisfying,satisfatório,satisfyingvideo,oddlysatisfying,satisfyingbr,satisfacao,tãosatisfatório,limpeza,organizando,satisfyingclean,satisfyingasmr,satisfyingcutting,satisfyingslime,satisfyingfood,satisfyingcraft,limpar,limpandotudo,satisfacaovisual,hipnotizante,relaxasatisfying", emoji: "🤤", label: "Satisfying", group: "lifestyle" },
+  { tag: "asmr,asmrbr,asmrbrasil,asmrsounds,asmrrelaxante,asmreating,asmrslime,asmrsoap,asmrcutting,asmrcomida,asmrdormir,asmrwhisper,asmrsatisfying,asmrtiktokbr,asmrvideo,asmrtiktok,asmrbrasileiro,asmrsuave,asmrcrocante,asmrmouth", emoji: "🎧", label: "ASMR", group: "lifestyle" },
+  { tag: "rotina,minharodina,rotinadiaria,rotinaprodutiva,dayinmylife,rotinademanha,rotinadanoite,rotinareal,meudia,vidadeadulto,rotinadesolteira,maemoderna,rotinadetrabalho,rotinafit,rotinaorganizada,meudiaaadia,rotinadecasal,cotidiano,meucotidiano,vidacotidiana", emoji: "🏠", label: "Rotina", group: "lifestyle" },
+  { tag: "viagem,viagembrasil,turismo,destinos,lugarlindo,viajando,destino,lugaresincriveis,praias,nordeste,viajante,mochilao,viajarsozinha,viajardecarro,praiaslindas,destinosnacionais,brasilturismo,turistando,ferias,feriasbr,viajandopelomundo,roteirodeviagem,viajarbr", emoji: "✈️", label: "Viagem", group: "lifestyle" },
+  { tag: "musica,musicabrasileira,musicanova,cantando,cover,sertanejo,funk,pagode,forró,mpb,rap,hiphopbr,cantar,cantora,cantor,musicabr,cantando🎤,voz,vocalbr,coverbr,musicaboa,hitbr,lançamento,musicaatual,tocando", emoji: "🎵", label: "Música", group: "lifestyle" },
+  // Trends IA & Novelas
+  { tag: "iatransforma,iatrend,inteligenciaartificial,iatiktok,aiart,iabrasileira,chatgpt,midjourney,aitrend,iafilme,iameme,artificialintelligence,iacriou,iadesign,iaincrivel,iareal,iaassustadora,iaviral,iamusica,imagemdeia,arteia,criatividade,futurocomia", emoji: "🤖", label: "IA Transforma", group: "ia_novela" },
+  { tag: "filtrodeia,filtroai,filtroiatiktok,filtrointeligente,aimakeup,filtronovo,filtroviral,filtrodebeleza,filtroderosto,filtrotransforma,filtrodoanimal,filtroenvelhecer,filtrocrianca,filtrodemulher,filtromanga,filtroanime,filtrodobebe,filtrodivertido,filtromoda,filtrodehoje", emoji: "✨", label: "Filtro IA", group: "ia_novela" },
+  { tag: "noveladeia,novelaia,ianovela,personagemdeia,aidrama,iaenovela,iaatriz,personagemIA,novelacomIA,dramatransforma,iaprotagonista,novelaartificial,iadramatica,iahistoria,personagemgeradoporia,iaelenco,iabrasileira,iacena,iaemocao,iadublagem", emoji: "📺", label: "Novela IA", group: "ia_novela" },
+  { tag: "frutasia,frutadeia,frutainteligencia,fruitai,iafrutas,frutasreais,frutahumana,frutapersonagem,frutaviral,iafruta,frutacomrosto,frutaque,frutaengraçada,frutacriativa,frutafalante,frutabr,frutadegente,frutareal,iafrutaviral,frutamagica", emoji: "🍎", label: "Frutas IA", group: "ia_novela" },
+  { tag: "novelaantiga,novelasantigas,cenasdenovela,novelabrasileira,novela90,novela80,novelaclassica,novelaglobo,globo,redemancao,terradosol,trechosnovela,novelassbt,novelarecord,novelainesquecivel,lacodefamilia,malhacao,mulheresdeareoia,onomedarosa,rochacortez,noveladosanos80,noveladosanos90,noveladosanos70,noveladrama,cenasclassicas,novelaseternais,roque_santeiro,tieta,pedroguerrero,tropicalia", emoji: "📼", label: "Novela Antiga", group: "ia_novela" },
+  { tag: "cenasiconica,cenasinesqueciveis,cenasclassicas,cenasepicas,cenasmarcantes,cenadenovela,cenafamosa,cenaviral,cenalendaria,cenadramática,cenatensao,cenadechoro,cenaengraçada,cenadramatica,cenadeamor,cenadebeiho,cenaderevolta,cenademorte,cenaimportante,cenaemocionante,cenaeterna,cenadeglobo,cenabrasileira,cenadefilme", emoji: "🎭", label: "Cenas Icônicas", group: "ia_novela" },
+  { tag: "animaliaia,animaisIA,petdeia,bichoia,animalinteligente,cachorroia,gatoia,animaltransforma,petai,iaanimal,iabicho,iacachorro,iagato,ianatureza,animaltransformado,iacomanimais,bichoincrivel,animalfofoia,iavet,pettransforma", emoji: "🐾", label: "Animalia IA", group: "ia_novela" },
+  // Casa & Organização
+  { tag: "organizacao,arrumandoacasa,rotinadelimpeza,casaarrumada,limpezadecasa,decoracao,cantinhodecorado,diydecoração,antesedepoisdicasa,organizador,minimalism,casanova,arrumandotudo,organizacaodecasa,limpezaprofunda,organizacaobr,casaorganizada,arrumacao,faxina,faxinacompleta,organizandoarmario,decoracaobr,casadecorada,decoracaosimples", emoji: "🏠", label: "Organização", group: "casa" },
+  { tag: "unboxing,unboxingbr,unboxingbrasil,abrindoprodutos,abrindocaixas,abrindominhacaixa,unboxingtiktok,recebidos,recebidosdomes,jabá,recebidosamados,comprinhas,comprasonline,comprascasa,hauldecasa,haulamazon,haulshopee,organizandocompras,abrindoencomenda,encomendachegou,caixinha,caixacorreio,recebidoslindos,unboxingorganizacao,comprasorganizacao", emoji: "📦", label: "Unboxing", group: "casa" },
+  // Motivação & Dicas
+  { tag: "motivacao,motivacional,frases,superacao,forcadevontade,motivacaodiaria,frasedodia,inspiracao,naodesista,acredite,foco,disciplina,determinacao,mindsetbr,mindset,empreendedorismo,hustlebr,motivacaobr,frasedemotivacao,pensepositivo,vencedor,guerreiro,forçaegarra,nuncadesista,levantaesacuda", emoji: "💪", label: "Motivação", group: "dicas" },
+  { tag: "receita,receitafacil,receitarapida,receitadehoje,cozinhando,cozinha,comida,gastronomia,receitacaseira,receitafit,sobremesa,lanche,receitasimples,receitaboa,receitaprática,comidaboa,cozinhapratica,chefcaseiro,receitadebolo,receitadejantar,receitadealmoço,comidafit,receitadoce,receitasalgada,comidinhabr", emoji: "🍳", label: "Receita", group: "dicas" },
+  { tag: "dica,dicas,dicautil,dicadodia,dicaboa,dicaspráticas,dicavaliosa,dicasparavida,hackdevida,saibamais,aprendacom,dicabr,dicadetiktok,dicafinanceira,dicadesaude,dicadebeleza,dicademoda,dicadecasa,dicaqueajuda,dicagratis,dicaincriavel", emoji: "💡", label: "Dica", group: "dicas" },
+  { tag: "curiosidade,curiosidades,vocesabia,fatocurioso,mundocurioso,sabiaque,fatosinteressantes,incrivel,naoesabia,ciencia,descoberta,curiosidadebr,curiosidademundo,curiosidadedodia,fatoincrivel,curiosidadehistoria,fatochocante,curiosidadenatureza,curiosidadecientifica,mundocuriosobr", emoji: "🧠", label: "Curiosidade", group: "dicas" },
+  { tag: "fitness,treino,academia,treinoemmcasa,musculacao,maromba,treinopesado,hipertrofia,treinoab,cardio,gym,shapebr,treinofeminino,treinodebraço,treinodegluteo,treinoback,gymlife,gymbr,treinohard,fitnessbr,corpodefinido,projetoverao,focadotreino,marombalife", emoji: "🏋️", label: "Fitness", group: "dicas" },
+  { tag: "saude,saudavel,bemestar,vidasaudavel,alimentacao,alimentacaosaudavel,nutricao,dieta,emagrecer,corpoperfeito,saúdemental,saúdebr,saúdedamulher,saudedohomem,saudeemfoco,vidasana,menteesa,saúdeedoença,saúdeholistica,dietabr", emoji: "❤️", label: "Saúde", group: "dicas" },
+  { tag: "hack,lifehack,hacksdecasa,hackdetiktok,truque,truques,facilitaavida,gambiarra,solucao,dicahack,macete,hackgenial,hackincrivel,hackfacil,hackbarato,hackrapido,hackbr,hackcaseiro,gambiarraboa,gambiarracriativa", emoji: "🔧", label: "Hack", group: "dicas" },
+  { tag: "tutorial,tutorialtiktok,comofazer,passoapasso,aprenda,aprendacomigo,facavocemesmo,diy,howto,tutorial2024,ensinando,tutorialbr,tutorialsimples,tutorialrapido,comoeufico,comofizisso,tutorialdebeleza,tutorialdemaquiagem,tutorialdecabelo,tutorialdecasa", emoji: "📚", label: "Tutorial", group: "dicas" },
+  // Hook forte
+  { tag: "react,reaction,reacao,reagindo,reacttiktok,reactbr,primeirareacao,reactvideo,reactmemes,reaçãobr,reagindoavideo,reactengraçado,reactchocante,reactbrasil,reagindoatiktok,primeiraimpressao,reaçãoreal,reacttiktokbr,reactnovela,reactmusica", emoji: "😱", label: "React", group: "hook" },
+  { tag: "desafio,desafioviralbr,challenge,desafioviral,aceitedesafio,challengebr,desafiodancinha,desafionovo,tentativa,desafioimpossivel,desafiocomida,desafiocasal,desafioamigos,desafioengraçado,desafioperigoso,desafiodificil,desafiocasa,challengeaceito,desafiomania,desafiobr", emoji: "🏆", label: "Desafio", group: "hook" },
+  { tag: "antesedepois,antes_e_depois,beforeandafter,transformacao,resultado,antesdepois,antesxdepois,evolucao,mudei,comparacao,transformei,mudanca,evoluçãopessoal,antesedepoisreal,antesedepoisincrivel,transformacaocorporal,transformacaofacial,comparacaoreal,mudançadrástica", emoji: "✨", label: "Antes e Depois", group: "hook" },
+  { tag: "transformacao,transformacaovisual,glow,glowup,mudanca,mudancadrastica,evolucao,transformei,antesedepois,mudeidemais,glowupbr,transformacaoreal,mudancaincriavel,transformacaototal,transformacaocabelo,transformacaocorpo,transformacaomaquiagem,transformacaovisualincrivel,evolucaoreal,antesxagora", emoji: "🔄", label: "Transformação", group: "hook" },
+  { tag: "chocante,choquei,inacreditavel,absurdo,impressionante,naoacredito,chocado,queisso,impossivel,surreal,bizarro,chocantebr,chocantereal,muitochocante,chocantedemais,inacreditavelmas,absurdototal,naodapracrer,chocantetiktok,choquereal", emoji: "⚡", label: "Chocante", group: "hook" },
+  { tag: "exposed,expondo,verdade,revelando,desmascarando,exposto,revelacao,segredo,mentira,descubra,segredorevelado,exposedtiktok,revelacaochocante,verdadeescondida,segredoobscuro,exposednofake,verdadesobre,revelei,desmascarei,segredoexposto", emoji: "🔍", label: "Exposed", group: "hook" },
+  { tag: "polemico,polemica,controverso,opiniaoimpopular,debate,treta,briga,discussao,tretinha,opiniao,tretabr,polemicabr,polemicodehoje,tretadotiktok,polemicaviral,debatequente,tretaquente,opiniaoforte,controversia,brigatiktok", emoji: "🔥", label: "Polêmico", group: "hook" },
+  { tag: "ninguemesperava,inesperado,surpresa,plottwist,reviravolta,ngmesperava,finalinesperado,surpreendente,ninguemviu,pegoudesprevenido,surpresareal,plottwistbr,reviravoltabr,inesperadodemais,ngmesperou,surpresamaior,reviravoltatotal,plottwisttiktok,ninguemimaginou,surpresafinal", emoji: "😲", label: "Ninguém Esperava", group: "hook" },
+  // Satisfying & Curiosidades
+  { tag: "oddlysatisfying,satisfyingvideos,tãosatisfatório,satisfyingclean,satisfyingasmr,satisfyingslime,satisfyingfood,satisfyingcraft,satisfyingcutting,satisfyingpaint,satisfyingsoap,satisfyingcandy,satisfyingmachine,satisfyingart,satisfyingnature,satisfyingprocess,satisfyingrepair,satisfyingpeel,satisfyingmix,satisfyingbr", emoji: "😌", label: "Oddly Satisfying", group: "satisfying" },
+  { tag: "relaxante,relaxar,calma,pazsinterior,meditacao,tranquilidade,relaxamento,paz,relax,dormir,descanso,natureza,relaxando,relaxantedemais,sonoprofundo,meditacaobr,momentodepaz,relaxarmais,musicarelaxante,ambienteRelaxante,calmainterior,dormirbem", emoji: "🧘", label: "Relaxante", group: "satisfying" },
+  { tag: "vocesabia,sabiaque,fato,fatosinteressantes,incrivel,sabiadessa,curiosidadedomundo,fatoreal,verdadeounao,informacao,vocesabiadisso,sabiaquebr,fatoincrivel,fatointeressante,sabiadessa,fatoverdadeiro,vocesabiaqueisso,informacaocuriosa,vocesabiabr,sabiaquenao", emoji: "🤔", label: "Você Sabia?", group: "satisfying" },
+  { tag: "fatocurioso,fatoscuriosos,curiosidadesdomundo,naoesabia,mundocurioso,fatosdomundo,planetaterra,cienciacuriosa,universocurioso,ninguémsabia,fatosmundiais,fatosreais,fatoshistoricos,fatossobrenatureza,fatoscientificos,fatosincriveis,fatosaleatorios,fatossobre,fatobr,fatoraro", emoji: "💡", label: "Fato Curioso", group: "satisfying" },
+];
+
+const Index = () => {
+  const [videos, setVideos] = useState<TikTokVideo[]>([]);
+  const videosRef = useRef<TikTokVideo[]>([]);
+  // Keep ref in sync with state so async closures always read latest
+  useEffect(() => { videosRef.current = videos; }, [videos]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [downloadedCount, setDownloadedCount] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isScraping, setIsScraping] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTag, setSearchTag] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+  const [cacheStatus, setCacheStatus] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagQuantities, setTagQuantities] = useState<Record<string, number>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: "single" | "merge" | "foryou"; tag?: string }>({ open: false, type: "single" });
+  const [scrapeProgress, setScrapeProgress] = useState("");
+  const [mergeLogs, setMergeLogs] = useState<string[]>([]);
+  const [filters, setFilters] = useState({ minViews: 0, minLikes: 0, minShares: 0, minComments: 0, minDuration: 0 });
+  const [showFilters, setShowFilters] = useState(false);
+  const [batchQuantity, setBatchQuantity] = useState(40);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, active: false });
+  const [activeTab, setActiveTab] = useState<"busca" | "edicao">("busca");
+  const [foryouQuantity, setForyouQuantity] = useState(100);
+  const [aiSearchDescription, setAiSearchDescription] = useState("");
+  const [aiSearchQuantity, setAiSearchQuantity] = useState(100);
+  const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+  const [aiSuggestedTags, setAiSuggestedTags] = useState<{ tag: string; relevance: string }[]>([]);
+  const [aiContentFilter, setAiContentFilter] = useState<{ genderFilter?: string; excludeKeywords?: string[] } | null>(null);
+  const [previewVideoSrc, setPreviewVideoSrc] = useState<string | null>(null);
+  const [previewThumbnailSrc, setPreviewThumbnailSrc] = useState<string>("/placeholder.svg");
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isPreviewReady, setIsPreviewReady] = useState(false);
+  const [discoverTopic, setDiscoverTopic] = useState("");
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveredTags, setDiscoveredTags] = useState<{ tag: string; emoji: string; label: string; popularity_score: number; category: string }[]>([]);
+  const [sortByQuality, setSortByQuality] = useState(false);
+  const [nicheWarning, setNicheWarning] = useState<{ offTopicCount: number; offTopicTags: string[]; offTopicVideoIds: string[] } | null>(null);
+  const [resultFilterMode, setResultFilterMode] = useState<"strict" | "ai">("strict");
+  const { toast } = useToast();
+  const { profile, role, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const normalizeUrl = (url: string | null | undefined) =>
+    (url || "").trim().toLowerCase().split('#')[0].split('?')[0].replace(/\/+$/, "");
+
+  const getVideoKey = (video: TikTokVideo) => {
+    if (video.tiktok_id) return `id:${video.tiktok_id}`;
+    const source = normalizeUrl(video.source_url);
+    if (source) return `source:${source}`;
+    const direct = normalizeUrl(video.video_url);
+    if (direct) return `video:${direct}`;
+    return `meta:${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
+  };
+
+  const dedupeVideos = (input: TikTokVideo[]) => {
+    const seen = new Set<string>();
+    return input.filter((video) => {
+      const key = getVideoKey(video);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const distributeExactTotal = useCallback((keys: string[], total: number) => {
+    if (keys.length === 0) return {} as Record<string, number>;
+
+    const normalizedTotal = Math.max(0, Math.floor(total));
+    const base = Math.floor(normalizedTotal / keys.length);
+    const remainder = normalizedTotal % keys.length;
+
+    return keys.reduce<Record<string, number>>((acc, key, index) => {
+      acc[key] = base + (index < remainder ? 1 : 0);
+      return acc;
+    }, {});
+  }, []);
+
+  const distributeAiTargets = useCallback((hashtags: { tag: string; relevance: string }[], total: number) => {
+    if (hashtags.length === 0) return {} as Record<string, number>;
+
+    const relevanceWeight: Record<string, number> = {
+      alta: 3,
+      media: 2,
+      baixa: 1,
+    };
+
+    const ordered = [...hashtags].sort(
+      (a, b) => (relevanceWeight[b.relevance] || 1) - (relevanceWeight[a.relevance] || 1)
+    );
+    const weights = ordered.map((item) => relevanceWeight[item.relevance] || 1);
+    const weightSum = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+    const allocation = ordered.map((_, index) => Math.floor((Math.max(0, total) * weights[index]) / weightSum));
+
+    let remainder = Math.max(0, total) - allocation.reduce((sum, value) => sum + value, 0);
+    for (let index = 0; remainder > 0; index = (index + 1) % ordered.length) {
+      allocation[index] += 1;
+      remainder -= 1;
+    }
+
+    return ordered.reduce<Record<string, number>>((acc, item, index) => {
+      acc[item.tag] = allocation[index];
+      return acc;
+    }, {});
+  }, []);
+
+  // Detect videos from hashtags outside the requested niche
+  const detectOffTopicVideos = (videos: TikTokVideo[], requestedTags: string[]) => {
+    const requestedSet = new Set(requestedTags.map(t => t.toLowerCase()));
+    const offTopicTags = new Map<string, number>();
+    const offTopicVideoIds: string[] = [];
+    let offTopicCount = 0;
+
+    for (const v of videos) {
+      const vTag = (v as any).hashtag?.toLowerCase();
+      if (vTag && !requestedSet.has(vTag)) {
+        offTopicCount++;
+        offTopicVideoIds.push(v.id);
+        offTopicTags.set(vTag, (offTopicTags.get(vTag) || 0) + 1);
+      }
+    }
+
+    if (offTopicCount > 0) {
+      const topOffTopic = [...offTopicTags.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([tag]) => `#${tag}`);
+      setNicheWarning({ offTopicCount, offTopicTags: topOffTopic, offTopicVideoIds });
+    } else {
+      setNicheWarning(null);
+    }
+  };
+
+  useEffect(() => {
+    // Não carregar vídeos persistidos ao dar F5: sessão sempre começa limpa
+    setVideos([]);
+    setCurrentIndex(0);
+    setIsLoading(false);
+  }, []);
+
+  // Parse duration string "M:SS" to seconds
+  const parseDuration = (d: string | null) => {
+    if (!d) return 0;
+    const parts = d.split(':');
+    if (parts.length === 2) return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    return parseInt(d) || 0;
+  };
+
+  // Detect Brazilian content by title/author — STRICT: requires positive Portuguese signals
+  const isBrazilianContent = (v: TikTokVideo): boolean => {
+    const title = (v.title || '').toLowerCase();
+    const author = (v.author || '').toLowerCase();
+    const text = `${title} ${author}`;
+
+    // Reject if author has clear non-BR patterns
+    const nonBrAuthorPatterns = /^(the_|mr_|mrs_|miss_|queen|king|vibes_|baby_|princess|prince|daddy|mommy|babe\d)/i;
+    if (nonBrAuthorPatterns.test(author.replace('@', ''))) return false;
+
+    // Reject if contains non-BR language/culture signals
+    const nonBrContentPatterns = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap)\b/i;
+    if (nonBrContentPatterns.test(text)) return false;
+
+    // Reject foreign languages by common words (Turkish, Indonesian, French tutorials, etc.)
+    const foreignLangPatterns = /\b(yapay[ıi]m|anla[dğ]|kadar[ıi]m|bercanda|serius|luôn|aussi|facile|apprend[sr]?|c'est|donc|alors|cette|cette|cette|cette|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|tres|même|être|faire|comme|peut|j'ai|l'on|qu'il|qu'on|cette|cette|maniere|manière|nouvell|dembrasser|questa|quello|dieser|diese|terima ?kasih|salamat|salamat po|costrucion|construccion|encuentro|siempre|porque|cuando|donde|también|tambien|aunque|todavía|todavia|necesito|puedo|quiero|jefesito|enamorado|comear|sprawiaj|kobiety|szpach|legiobb|zagad|sprawia|piéces|essentielles|dressing|mignon|minimalist|setup|organisez|organisez|rangement|ikea hack|centavos|despensa|action diy|pièces)\b/i;
+    if (foreignLangPatterns.test(text)) return false;
+
+    // Reject if title is mostly non-Portuguese (detect French/Spanish/Italian/Polish patterns)
+    const foreignSentencePatterns = /\b(du |de la |les |des |une |un |est |et |en |au |aux |sur |sous |par |qui |que |il |elle |nous |vous |ils |elles |mon |ton |son |mes |tes |ses |notre |votre |leur |ce |cet |ces |el |la |los |las |del |al |con |sin |por |para |pero |como |más |muy |tiene |puede |hay |donde |cuando |quien |ese |eso |esta |estos |estas |aquí |allí )\b/gi;
+    const foreignSentenceMatches = text.match(foreignSentencePatterns);
+    if (foreignSentenceMatches && foreignSentenceMatches.length >= 2) return false;
+
+     // Reject if contains CJK characters (Chinese/Japanese/Korean)
+    if (/[\u3000-\u9FFF\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF]/.test(text)) return false;
+
+    // Reject if contains Cyrillic (Russian, etc.)
+    if (/[\u0400-\u04FF]/.test(text)) return false;
+
+    // Reject if contains Arabic script
+    if (/[\u0600-\u06FF\u0750-\u077F]/.test(text)) return false;
+
+    // Reject Thai, Vietnamese tonal marks, Devanagari, Tamil, etc.
+    if (/[\u0E00-\u0E7F\u0900-\u097F\u0B80-\u0BFF\u1000-\u109F]/.test(text)) return false;
+
+    // Reject high English density (expanded word list)
+    const engWords = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|my|me|we|be|do|so|go|up|if|of|at|on|in|it|to|is|no|or|an|by|i love|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
+    const engMatches = text.match(engWords);
+    if (engMatches && engMatches.length >= 2) return false;
+
+    // Positive Portuguese indicators — at least one must be present
+    const brChars = /[ãáàâéêíóôõúüç]/;
+    const brWords = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|treinar|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|marido|namorad|namoral|partiu|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|oi |hein|eita|uai|oxe|vish|krl|pqp|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
+    // ONLY Brazilian-specific hashtags count — removed global ones (fyp, viral, trending, etc.)
+    const brHashtags = /#(parati|dancinha|novelinha|tiktokbr|brasilvibes|brasileira|brasileiro|mulherlinda|mulherbonita|gatinha|novinha|dancafeminina|garotadançando|corpofeminino|shape|treino|academia|sertanejo|funk|pagode|humor|comedia|zoeira|pegadinha|risada|desafio|react|chocante|exposed|polemico|motivacao|receita|dica|curiosidade|rotina|viagem|musica|piseiroforr[oó]|bregafunk|asmeninadotiktok|dancinhasdotiktok|jeitinhobrasileiro|bolotinha|morena|morenalinda|pretinha|carioca|paulista|mineira|nordestina|sulista|gaúcha|flamengo|corinthians|palmeiras|recife|salvador|fortaleza|riodejaneiro|saopaulo|curitiba|belemdo[pP]ara)\b/i;
+    
+    if (brChars.test(text)) return true;
+    if (brWords.test(text)) return true;
+    if (brHashtags.test(title)) return true;
+
+    // If no positive signal at all, reject
+    return false;
+  };
+
+  // Block animations, cartoons, official TikTok accounts, and non-real-person content
+  const ALWAYS_EXCLUDE_AUTHORS = ['tiktokbrasil', 'tiktok', 'tiktoklatin', 'tiktokbr'];
+  const ALWAYS_EXCLUDE_KEYWORDS = [
+    'animação', 'animacao', 'cartoon', 'desenho', 'vovó', 'vovo', 'personagem',
+    'animated', 'animation', 'anime', 'mascote', 'fantoche', 'puppet',
+    'boneco', 'boneca', 'brinquedo', 'toy', 'lego', 'minecraft',
+    'lyrics', 'letra da música', 'letra da musica', 'song name', 'song:',
+    'lirik', 'easy rap',
+    'photoshop', 'tutorial photoshop', 'tuto facile', 'learn to',
+    'gato bailando', 'cat dancing', 'dog dancing', 'pet dancing',
+    'kpop', 'k-pop', 'fancam', 'stan', 'idol', 'oppa', 'bias',
+    'babymonster', 'blackpink', 'twice', 'bts', 'enhypen', 'aespa',
+    'itzy', 'newjeans', 'le sserafim', 'stray kids', 'seventeen',
+    'pinay', 'pinoy', 'habibi', 'mashallah', 'mukbang',
+    // Block music/audio-only & status/mood content
+    'nostalgia', 'statusvideo', 'statusvi', 'status video', 'reflexão', 'reflexao',
+    'motivação', 'motivacao', 'pensamento', 'frases', 'frase do dia',
+    'videoclipe', 'clip oficial', 'official video', 'music video',
+    'slowed and reverb', 'slowed +', 'slowedsongs', 'slowedandreverb',
+    'remix ||', 'audio edit',
+  ];
+
+  // AI content filter: filter by gender + exclude keywords from AI + block non-real content
+  const passesAiContentFilter = (v: TikTokVideo): boolean => {
+    const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
+    const author = (v.author || '').toLowerCase().replace('@', '');
+
+    // Always block official/animation accounts
+    if (ALWAYS_EXCLUDE_AUTHORS.some(a => author.includes(a))) return false;
+    // Always block animation/cartoon/kpop/pet/tutorial keywords
+    if (ALWAYS_EXCLUDE_KEYWORDS.some(k => text.includes(k))) return false;
+
+    // Block pet/animal content universally
+    const petPatterns = /\b(gato|gata bailando|cat|kitten|kitty|dog|puppy|cachorro|cachorrinho|hamster|coelho|parrot|bird|pet|animal|pássaro|tartaruga|peixe|goldfish)\b/i;
+    if (petPatterns.test(text) && !/\b(gata|gatinha|gatona)\b/i.test(text.replace(/gato|gata bailando/gi, ''))) {
+      // "gata" meaning hot girl is OK, but "gato bailando" (cat dancing) is not
+      if (/\b(gato|cat|kitten|dog|puppy|cachorro|hamster|pet|animal|bird)\b/i.test(text)) return false;
+    }
+
+    // Block lyrics/music-only content (no visual performance)
+    if (/\b(lyrics|lyric|letra|letras|song name|lirik)\b/i.test(text) && !/danç|dance|dançando/i.test(text)) return false;
+
+    // Block tutorial/educational content unrelated to dancing
+    if (/\b(tutorial|tuto|photoshop|edit|editing|apprend|learn)\b/i.test(text) && !/danç|dance|dançando/i.test(text)) return false;
+
+    if (!aiContentFilter) return true;
+    if (aiContentFilter.excludeKeywords?.length) {
+      for (const word of aiContentFilter.excludeKeywords) {
+        if (word && text.includes(word.toLowerCase().trim())) return false;
+      }
+    }
+    return true;
+  };
+
+  const filteredVideos = dedupeVideos(
+    videos.filter(v => {
+      if (v.views < filters.minViews) return false;
+      if (v.likes < filters.minLikes) return false;
+      if (v.shares < filters.minShares) return false;
+      if (v.comments < filters.minComments) return false;
+      const dur = parseDuration(v.duration);
+      if (filters.minDuration > 0 && dur > 0 && dur < filters.minDuration) return false;
+      if (dur > (resultFilterMode === "ai" ? 120 : 45)) return false;
+      if (resultFilterMode !== "ai" && !isBrazilianContent(v)) return false;
+      if (resultFilterMode !== "ai" && !passesAiContentFilter(v)) return false;
+      return true;
+    })
+  );
+  let sortedFilteredVideos = [...filteredVideos];
+  if (sortByQuality) {
+    sortedFilteredVideos.sort((a, b) => tiktokApi.getQualityScore(b) - tiktokApi.getQualityScore(a));
+  }
+  const totalFiltered = sortedFilteredVideos.length;
+  const currentVideo = sortedFilteredVideos[currentIndex] || null;
+
+  const applyNicheTitleFilter = useCallback(async (
+    inputVideos: TikTokVideo[],
+    description: string,
+    nicheKeywords: string[],
+    addLog?: (message: string) => void,
+  ) => {
+    if (inputVideos.length === 0 || description.trim().length <= 3) return inputVideos;
+
+    addLog?.(`🎯 Filtro de nicho: analisando ${inputVideos.length} títulos...`);
+    setScrapeProgress(`Filtro de nicho: analisando títulos...`);
+
+    const videosWithStableIds = inputVideos.map((video) => ({
+      stableId: getVideoKey(video),
+      video,
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('filter-by-niche', {
+        body: {
+          videos: videosWithStableIds.map(({ stableId, video }) => ({
+            id: stableId,
+            title: video.title || '',
+            author: video.author || '',
+          })),
+          nicheDescription: description,
+          nicheKeywords,
+        },
+      });
+
+      if (error) {
+        console.warn('Niche filter error, auto-approving all:', error);
+        addLog?.(`⚠️ Filtro de nicho falhou, mantendo todos os vídeos`);
+        return inputVideos;
+      }
+
+      if (data?.approvedIds) {
+        const approvedSet = new Set((data.approvedIds as string[]).filter(Boolean));
+        const filtered = videosWithStableIds
+          .filter(({ stableId }) => approvedSet.has(stableId))
+          .map(({ video }) => video);
+        const removed = inputVideos.length - filtered.length;
+        addLog?.(
+          removed > 0
+            ? `🎯 Filtro de nicho: ${filtered.length} relevantes, ${removed} removidos por título irrelevante`
+            : `🎯 Filtro de nicho: todos os ${filtered.length} vídeos são relevantes`
+        );
+        return filtered;
+      }
+
+      return inputVideos;
+    } catch (error) {
+      console.warn('Niche filter failed, keeping all:', error);
+      addLog?.(`⚠️ Filtro de nicho falhou, mantendo todos os vídeos`);
+      return inputVideos;
+    }
+  }, [getVideoKey]);
+
+  const applyThumbnailValidation = useCallback(async (
+    inputVideos: TikTokVideo[],
+    description: string,
+    addLog?: (message: string) => void,
+  ) => {
+    const videosWithThumbs = inputVideos.filter((video) => video.thumbnail);
+    if (videosWithThumbs.length === 0 || description.trim().length <= 3) return inputVideos;
+
+    addLog?.(`🔍 Validando ${videosWithThumbs.length} thumbnails com IA...`);
+    setScrapeProgress(`Validação visual: analisando thumbnails...`);
+
+    const videosWithStableIds = inputVideos.map((video) => ({
+      stableId: getVideoKey(video),
+      video,
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('validate-thumbnails', {
+        body: {
+          videos: videosWithStableIds.map(({ stableId, video }) => ({
+            id: stableId,
+            thumbnail: video.thumbnail,
+            title: video.title || '',
+          })),
+          description,
+        },
+      });
+
+      if (error) {
+        console.warn('Thumbnail validation error, auto-approving all:', error);
+        addLog?.(`⚠️ Validação visual falhou, mantendo todos os vídeos`);
+        return inputVideos;
+      }
+
+      if (data?.approvedIds) {
+        const approvedSet = new Set((data.approvedIds as string[]).filter(Boolean));
+        const filtered = videosWithStableIds
+          .filter(({ stableId }) => approvedSet.has(stableId))
+          .map(({ video }) => video);
+        addLog?.(`👁️ Validação visual: ${filtered.length} aprovados, ${inputVideos.length - filtered.length} rejeitados por IA`);
+        return filtered;
+      }
+
+      return inputVideos;
+    } catch (error) {
+      console.warn('Thumbnail validation failed, keeping all:', error);
+      addLog?.(`⚠️ Validação visual falhou, mantendo todos os vídeos`);
+      return inputVideos;
+    }
+  }, [getVideoKey]);
+
+  const handlePrev = useCallback(() => {
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : totalFiltered - 1));
+  }, [totalFiltered]);
+
+  const reSearchRef = useRef<(() => void) | null>(null);
+
+  const handleNext = useCallback(() => {
+    setCurrentIndex((prev) => {
+      if (prev < totalFiltered - 1) return prev + 1;
+      // Just wrap to beginning, no auto re-fetch
+      return 0;
+    });
+  }, [totalFiltered, isScraping]);
+
+  const togglePlay = useCallback(() => setIsPlaying((p) => !p), []);
+  const toggleMute = useCallback(() => setIsMuted((p) => !p), []);
+
+  const handleRemoveVideo = useCallback(() => {
+    if (!currentVideo) return;
+    const id = currentVideo.id;
+    setVideos(prev => {
+      const next = prev.filter(v => v.id !== id);
+      setCurrentIndex(i => Math.min(i, Math.max(0, next.length - 1)));
+      return next;
+    });
+    tiktokApi.deleteVideos([id]).catch(err => console.error('Delete error:', err));
+  }, [currentVideo]);
+
+  const handleDismissOffTopicVideos = useCallback(() => {
+    if (!nicheWarning) return;
+
+    const idsToRemove = nicheWarning.offTopicVideoIds;
+    if (idsToRemove.length === 0) {
+      setNicheWarning(null);
+      return;
+    }
+
+    const removalSet = new Set(idsToRemove);
+    setVideos((prev) => {
+      const next = prev.filter((video) => !removalSet.has(video.id));
+      setCurrentIndex((index) => Math.min(index, Math.max(0, next.length - 1)));
+      return next;
+    });
+    setNicheWarning(null);
+    tiktokApi.deleteVideos(idsToRemove).catch(err => console.error('Delete error:', err));
+    toast({ title: "Vídeos dispensados", description: `${idsToRemove.length} vídeos fora do nicho foram removidos.` });
+  }, [nicheWarning, toast]);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<HTMLDivElement>(null);
+  const wheelCooldownRef = useRef(false);
+  const previewObjectUrlRef = useRef<string | null>(null);
+
+  const clearPreviewObjectUrl = useCallback(() => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = null;
+    }
+  }, []);
+
+  const handleWheelNavigate = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (wheelCooldownRef.current) return;
+
+    wheelCooldownRef.current = true;
+    if (e.deltaY > 0) handleNext();
+    else handlePrev();
+
+    window.setTimeout(() => {
+      wheelCooldownRef.current = false;
+    }, 240);
+  }, [handlePrev, handleNext]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPreview = async () => {
+      clearPreviewObjectUrl();
+      setIsPreviewReady(false);
+
+      if (!currentVideo) {
+        setPreviewVideoSrc(null);
+        setPreviewThumbnailSrc('/placeholder.svg');
+        setIsPreviewLoading(false);
+        return;
+      }
+
+      setPreviewThumbnailSrc(currentVideo.thumbnail || '/placeholder.svg');
+
+      const videoUrl = currentVideo.source_url || (currentVideo.tiktok_id ? `https://www.tiktok.com/@user/video/${currentVideo.tiktok_id}` : null);
+      if (!videoUrl) {
+        setPreviewVideoSrc(null);
+        setIsPreviewLoading(false);
+        return;
+      }
+
+      setIsPreviewLoading(true);
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const proxyRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/download-tiktok`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+          },
+          body: JSON.stringify({ video_url: videoUrl, tiktok_id: currentVideo.tiktok_id, mode: 'proxy' }),
+        });
+
+        if (proxyRes.ok) {
+          const contentType = proxyRes.headers.get('content-type') || '';
+          if (contentType.includes('video/')) {
+            const proxyBlob = await proxyRes.blob();
+            if (proxyBlob.size > 1024 && !cancelled) {
+              const blobUrl = URL.createObjectURL(proxyBlob);
+              previewObjectUrlRef.current = blobUrl;
+              setPreviewVideoSrc(blobUrl);
+              setIsPreviewLoading(false);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Falha no proxy do player principal:', err);
+      }
+
+      try {
+        const { data, error } = await supabase.functions.invoke('download-tiktok', {
+          body: { video_url: videoUrl, tiktok_id: currentVideo.tiktok_id, mode: 'url' },
+        });
+
+        if (!cancelled && !error && data?.success && data?.download_url) {
+          setPreviewVideoSrc(data.download_url);
+        } else if (!cancelled) {
+          setPreviewVideoSrc(null);
+        }
+      } catch (err) {
+        console.warn('Falha ao resolver URL do preview:', err);
+        if (!cancelled) setPreviewVideoSrc(null);
+      } finally {
+        if (!cancelled) setIsPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+      clearPreviewObjectUrl();
+    };
+  }, [currentVideo?.id, currentVideo?.source_url, currentVideo?.tiktok_id, currentVideo?.thumbnail, clearPreviewObjectUrl]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !previewVideoSrc) return;
+
+    vid.currentTime = 0;
+    if (isPlaying) vid.play().catch(() => {});
+  }, [currentIndex, currentVideo?.id, previewVideoSrc, isPlaying]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !previewVideoSrc) return;
+
+    if (isPlaying) vid.play().catch(() => {});
+    else vid.pause();
+  }, [isPlaying, previewVideoSrc]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (vid) vid.muted = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      switch (e.key) {
+        case 'ArrowUp': e.preventDefault(); handlePrev(); break;
+        case 'ArrowDown': e.preventDefault(); handleNext(); break;
+        case ' ': e.preventDefault(); togglePlay(); break;
+        case 'm': case 'M': toggleMute(); break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePrev, handleNext, togglePlay, toggleMute]);
+
+  // Toggle hashtag selection for merge
+  const toggleTagSelection = (tag: string) => {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        setTagQuantities(q => { const copy = { ...q }; delete copy[tag]; return copy; });
+        return prev.filter(t => t !== tag);
+      } else {
+        setTagQuantities(q => ({ ...q, [tag]: 50 }));
+        return [...prev, tag];
+      }
+    });
+  };
+
+  const setTagQty = (tag: string, qty: number) => {
+    setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(500, qty)) }));
+  };
+
+  // Single hashtag scrape with confirmation
+  const handleSingleScrapeConfirm = (tag: string) => {
+    const cleanTag = tag.replace('#', '').trim();
+    setConfirmDialog({ open: true, type: "single", tag: cleanTag });
+  };
+
+  // Merge scrape with confirmation
+  const handleMergeConfirm = () => {
+    if (selectedTags.length === 0) {
+      toast({ title: "Selecione hashtags", description: "Selecione pelo menos uma hashtag para buscar.", variant: "destructive" });
+      return;
+    }
+    setConfirmDialog({ open: true, type: "merge" });
+  };
+
+  // AI Smart Search — fully automatic: description → AI hashtags → scrape → results
+  const handleAiSearch = async () => {
+    if (!aiSearchDescription.trim()) {
+      toast({ title: "Digite uma descrição", description: "Descreva o tipo de vídeo que quer encontrar.", variant: "destructive" });
+      return;
+    }
+
+    setIsScraping(true);
+    setAiSuggestedTags([]);
+    setMergeLogs([]);
+    setCacheStatus(null);
+    setNicheWarning(null);
+    setActiveTag("ia");
+
+    const logs: string[] = [];
+    const addLog = (msg: string) => { logs.push(msg); setMergeLogs([...logs]); };
+
+    try {
+      addLog(`🧠 Analisando: "${aiSearchDescription}"...`);
+      setScrapeProgress("IA analisando descrição...");
+
+      const { data, error } = await supabase.functions.invoke('ai-hashtag-suggest', {
+        body: { description: aiSearchDescription, quantity: aiSearchQuantity },
+      });
+
+      if (error) throw error;
+      if (!data?.success || !data?.hashtags?.length) {
+        throw new Error(data?.error || "Nenhuma hashtag sugerida");
+      }
+
+      const hashtags = data.hashtags as { tag: string; relevance: string }[];
+      const genderFilter = data.genderFilter || "none";
+      const excludeKeywords = (data.excludeKeywords || []) as string[];
+      
+      // Set content filter for gender-based filtering
+      setAiContentFilter({ genderFilter, excludeKeywords });
+      setAiSuggestedTags(hashtags);
+      
+      addLog(`✨ ${hashtags.length} hashtags: ${hashtags.map((h: any) => '#' + h.tag).join(', ')}`);
+      if (genderFilter !== "none") addLog(`🎯 Filtro: ${genderFilter === "female" ? "apenas feminino" : "apenas masculino"} | Excluindo: ${excludeKeywords.join(', ')}`);
+
+      // Distribute quantity exactly without inflating the requested total
+      const distributedTargets = distributeAiTargets(hashtags, aiSearchQuantity);
+      const newTags: string[] = [];
+      const newQty: Record<string, number> = {};
+
+      hashtags.forEach((h: any) => {
+        const qty = distributedTargets[h.tag] || 0;
+        if (qty <= 0) return;
+        newTags.push(h.tag);
+        newQty[h.tag] = qty;
+      });
+
+      setSelectedTags(newTags);
+      setTagQuantities(newQty);
+
+      const totalTarget = aiSearchQuantity;
+      const startTime = performance.now();
+      addLog(`📊 Meta: ${totalTarget} vídeos`);
+
+      const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
+        if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
+        if (v.shares < filters.minShares || v.comments < filters.minComments) return false;
+        const dur = parseDuration(v.duration);
+        if (filters.minDuration > 0 && dur > 0 && dur < filters.minDuration) return false;
+        if (dur > 120) return false;
+        if (excludeKeywords.length > 0) {
+          const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
+          for (const word of excludeKeywords) {
+            if (word && text.includes(word.toLowerCase().trim())) return false;
+          }
+        }
+        return true;
+      });
+
+      const PARALLEL = 20;
+      const safeTagCount = Math.max(1, newTags.length);
+      let totalNew = 0;
+
+      const fetchCandidates = async (requestedPerTag: number, forceRefresh: boolean) => {
+        const freshVideos: TikTokVideo[] = [];
+
+        for (let i = 0; i < newTags.length; i += PARALLEL) {
+          const batch = newTags.slice(i, i + PARALLEL);
+          const batchResults = await Promise.allSettled(
+            batch.map(tag => tiktokApi.scrapeByHashtag(tag, Math.min(requestedPerTag, 500), undefined, forceRefresh, true))
+          );
+
+          batchResults.forEach((r, idx) => {
+            const tag = batch[idx];
+            if (r.status === 'fulfilled' && r.value?.videos) {
+              const filtered = applyFilters(r.value.videos);
+              freshVideos.push(...filtered);
+              totalNew += r.value.new_scraped || 0;
+              addLog(`  ✅ #${tag}: ${filtered.length} válidos (${r.value.videos.length} brutos)`);
+            } else {
+              addLog(`  ❌ #${tag}: falhou`);
+            }
+          });
+        }
+
+        return dedupeVideos(freshVideos);
+      };
+
+      const OVERFETCH_MULTIPLIER = 5;
+      const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
+      addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
+      setScrapeProgress(`Buscando ${newTags.length} hashtags em paralelo...`);
+
+      const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
+      const seenCandidateKeys = new Set(existingVideoKeys);
+      const initialPerTag = Math.min(Math.ceil(fetchTarget / safeTagCount), 500);
+      const initialRaw = await fetchCandidates(initialPerTag, videosRef.current.length > 0);
+      const initialCandidates = initialRaw.filter((video) => {
+        const key = getVideoKey(video);
+        if (seenCandidateKeys.has(key)) return false;
+        seenCandidateKeys.add(key);
+        return true;
+      });
+
+      const phase1Time = ((performance.now() - startTime) / 1000).toFixed(1);
+      addLog(`📊 Coletados: ${initialCandidates.length} vídeos novos únicos em ${phase1Time}s${existingVideoKeys.size > 0 ? ` (${existingVideoKeys.size} já carregados)` : ''}`);
+
+      let approvedVideos: TikTokVideo[] = [];
+      const MAX_FILTER_ROUNDS = 6;
+
+      for (let round = 0; round < MAX_FILTER_ROUNDS; round++) {
+        const deficit = totalTarget - approvedVideos.length;
+        if (deficit <= 0) break;
+
+        let roundCandidates: TikTokVideo[] = [];
+
+        if (round === 0) {
+          roundCandidates = initialCandidates;
+          if (roundCandidates.length === 0) {
+            addLog(`⚠️ Coleta inicial não trouxe vídeos novos, tentando busca forçada...`);
+            continue;
+          }
+        } else {
+          addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
+          setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
+          const retryPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
+          const retryRaw = await fetchCandidates(retryPerTag, true);
+          roundCandidates = retryRaw.filter((video) => {
+            const key = getVideoKey(video);
+            if (seenCandidateKeys.has(key)) return false;
+            seenCandidateKeys.add(key);
+            return true;
+          });
+          addLog(`📊 Retry ${round}: ${roundCandidates.length} candidatos novos`);
+          if (roundCandidates.length === 0) {
+            addLog(`⚠️ Nenhum vídeo novo encontrado, encerrando retries`);
+            break;
+          }
+        }
+
+        addLog(`🤖 Filtrando com IA (rodada ${round + 1})...`);
+        setScrapeProgress(`IA analisando ${roundCandidates.length} vídeos...`);
+
+        const [nicheFiltered, thumbFiltered] = await Promise.all([
+          applyNicheTitleFilter(roundCandidates, aiSearchDescription, newTags, addLog),
+          applyThumbnailValidation(roundCandidates, aiSearchDescription, addLog),
+        ]);
+
+        const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
+        const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
+        const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
+        const roundApproved = hadSignal
+          ? roundCandidates.filter((video) => {
+              const key = getVideoKey(video);
+              return nicheKeys.has(key) || thumbKeys.has(key);
+            })
+          : roundCandidates;
+
+        const beforeApproved = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
+        addLog(`🎯 Rodada ${round + 1}: +${approvedVideos.length - beforeApproved} aprovados (${approvedVideos.length}/${totalTarget})`);
+      }
+
+      let unique = approvedVideos;
+      if (unique.length > totalTarget) unique = unique.slice(0, totalTarget);
+
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+      if (unique.length > 0) {
+        setResultFilterMode("ai");
+        setVideos(prev => {
+          const merged = dedupeVideos([...prev, ...unique]);
+          setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+          return merged;
+        });
+        detectOffTopicVideos(unique, newTags);
+        addLog(`✅ ${unique.length} vídeos${genderFilter !== "none" ? ` (${genderFilter === "female" ? "femininos" : "masculinos"})` : ""} prontos!`);
+      } else {
+        setNicheWarning(null);
+        addLog(`⚠️ Nenhum vídeo passou na validação visual`);
+      }
+
+      setCacheStatus(`${unique.length} vídeos encontrados para "${aiSearchDescription}" em ${elapsed}s`);
+
+      toast({
+        title: `🧠 ${unique.length} vídeos encontrados!`,
+        description: `Busca por "${aiSearchDescription}" concluída.`,
+      });
+    } catch (err: any) {
+      console.error('AI search error:', err);
+      addLog(`❌ Erro: ${err.message || 'Falha na busca'}`);
+      toast({ title: "Erro na busca inteligente", description: err.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setIsScraping(false);
+      setScrapeProgress("");
+    }
+  };
+
+  // Keep ref updated so handleNext can trigger re-search
+  reSearchRef.current = aiSearchDescription.trim() ? handleAiSearch : null;
+
+  const executeSingleScrape = async (tag: string, forceRefresh = false) => {
+    setIsScraping(true);
+    setActiveTag(tag);
+    setCacheStatus(null);
+    activityTracker.logSearch(tag);
+    try {
+      const result = await tiktokApi.scrapeByHashtag(tag, 50, undefined, forceRefresh);
+
+      if (result.from_cache) {
+        setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
+      } else {
+        setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
+      }
+
+      if (result.videos && result.videos.length > 0) {
+        setResultFilterMode("strict");
+        setVideos(dedupeVideos(result.videos));
+        setCurrentIndex(0);
+      } else {
+        setResultFilterMode("strict");
+        setVideos([]);
+        setCurrentIndex(0);
+      }
+
+      toast({
+        title: forceRefresh ? `#${tag} — Novos vídeos! 🔄` : (result.from_cache ? `#${tag} — Do cache ✨` : `#${tag} — Busca concluída!`),
+        description: result.from_cache
+          ? `${result.videos_found} vídeos disponíveis (sem custo, usando cache).`
+          : `${result.new_scraped} novos + ${result.videos_found} disponíveis.`,
+      });
+    } catch (err) {
+      console.error('Scrape error:', err);
+      toast({ title: "Erro na busca", description: "Não foi possível buscar vídeos.", variant: "destructive" });
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  const executeMergeScrape = async () => {
+    setIsScraping(true);
+    setCacheStatus(null);
+    setNicheWarning(null);
+    setMergeLogs([]);
+
+    // Check if ALL selected presets belong to generic groups (skip niche filter)
+    const allGeneric = selectedTags.every(tagStr => {
+      const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+      return preset ? GENERIC_GROUPS.has(preset.group) : false;
+    });
+
+    // Expand multi-tags (comma-separated) into individual tags with split quantities
+    const expandedTags: string[] = [];
+    const expandedQty: Record<string, number> = {};
+    for (const tag of selectedTags) {
+        if (tag.includes(',')) {
+        const subTags = tag.split(',').map(t => t.trim()).filter(Boolean);
+          const distributed = distributeExactTotal(subTags, tagQuantities[tag] || 50);
+        subTags.forEach(st => {
+            const qty = distributed[st] || 0;
+            if (qty <= 0) return;
+            if (!expandedTags.includes(st)) expandedTags.push(st);
+            expandedQty[st] = (expandedQty[st] || 0) + qty;
+        });
+      } else {
+        if (!expandedTags.includes(tag)) {
+          expandedTags.push(tag);
+        }
+          expandedQty[tag] = (expandedQty[tag] || 0) + (tagQuantities[tag] || 50);
+      }
+    }
+
+    const totalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    const startTime = performance.now();
+    const logs: string[] = [];
+    const addLog = (msg: string) => { logs.push(msg); setMergeLogs([...logs]); };
+
+    const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
+      if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
+      if (v.shares < filters.minShares || v.comments < filters.minComments) return false;
+      const dur = parseDuration(v.duration);
+      if (filters.minDuration > 0 && dur > 0 && dur < filters.minDuration) return false;
+      if (dur > 120) return false;
+      return true;
+    });
+
+    const tagQtyStr = expandedTags.map(t => `#${t}(${expandedQty[t]})`).join(', ');
+    addLog(`🎯 Meta: ${totalTarget} vídeos — ${tagQtyStr}`);
+
+    const PARALLEL = 20;
+    const totalExpandedQty = Object.values(expandedQty).reduce((s, q) => s + q, 0) || 1;
+    let totalNew = 0;
+
+    const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean) => {
+      const freshVideos: TikTokVideo[] = [];
+
+      for (let i = 0; i < expandedTags.length; i += PARALLEL) {
+        const batch = expandedTags.slice(i, i + PARALLEL);
+        const batchResults = await Promise.allSettled(
+          batch.map(tag => {
+            const tagWeight = (expandedQty[tag] || 50) / totalExpandedQty;
+            const requestAmount = Math.min(Math.ceil(requestedMultiplier * tagWeight), 500);
+            return tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true);
+          })
+        );
+
+        batchResults.forEach((r, idx) => {
+          const tag = batch[idx];
+          if (r.status === 'fulfilled' && r.value?.videos) {
+            const raw = r.value.videos;
+            const filtered = applyFilters(raw);
+            freshVideos.push(...filtered);
+            totalNew += r.value.new_scraped || 0;
+            addLog(`  ✅ #${tag}: ${filtered.length}/${raw.length} válidos`);
+          } else if (r.status === 'rejected') {
+            addLog(`  ❌ #${tag}: erro - ${(r as any).reason?.message || 'desconhecido'}`);
+          } else {
+            addLog(`  ⚠️ #${tag}: sem vídeos`);
+          }
+        });
+      }
+
+      return dedupeVideos(freshVideos);
+    };
+
+    const OVERFETCH_MULTIPLIER = 5;
+    const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
+    addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
+    setScrapeProgress(`Buscando ${expandedTags.length} hashtags em paralelo...`);
+
+    const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
+    const seenCandidateKeys = new Set(existingVideoKeys);
+    const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
+    const initialCandidates = initialRaw.filter((video) => {
+      const key = getVideoKey(video);
+      if (seenCandidateKeys.has(key)) return false;
+      seenCandidateKeys.add(key);
+      return true;
+    });
+
+    const phase1Time = ((performance.now() - startTime) / 1000).toFixed(1);
+    addLog(`📊 Coletados: ${initialCandidates.length} vídeos novos únicos em ${phase1Time}s${existingVideoKeys.size > 0 ? ` (${existingVideoKeys.size} já carregados)` : ''}`);
+
+    let approvedVideos: TikTokVideo[] = [];
+
+    if (allGeneric) {
+      addLog(`⚡ Hashtags genéricas detectadas — filtro de nicho desativado`);
+      approvedVideos = initialCandidates;
+
+      const MAX_GENERIC_ROUNDS = 6;
+      for (let round = 1; round < MAX_GENERIC_ROUNDS && approvedVideos.length < totalTarget; round++) {
+        const deficit = totalTarget - approvedVideos.length;
+        addLog(`🔁 Retry genérico ${round}: faltam ${deficit}, buscando mais...`);
+        setScrapeProgress(`Buscando +${deficit} vídeos genéricos...`);
+        const retryTarget = deficit * 5;
+        const retryRaw = await fetchCandidates(retryTarget, true);
+        const retryCandidates = retryRaw.filter((video) => {
+          const key = getVideoKey(video);
+          if (seenCandidateKeys.has(key)) return false;
+          seenCandidateKeys.add(key);
+          return true;
+        });
+        addLog(`📊 Retry genérico ${round}: ${retryCandidates.length} candidatos novos`);
+        if (retryCandidates.length === 0) break;
+        approvedVideos = dedupeVideos([...approvedVideos, ...retryCandidates]);
+      }
+    } else {
+      const groupLabels = selectedTags.map(tagStr => {
+        const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+        return preset ? preset.label : null;
+      }).filter(Boolean);
+      const mergeNicheDescription = groupLabels.length > 0
+        ? `Vídeos do TikTok brasileiro sobre: ${groupLabels.join(', ')}. Hashtags relacionadas: ${expandedTags.slice(0, 10).map(t => '#' + t).join(', ')}`
+        : `Conteúdo do mesmo nicho destas hashtags do TikTok brasileiro: ${expandedTags.slice(0, 8).map((tag) => `#${tag}`).join(', ')}`;
+
+      addLog(`🧠 Hashtags de nicho detectadas — validação por nicho ativada`);
+
+      const MAX_FILTER_ROUNDS = 6;
+      for (let round = 0; round < MAX_FILTER_ROUNDS; round++) {
+        const deficit = totalTarget - approvedVideos.length;
+        if (deficit <= 0) break;
+
+        let roundCandidates: TikTokVideo[] = [];
+
+        if (round === 0) {
+          roundCandidates = initialCandidates;
+          if (roundCandidates.length === 0) {
+            addLog(`⚠️ Coleta inicial não trouxe vídeos novos, tentando busca forçada...`);
+            continue;
+          }
+        } else {
+          addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
+          setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
+          const retryTarget = deficit * 5;
+          const retryRaw = await fetchCandidates(retryTarget, true);
+          roundCandidates = retryRaw.filter((video) => {
+            const key = getVideoKey(video);
+            if (seenCandidateKeys.has(key)) return false;
+            seenCandidateKeys.add(key);
+            return true;
+          });
+          addLog(`📊 Retry ${round}: ${roundCandidates.length} candidatos novos`);
+          if (roundCandidates.length === 0) {
+            addLog(`⚠️ Nenhum vídeo novo encontrado, encerrando retries`);
+            break;
+          }
+        }
+
+        addLog(`🤖 Filtrando com IA (rodada ${round + 1})...`);
+        setScrapeProgress(`IA analisando ${roundCandidates.length} vídeos...`);
+
+        const [nicheFiltered, thumbFiltered] = await Promise.all([
+          applyNicheTitleFilter(roundCandidates, mergeNicheDescription, expandedTags, addLog),
+          applyThumbnailValidation(roundCandidates, mergeNicheDescription, addLog),
+        ]);
+        const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
+        const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
+        const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
+        const roundApproved = hadSignal
+          ? roundCandidates.filter((video) => {
+              const key = getVideoKey(video);
+              return nicheKeys.has(key) || thumbKeys.has(key);
+            })
+          : roundCandidates;
+
+        const beforeApproved = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
+        addLog(`🎯 Rodada ${round + 1}: +${approvedVideos.length - beforeApproved} aprovados (${approvedVideos.length}/${totalTarget})`);
+      }
+    }
+
+    let unique = approvedVideos;
+    if (unique.length > totalTarget) unique = unique.slice(0, totalTarget);
+
+    const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+    addLog(`🏁 Concluído: ${unique.length}/${totalTarget} vídeos em ${elapsed}s`);
+
+    setResultFilterMode("ai");
+    if (unique.length > 0) {
+      setVideos(prev => {
+        const merged = dedupeVideos([...prev, ...unique]);
+        setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+        return merged;
+      });
+      detectOffTopicVideos(unique, expandedTags);
+    }
+    setScrapeProgress("");
+
+    setCacheStatus(`Mesclado ${selectedTags.length} hashtags: ${unique.length} vídeos únicos (${totalNew} novos). Meta: ${totalTarget}.`);
+    activityTracker.logMerge(selectedTags);
+    toast({
+      title: `🔀 Mescla concluída! ⚡ ${elapsed}s`,
+      description: `${unique.length}/${totalTarget} vídeos de ${selectedTags.length} hashtags.`,
+    });
+    setIsScraping(false);
+  };
+
+  const executeForYouScrape = async () => {
+    setIsScraping(true);
+    setCacheStatus(null);
+    setActiveTag("foryou");
+    setScrapeProgress(`Buscando ${foryouQuantity} vídeos do For You com filtros...`);
+    activityTracker.logSearch('foryou');
+
+    try {
+      const result = await tiktokApi.scrapeForYou(foryouQuantity, filters);
+
+      if (result.videos && result.videos.length > 0) {
+        setResultFilterMode("strict");
+        setVideos(dedupeVideos(result.videos));
+        setCurrentIndex(0);
+      }
+
+      setCacheStatus(`${result.new_scraped} novos vídeos coletados do For You. ${result.total_available} disponíveis no total.`);
+      toast({
+        title: `🔥 For You — ${result.new_scraped} novos!`,
+        description: `${result.total_available} vídeos disponíveis no total.`,
+      });
+    } catch (err) {
+      console.error('FYP scrape error:', err);
+      toast({ title: "Erro na busca", description: "Não foi possível buscar vídeos do For You.", variant: "destructive" });
+    } finally {
+      setIsScraping(false);
+      setScrapeProgress("");
+    }
+  };
+
+  const handleConfirmAction = () => {
+    setConfirmDialog({ open: false, type: "single" });
+    if (confirmDialog.type === "single" && confirmDialog.tag) {
+      executeSingleScrape(confirmDialog.tag);
+    } else if (confirmDialog.type === "merge") {
+      executeMergeScrape();
+    } else if (confirmDialog.type === "foryou") {
+      executeForYouScrape();
+    }
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSingleScrapeConfirm(searchTag);
+  };
+
+  const handleDownload = async () => {
+    if (!currentVideo) return;
+    setIsDownloading(true);
+    activityTracker.logDownload(currentVideo.title, currentVideo.id);
+    try {
+      const result = await tiktokApi.downloadVideo(currentVideo);
+      if (result.success) {
+        setDownloadedCount((prev) => prev + 1);
+        toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
+        // Remove downloaded video from preview and DB
+        setVideos(prev => prev.filter(v => v.id !== currentVideo.id));
+        setCurrentIndex(i => Math.min(i, videos.length - 2));
+        tiktokApi.deleteVideos([currentVideo.id]).catch(err => console.error('Delete error:', err));
+      } else {
+        toast({ title: "Erro no download", description: result.error || "Não foi possível baixar.", variant: "destructive" });
+      }
+    } catch (err) {
+      console.error('Download error:', err);
+      toast({ title: "Erro no download", description: "Falha ao baixar o vídeo.", variant: "destructive" });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleBatchDownload = async (overrideCount?: number) => {
+    const qty = overrideCount || batchQuantity;
+    const requestedCount = Math.min(qty, totalFiltered);
+    if (requestedCount <= 0) return;
+
+    // Always slice from 0 since downloaded videos are removed from the list
+    const videosToDownloadRaw = filteredVideos.slice(0, requestedCount);
+
+    const normalizeUrl = (url: string | null) =>
+      (url || "").trim().toLowerCase().split("?")[0].replace(/\/+$/, "");
+
+    const getVideoKey = (video: TikTokVideo) => {
+      if (video.tiktok_id) return `id:${video.tiktok_id}`;
+      const source = normalizeUrl(video.source_url);
+      if (source) return `source:${source}`;
+      const direct = normalizeUrl(video.video_url);
+      if (direct) return `video:${direct}`;
+      return `meta:${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
+    };
+
+    const seenVideoKeys = new Set<string>();
+    const videosToDownload = videosToDownloadRaw.filter((video) => {
+      const key = getVideoKey(video);
+      if (seenVideoKeys.has(key)) return false;
+      seenVideoKeys.add(key);
+      return true;
+    });
+
+    const skippedBeforeDownload = requestedCount - videosToDownload.length;
+    const batchCount = videosToDownload.length;
+
+    if (batchCount <= 0) {
+      setDownloadedCount((prev) => prev + requestedCount);
+      toast({ title: "Sem novos vídeos", description: "Todos os itens deste lote eram duplicados." });
+      return;
+    }
+
+    setIsDownloading(true);
+    setBatchProgress({ current: 0, total: batchCount, active: true });
+    activityTracker.logBatchDownload(batchCount);
+    toast({
+      title: "Preparando ZIP...",
+      description:
+        skippedBeforeDownload > 0
+          ? `Baixando ${batchCount} vídeos únicos (ignorados ${skippedBeforeDownload} duplicados).`
+          : `Baixando ${batchCount} vídeos sem marca d'água.`,
+    });
+
+    const zip = new JSZip();
+    let successCount = 0;
+    let completedCount = 0;
+    let skippedBySameFile = 0;
+    let directUrlCount = 0;
+    let edgeFnCount = 0;
+    const BATCH_SIZE = 50; // matches edge function limit
+    const batchStartTime = performance.now();
+
+    // Step 1: Resolve all download URLs in sequential batches (avoid tikwm rate-limit)
+    const urlMap = new Map<number, string>(); // index -> download_url
+
+    {
+      const batchPayloads: { videos: any[]; batchIndex: number }[] = [];
+      for (let start = 0; start < videosToDownload.length; start += BATCH_SIZE) {
+        const chunk = videosToDownload.slice(start, start + BATCH_SIZE);
+        batchPayloads.push({
+          batchIndex: start,
+          videos: chunk.map((video, i) => ({
+            video_url: video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : ''),
+            tiktok_id: video.tiktok_id || undefined,
+            index: start + i,
+          })),
+        });
+      }
+
+      // Process batches sequentially to avoid tikwm rate-limiting
+      for (let b = 0; b < batchPayloads.length; b++) {
+        const payload = batchPayloads[b];
+        console.log(`[Batch] Resolving batch ${b + 1}/${batchPayloads.length} (${payload.videos.length} videos)`);
+        
+        try {
+          const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
+            body: { videos: payload.videos },
+          });
+          if (!error && data?.results) {
+            for (const r of data.results) {
+              if (r.success && r.download_url) {
+                urlMap.set(r.index, r.download_url);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[Batch] Batch ${b + 1} failed:`, err);
+        }
+
+        setBatchProgress({
+          current: Math.floor(((b + 1) / batchPayloads.length) * batchCount * 0.3),
+          total: batchCount,
+          active: true,
+        });
+
+        // Small delay between batches to avoid rate-limiting
+        if (b < batchPayloads.length - 1) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      // Retry pass: re-resolve failed URLs in smaller batches
+      const failedIndices = videosToDownload
+        .map((_, i) => i)
+        .filter(i => !urlMap.has(i));
+
+      if (failedIndices.length > 0 && failedIndices.length < videosToDownload.length) {
+        console.log(`[Batch] Retrying ${failedIndices.length} failed URLs`);
+        const RETRY_BATCH = 20;
+        for (let r = 0; r < failedIndices.length; r += RETRY_BATCH) {
+          const retryChunk = failedIndices.slice(r, r + RETRY_BATCH);
+          const retryVideos = retryChunk.map(idx => ({
+            video_url: videosToDownload[idx].source_url || (videosToDownload[idx].tiktok_id ? `https://www.tiktok.com/@user/video/${videosToDownload[idx].tiktok_id}` : ''),
+            tiktok_id: videosToDownload[idx].tiktok_id || undefined,
+            index: idx,
+          }));
+
+          try {
+            const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
+              body: { videos: retryVideos },
+            });
+            if (!error && data?.results) {
+              for (const res of data.results) {
+                if (res.success && res.download_url) {
+                  urlMap.set(res.index, res.download_url);
+                }
+              }
+            }
+          } catch {}
+
+          if (r + RETRY_BATCH < failedIndices.length) {
+            await new Promise(resolve => setTimeout(resolve, 800));
+          }
+        }
+        console.log(`[Batch] After retry: ${urlMap.size}/${videosToDownload.length} resolved`);
+      }
+    }
+
+    setBatchProgress({ current: Math.floor(batchCount * 0.4), total: batchCount, active: true });
+
+    console.log(`[Batch] Resolved ${urlMap.size}/${videosToDownload.length} URLs in ${((performance.now() - batchStartTime) / 1000).toFixed(1)}s`);
+
+    // Step 2: Download actual video files in parallel using resolved URLs
+    const CONCURRENCY = 30;
+    const downloadFile = async (
+      video: typeof videosToDownload[0],
+      index: number
+    ): Promise<{ index: number; blob: Blob; name: string; downloadUrl: string } | null> => {
+      const downloadUrl = urlMap.get(index);
+      if (!downloadUrl) return null;
+
+      try {
+        const res = await fetch(downloadUrl);
+        if (!res.ok) return null;
+
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('audio') && !contentType.includes('video')) return null;
+
+        const blob = await res.blob();
+        if (blob.type && blob.type.includes('audio') && !blob.type.includes('video')) return null;
+        if (blob.size < 50 * 1024) return null; // 50KB minimum (was 200KB)
+
+        const header = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+        if (!String.fromCharCode(...header).includes('ftyp')) return null;
+
+        const safeName = (video.title || 'video').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
+        return { index, blob, name: safeName, downloadUrl };
+      } catch (err) {
+        console.error(`Failed to download video ${index + 1}:`, err);
+        return null;
+      }
+    };
+
+    const seenDownloadUrls = new Set<string>();
+
+    for (let start = 0; start < videosToDownload.length; start += CONCURRENCY) {
+      const chunk = videosToDownload.slice(start, start + CONCURRENCY);
+      const results = await Promise.all(
+        chunk.map((video, i) => downloadFile(video, start + i))
+      );
+
+      for (const result of results) {
+        if (!result) continue;
+
+        const normalizedDownloadUrl = result.downloadUrl.split('?')[0];
+        if (seenDownloadUrls.has(normalizedDownloadUrl)) {
+          skippedBySameFile++;
+          continue;
+        }
+        seenDownloadUrls.add(normalizedDownloadUrl);
+
+        const paddedNum = String(successCount + 1).padStart(String(batchCount).length, '0');
+        zip.file(`${paddedNum}_${result.name}.mp4`, result.blob);
+        successCount++;
+      }
+
+      completedCount += chunk.length;
+      setBatchProgress({ current: Math.min(completedCount, batchCount), total: batchCount, active: true });
+    }
+
+    if (successCount > 0) {
+      toast({ title: "Gerando ZIP...", description: "Compactando vídeos..." });
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const tag = activeTag || 'tiktok';
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      saveAs(zipBlob, `${tag}_${successCount}videos_${timestamp}.zip`);
+    }
+
+    const totalTime = ((performance.now() - batchStartTime) / 1000).toFixed(1);
+    console.log(`[Batch Download] ${successCount}/${batchCount} em ${totalTime}s | Direto: ${directUrlCount} | Edge Fn: ${edgeFnCount}`);
+
+    // Remove downloaded videos from preview and DB
+    const downloadedIds = new Set(videosToDownload.map(v => v.id));
+    setVideos(prev => prev.filter(v => !downloadedIds.has(v.id)));
+    setCurrentIndex(0);
+    setDownloadedCount((prev) => prev + requestedCount);
+    tiktokApi.deleteVideos(Array.from(downloadedIds)).catch(err => console.error('Delete error:', err));
+    setBatchProgress({ current: 0, total: 0, active: false });
+    toast({
+      title: successCount > 0 ? `ZIP pronto! ⚡ ${totalTime}s` : "Falha no download",
+      description: successCount > 0
+        ? `${successCount} vídeos baixados em ${totalTime}s${skippedBeforeDownload + skippedBySameFile > 0 ? ` (${skippedBeforeDownload + skippedBySameFile} duplicados ignorados)` : ''}.`
+        : "Não foi possível baixar nenhum vídeo.",
+      variant: successCount > 0 ? "default" : "destructive",
+    });
+    setIsDownloading(false);
+  };
+
+  // Cost estimate
+  const estimateCost = (count: number) => {
+    // ~$0.05 per 20 videos via Apify fallback
+    return (count * 50 * 0.05 / 20).toFixed(2);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Carregando vídeos...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const groupedTags = {
+    "😂 Humor": PRESET_HASHTAGS.filter(h => h.group === "humor"),
+    "🔥 Viral & Trends": PRESET_HASHTAGS.filter(h => h.group === "viral"),
+    "💃 Lifestyle": PRESET_HASHTAGS.filter(h => h.group === "lifestyle"),
+    "🤖 Trends IA & Novelas": PRESET_HASHTAGS.filter(h => h.group === "ia_novela"),
+    "😌 Satisfying & Curiosidades": PRESET_HASHTAGS.filter(h => h.group === "satisfying"),
+    "🏠 Casa & Organização": PRESET_HASHTAGS.filter(h => h.group === "casa"),
+    "💡 Dicas & Motivação": PRESET_HASHTAGS.filter(h => h.group === "dicas"),
+    "😱 Hook Forte": PRESET_HASHTAGS.filter(h => h.group === "hook"),
+  };
+
+  const handleDiscover = async () => {
+    if (!discoverTopic.trim()) return;
+    setIsDiscovering(true);
+    try {
+      const result = await tiktokApi.discoverHashtags(discoverTopic.trim());
+      if (result.success && result.hashtags?.length > 0) {
+        setDiscoveredTags(result.hashtags);
+        toast({
+          title: `🔍 ${result.hashtags.length} hashtags descobertas!`,
+          description: result.from_cache ? 'Do cache (últimas 24h)' : `Novas hashtags para "${discoverTopic}"`,
+        });
+      } else {
+        toast({ title: "Nenhuma hashtag encontrada", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro na descoberta", description: err.message, variant: "destructive" });
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Confirmar busca
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              {confirmDialog.type === "single" ? (
+                <>
+                  <p>Buscar <strong>50 vídeos</strong> de <strong>#{confirmDialog.tag}</strong>?</p>
+                  <p className="text-xs text-muted-foreground">
+                    Se os vídeos já estiverem no cache (últimas 6h), não haverá custo.
+                    Caso contrário, usará Apify como fallback (~$0.12).
+                  </p>
+                </>
+              ) : confirmDialog.type === "foryou" ? (
+                <>
+                  <p>Buscar <strong>{foryouQuantity} vídeos</strong> do <strong>For You</strong> do TikTok?</p>
+                  {(filters.minViews > 0 || filters.minLikes > 0 || filters.minShares > 0 || filters.minComments > 0) && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Views {tiktokApi.formatNumber(filters.minViews)}+</span>}
+                      {filters.minLikes > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Likes {tiktokApi.formatNumber(filters.minLikes)}+</span>}
+                      {filters.minShares > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Shares {tiktokApi.formatNumber(filters.minShares)}+</span>}
+                      {filters.minComments > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Comments {tiktokApi.formatNumber(filters.minComments)}+</span>}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    O sistema vai buscar conteúdo trending até preencher <strong>{foryouQuantity} vídeos</strong> que passem nos seus filtros. Sem custo (usa APIs gratuitas).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>{aiSuggestedTags.length > 0 ? '🧠 Busca inteligente' : 'Mesclar'}: <strong>{selectedTags.length} {selectedTags.length === 1 ? 'grupo' : 'hashtags'}</strong></p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {selectedTags.map(t => {
+                      const preset = PRESET_HASHTAGS.find(p => p.tag === t);
+                      const displayName = preset ? `${preset.emoji} ${preset.label}` : `#${t}`;
+                      const isMulti = t.includes(',');
+                      const subCount = isMulti ? t.split(',').length : 0;
+                      return (
+                        <span key={t} className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">
+                          {displayName} ({tagQuantities[t] || 50}){isMulti && <span className="text-primary/60 ml-1">• {subCount} tags</span>}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Total: até <strong>{selectedTags.reduce((s, t) => s + (tagQuantities[t] || 50), 0)} vídeos</strong>.
+                  </p>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction}>
+              Confirmar busca
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Gradient line top */}
+      <div className="h-[1px] gradient-line w-full flex-shrink-0" />
+
+      {/* Header */}
+      <header className="border-b border-border/15 px-6 py-2.5 flex-shrink-0 glass-strong sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
+          <div className="text-right">
+            <p className="text-sm font-semibold text-foreground leading-tight tracking-tight">{profile?.display_name || profile?.username || 'Editor'}</p>
+            <div className="flex items-center justify-end gap-1.5 mt-0.5">
+              {role === 'admin' && (
+                <span className="px-1.5 py-[1px] rounded-md bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-wider border border-primary/15 glow-primary">
+                  Admin
+                </span>
+              )}
+              {role !== 'admin' && (
+                <span className="text-[10px] text-muted-foreground/60 capitalize">{role || 'editor'}</span>
+              )}
+            </div>
+          </div>
+          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/80 to-primary/50 flex items-center justify-center text-primary-foreground text-xs font-bold avatar-glow ring-2 ring-primary/10">
+            {(profile?.display_name || profile?.username || 'E').charAt(0).toUpperCase()}
+          </div>
+          {role === 'admin' && (
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 flex items-start justify-center px-8 py-6">
+        <div className="flex gap-6 max-w-[1200px] w-full">
+          {/* Video Player - hidden during editing tab */}
+          <div
+            ref={playerRef}
+            className={`relative flex-shrink-0 ${activeTab === "edicao" ? "hidden" : ""}`}
+            style={{ width: '360px' }}
+            onWheelCapture={handleWheelNavigate}
+          >
+            {currentVideo ? (
+              <div className={`relative rounded-2xl overflow-hidden ${isPlaying ? 'player-glow-active' : 'player-glow'} border border-border/15 transition-all duration-500`} style={{ aspectRatio: '9/16' }}>
+                {previewVideoSrc ? (
+                  <>
+                    {!isPreviewReady && (
+                      <img
+                        src={previewThumbnailSrc || '/placeholder.svg'}
+                        alt={currentVideo.title}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
+                      />
+                    )}
+                    <video
+                      ref={videoRef}
+                      key={currentVideo.id}
+                      src={previewVideoSrc}
+                      className={`w-full h-full object-cover ${isPreviewReady ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
+                      loop
+                      playsInline
+                      muted={isMuted}
+                      autoPlay={isPlaying}
+                      poster={previewThumbnailSrc || '/placeholder.svg'}
+                      onLoadedData={() => setIsPreviewReady(true)}
+                      onCanPlay={() => setIsPreviewReady(true)}
+                      onError={() => {
+                        setPreviewVideoSrc(null);
+                        setIsPreviewReady(false);
+                      }}
+                    />
+                  </>
+                ) : (
+                  <img
+                    src={previewThumbnailSrc || '/placeholder.svg'}
+                    alt={currentVideo.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
+                  />
+                )}
+
+                {isPreviewLoading && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/40 backdrop-blur-[2px]">
+                    <div className="flex items-center gap-2 rounded-full glass-subtle px-3 py-1.5 text-xs font-semibold text-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                      Carregando vídeo...
+                    </div>
+                  </div>
+                )}
+
+                <div className="absolute inset-0 z-10 cursor-pointer" onClick={togglePlay} onWheel={handleWheelNavigate} aria-label="Interação do player" />
+
+                {!isPlaying && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-30 pointer-events-none">
+                    <div className="h-14 w-14 rounded-full bg-primary/20 backdrop-blur-xl flex items-center justify-center border border-primary/30 glow-primary transition-all duration-300">
+                      <Play className="h-6 w-6 text-foreground fill-foreground ml-0.5" />
+                    </div>
+                  </div>
+                )}
+
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+                  <span className="glass-subtle text-foreground text-xs font-semibold px-3 py-1 rounded-full">
+                    {currentIndex + 1} / {totalFiltered}
+                  </span>
+                </div>
+
+                <button onClick={toggleMute} className="absolute top-3 right-3 z-20 h-7 w-7 rounded-full glass-subtle flex items-center justify-center text-foreground/80 hover:text-foreground hover:scale-110 transition-all duration-200">
+                  {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                </button>
+
+                <button onClick={handleRemoveVideo} className="absolute top-3 left-3 z-20 h-7 w-7 rounded-full glass-subtle flex items-center justify-center text-destructive/80 hover:text-destructive hover:bg-destructive/20 hover:scale-110 transition-all duration-200" title="Remover vídeo">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+
+                <div className="absolute left-2 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
+                  <button onClick={handlePrev} className="h-7 w-7 rounded-full glass-subtle flex items-center justify-center text-foreground/80 hover:text-foreground hover:scale-110 active:scale-95 transition-all duration-200">
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button onClick={handleNext} className="h-7 w-7 rounded-full glass-subtle flex items-center justify-center text-foreground/80 hover:text-foreground hover:scale-110 active:scale-95 transition-all duration-200">
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Video info overlay */}
+                <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-background via-background/60 to-transparent p-4 pt-16">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {tiktokApi.getViralScore(currentVideo) === 'trending' && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[8px] font-bold">🔥 TRENDING</span>
+                    )}
+                    {tiktokApi.getViralScore(currentVideo) === 'hot' && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[8px] font-bold">⚡ HOT</span>
+                    )}
+                    {tiktokApi.getQualityScore(currentVideo) >= 70 && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[8px] font-bold">
+                        <Star className="h-2 w-2" />HD
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-foreground/90 font-medium line-clamp-2 leading-relaxed">{currentVideo.title}</p>
+                  <div className="flex items-center gap-3 mt-1.5 text-[10px] text-foreground/50">
+                    {currentVideo.author && <span className="font-medium">@{currentVideo.author}</span>}
+                    <span className="flex items-center gap-0.5"><Eye className="h-2.5 w-2.5" />{tiktokApi.formatNumber(currentVideo.views)}</span>
+                    <span className="flex items-center gap-0.5"><Heart className="h-2.5 w-2.5" />{tiktokApi.formatNumber(currentVideo.likes)}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl glass-strong p-8 gap-5 border border-border/20" style={{ aspectRatio: '9/16' }}>
+                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center border border-primary/10 glow-primary animate-pulse-glow">
+                  <Search className="h-7 w-7 text-primary/30" />
+                </div>
+                <div className="text-center space-y-1.5">
+                  <p className="text-muted-foreground text-xs font-semibold tracking-tight">Nenhum vídeo</p>
+                  <p className="text-muted-foreground/40 text-[10px] leading-relaxed max-w-[140px]">
+                    Busque vídeos para visualizar aqui
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {[0,1,2].map(i => (
+                    <div key={i} className="h-1 w-6 rounded-full bg-muted/40" />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Panel */}
+          <div className="flex-1 space-y-4 min-w-0">
+            {/* Tab Buttons */}
+            <div className="flex rounded-xl glass-strong p-1 gap-1">
+              <button
+                onClick={() => setActiveTab("busca")}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-[10px] text-sm font-semibold transition-all duration-200 ${
+                  activeTab === "busca"
+                    ? "bg-gradient-to-r from-primary to-primary/85 text-primary-foreground btn-glow"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                }`}
+              >
+                <Search className="h-3.5 w-3.5" />
+                Busca
+              </button>
+              <button
+                onClick={() => setActiveTab("edicao")}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-[10px] text-sm font-semibold transition-all duration-200 ${
+                  activeTab === "edicao"
+                    ? "bg-gradient-to-r from-primary to-primary/85 text-primary-foreground btn-glow"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/30"
+                }`}
+              >
+                <Scissors className="h-3.5 w-3.5" />
+                Edição
+              </button>
+            </div>
+
+            {activeTab === "edicao" ? (
+              <VideoEditorTab videos={filteredVideos} setVideos={setVideos} />
+            ) : (
+            <>
+            {/* Hero: For You */}
+            <div className="rounded-2xl border border-primary/8 bg-gradient-to-br from-primary/6 via-card/90 to-card/60 p-5 space-y-4 hover-lift backdrop-blur-sm">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <h2 className="text-base font-bold text-foreground tracking-tight flex items-center gap-2">
+                    <span className="text-lg">🔥</span> For You
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                    Vídeos trending com filtros automáticos
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setConfirmDialog({ open: true, type: "foryou" })}
+                  disabled={isScraping}
+                  className="h-9 px-5 gap-1.5 text-xs font-semibold rounded-xl btn-glow bg-gradient-to-r from-primary via-primary/95 to-primary/80 hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+                >
+                  {isScraping && activeTag === 'foryou' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}
+                  Buscar {foryouQuantity}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground/50 font-semibold uppercase tracking-wider">Qty</span>
+                <div className="flex gap-1">
+                  {[50, 100, 200, 300, 500].map(qty => (
+                    <button
+                      key={qty}
+                      onClick={() => setForyouQuantity(qty)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200
+                        ${foryouQuantity === qty
+                          ? 'bg-gradient-to-r from-primary/90 to-primary/70 text-primary-foreground shadow-sm tag-glow'
+                          : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary/70 hover:scale-[1.06] active:scale-[0.94]'
+                        }`}
+                    >
+                      {qty}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(filters.minViews > 0 || filters.minLikes > 0 || filters.minShares > 0 || filters.minComments > 0) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-md bg-primary/8 text-primary/70 text-[10px] font-semibold border border-primary/10">{tiktokApi.formatNumber(filters.minViews)}+ views</span>}
+                  {filters.minLikes > 0 && <span className="px-2 py-0.5 rounded-md bg-primary/8 text-primary/70 text-[10px] font-semibold border border-primary/10">{tiktokApi.formatNumber(filters.minLikes)}+ likes</span>}
+                  {filters.minShares > 0 && <span className="px-2 py-0.5 rounded-md bg-primary/8 text-primary/70 text-[10px] font-semibold border border-primary/10">{tiktokApi.formatNumber(filters.minShares)}+ shares</span>}
+                  {filters.minComments > 0 && <span className="px-2 py-0.5 rounded-md bg-primary/8 text-primary/70 text-[10px] font-semibold border border-primary/10">{tiktokApi.formatNumber(filters.minComments)}+ comments</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Busca Inteligente — automática: descreve + quantidade → resultados diretos */}
+            <div className="flex gap-2">
+              <div className="flex-1 flex gap-2">
+                <div className="relative flex-1 group">
+                  <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary/50 group-focus-within:text-primary/70 transition-colors duration-200" />
+                  <Input
+                    value={aiSearchDescription}
+                    onChange={(e) => setAiSearchDescription(e.target.value)}
+                    placeholder="Descreva o vídeo... ex: mulher dançando, homem malhando"
+                    className="pl-9 h-9 glass rounded-xl text-sm placeholder:text-muted-foreground/35 focus:border-primary/25 input-glow transition-all duration-200"
+                    disabled={isScraping}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAiSearch(); } }}
+                  />
+                </div>
+                <div className="relative w-20">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={aiSearchQuantity || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setAiSearchQuantity(raw === '' ? 0 : Math.min(2000, parseInt(raw)));
+                    }}
+                    onBlur={() => { if (!aiSearchQuantity || aiSearchQuantity < 10) setAiSearchQuantity(100); }}
+                    className="h-9 w-full text-center text-sm font-bold glass rounded-xl border border-border/30 focus:border-primary/30 outline-none bg-transparent text-foreground"
+                    disabled={isScraping}
+                    placeholder="100"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/50">vids</span>
+                </div>
+                <Button
+                  onClick={handleAiSearch}
+                  disabled={isScraping || !aiSearchDescription.trim()}
+                  size="sm"
+                  className="h-9 px-4 rounded-xl btn-glow bg-gradient-to-r from-primary via-primary/95 to-primary/80 hover:brightness-110 active:scale-[0.95] transition-all duration-200 gap-1.5"
+                >
+                  {isScraping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Wand2 className="h-3.5 w-3.5" /><span className="text-[11px] font-semibold">Buscar</span></>}
+                </Button>
+              </div>
+
+              <Button
+                onClick={() => setActiveTab("edicao")}
+                disabled={totalFiltered === 0}
+                variant="outline"
+                className="h-9 gap-1.5 text-[11px] font-semibold whitespace-nowrap rounded-xl border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 hover:scale-[1.03] active:scale-[0.97] transition-all duration-200 text-primary"
+              >
+                <Scissors className="h-3 w-3" />
+                Editar
+              </Button>
+
+              <Button
+                onClick={() => handleBatchDownload(totalFiltered)}
+                disabled={isDownloading || totalFiltered === 0}
+                variant="outline"
+                className="h-9 gap-1.5 text-[11px] font-semibold whitespace-nowrap rounded-xl border-border/20 hover:border-primary/15 hover:bg-primary/5 hover:scale-[1.03] active:scale-[0.97] transition-all duration-200"
+              >
+                {batchProgress.active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                {batchProgress.active ? `${batchProgress.current}/${batchProgress.total}` : `${totalFiltered}`}
+              </Button>
+
+              {videos.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-xl hover:scale-[1.06] active:scale-[0.94] hover:bg-destructive/5 transition-all duration-200"
+                  onClick={() => {
+                    setVideos([]);
+                    setCurrentIndex(0);
+                    setDownloadedCount(0);
+                    setCacheStatus(null);
+                    setActiveTag("");
+                    toast({ title: "🗑️ Vídeos limpos", description: "Lista de vídeos foi resetada." });
+                  }}
+                  disabled={isDownloading}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+
+            {/* Progress bar */}
+            {batchProgress.active && (
+              <div className="space-y-1.5">
+                <div className="w-full bg-secondary/50 rounded-full h-1 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-primary to-primary/80 h-full transition-all duration-500 rounded-full glow-primary"
+                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground/70 text-center">
+                  {batchProgress.current} de {batchProgress.total} vídeos
+                </p>
+              </div>
+            )}
+
+            {/* Status */}
+            {(cacheStatus || isScraping) && (
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground glass-subtle rounded-xl px-3 py-2">
+                {isScraping ? (
+                  <div className="flex flex-col gap-1 w-full">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                      <span className="text-primary font-medium">{scrapeProgress || `Buscando #${activeTag}...`}</span>
+                    </div>
+                    {mergeLogs.length > 0 && (
+                      <div className="max-h-32 overflow-y-auto space-y-0.5 mt-1 border-t border-border/30 pt-1">
+                        {mergeLogs.map((log, i) => (
+                          <div key={i} className="text-[10px] text-muted-foreground/80 font-mono">{log}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <span>💾 {cacheStatus}</span>
+                    {activeTag && activeTag !== "mesclar" && activeTag !== "foryou" && activeTag !== "ia" && (
+                      <button onClick={() => executeSingleScrape(activeTag, true)} className="ml-auto flex items-center gap-1 text-primary hover:text-primary/80 font-medium transition-colors hover:scale-105 active:scale-95">
+                        <RefreshCw className="h-2.5 w-2.5" />
+                        Atualizar
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Niche Warning */}
+            {nicheWarning && nicheWarning.offTopicCount > 0 && (
+              <div className="flex items-start gap-2 text-[11px] bg-destructive/10 border border-destructive/30 text-destructive rounded-xl px-3 py-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold">⚠️ {nicheWarning.offTopicCount} vídeos de outros nichos detectados</span>
+                  <p className="text-[10px] opacity-80 mt-0.5">
+                    Tags fora do nicho: {nicheWarning.offTopicTags.join(', ')}
+                  </p>
+                    <button 
+                      onClick={handleDismissOffTopicVideos} 
+                    className="text-[10px] underline mt-1 opacity-70 hover:opacity-100"
+                  >
+                    Dispensar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Hashtags */}
+            <div className="rounded-2xl glass p-4 space-y-3 hover-lift">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hash className="h-3.5 w-3.5 text-primary/40" />
+                  <span className="text-sm font-bold text-foreground tracking-tight">Hashtags</span>
+                  {selectedTags.length > 0 && !aiSuggestedTags.length && (
+                    <span className="text-[9px] bg-gradient-to-r from-primary/20 to-primary/10 text-primary px-1.5 py-0.5 rounded-md font-bold tag-glow">
+                      {selectedTags.length}
+                    </span>
+                  )}
+                </div>
+                {selectedTags.length > 0 && !aiSuggestedTags.length && (
+                  <button onClick={() => { setSelectedTags([]); setTagQuantities({}); }} className="text-[10px] text-muted-foreground/60 hover:text-foreground transition-all duration-200 hover:scale-[1.05]">
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                {Object.entries(groupedTags).map(([groupName, tags]) => (
+                  <div key={groupName}>
+                    <p className="text-[9px] font-bold text-muted-foreground/40 mb-1.5 uppercase tracking-[0.15em]">{groupName}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {tags.map(({ tag, emoji, label }) => {
+                        const isSelected = selectedTags.includes(tag);
+                        const qty = tagQuantities[tag] || 50;
+                        return (
+                          <div key={tag} className="inline-flex items-center gap-0">
+                            <button
+                              onClick={() => toggleTagSelection(tag)}
+                              disabled={isScraping}
+                              className={`inline-flex items-center gap-0.5 px-2 py-[5px] text-[10px] font-semibold transition-all duration-200
+                                ${isSelected
+                                  ? `bg-primary/12 text-primary border border-primary/15 tag-glow scale-[1.04] ${isSelected ? 'rounded-l-lg border-r-0' : 'rounded-lg'}`
+                                  : 'bg-secondary/25 text-foreground/45 border border-transparent hover:bg-secondary/50 hover:text-foreground/75 hover:scale-[1.04] hover:border-border/20 active:scale-[0.96] rounded-lg'
+                                } disabled:opacity-30`}
+                            >
+                              {isSelected && <Check className="h-2.5 w-2.5" />}
+                              <span className="text-[10px]">{emoji}</span>
+                              {label}
+                            </button>
+                            {isSelected && (
+                              <div className="inline-flex items-center bg-primary/8 border border-primary/15 border-l-0 rounded-r-lg overflow-hidden">
+                                <button onClick={(e) => { e.stopPropagation(); setTagQty(tag, qty - 10); }} className="px-1 py-[5px] text-[9px] text-primary/60 hover:text-primary hover:bg-primary/10 transition-all">−</button>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={qty || ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.replace(/\D/g, '');
+                                    setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
+                                  }}
+                                  onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
+                                />
+                                <button onClick={(e) => { e.stopPropagation(); setTagQty(tag, qty + 10); }} className="px-1 py-[5px] text-[9px] text-primary/60 hover:text-primary hover:bg-primary/10 transition-all">+</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2.5 border-t border-border/10">
+                <Button
+                  onClick={() => {
+                    if (selectedTags.length >= 1) {
+                      handleSingleScrapeConfirm(selectedTags[selectedTags.length - 1]);
+                    }
+                  }}
+                  disabled={isScraping || selectedTags.length === 0}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8 gap-1.5 text-[11px] font-semibold rounded-xl border-border/20 hover:border-primary/15 hover:bg-primary/5 hover:scale-[1.03] active:scale-[0.97] transition-all duration-200"
+                >
+                  <Search className="h-3 w-3" />
+                  Buscar 1
+                </Button>
+                <Button
+                  onClick={handleMergeConfirm}
+                  disabled={isScraping || selectedTags.length === 0}
+                  size="sm"
+                  className="flex-1 h-8 gap-1.5 text-[11px] font-semibold rounded-xl btn-glow bg-gradient-to-r from-primary via-primary/95 to-primary/80 hover:brightness-110 active:scale-[0.97] transition-all duration-200"
+                >
+                  <Shuffle className="h-3 w-3" />
+                  Mesclar {selectedTags.length > 0 ? `(${selectedTags.reduce((s, t) => s + (tagQuantities[t] || 50), 0)})` : ''}
+                </Button>
+              </div>
+            </div>
+
+            {/* Descobrir Hashtags por Nicho */}
+            <div className="rounded-2xl glass p-4 space-y-3 hover-lift">
+              <div className="flex items-center gap-2">
+                <Compass className="h-3.5 w-3.5 text-primary/40" />
+                <span className="text-sm font-bold text-foreground tracking-tight">Descobrir Hashtags</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/60">Digite um nicho ou tendência para descobrir hashtags relacionadas via IA</p>
+              <div className="flex gap-2">
+                <Input
+                  value={discoverTopic}
+                  onChange={(e) => setDiscoverTopic(e.target.value)}
+                  placeholder="Ex: novela antiga, trends IA, frutas IA..."
+                  className="h-8 text-xs glass rounded-xl placeholder:text-muted-foreground/35"
+                  disabled={isDiscovering}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleDiscover(); }}
+                />
+                <Button
+                  onClick={handleDiscover}
+                  disabled={isDiscovering || !discoverTopic.trim()}
+                  size="sm"
+                  className="h-8 px-3 rounded-xl btn-glow bg-gradient-to-r from-primary via-primary/95 to-primary/80 text-[11px]"
+                >
+                  {isDiscovering ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Compass className="h-3 w-3" /><span>Descobrir</span></>}
+                </Button>
+              </div>
+              {discoveredTags.length > 0 && (
+                <div>
+                  <p className="text-[9px] font-bold text-muted-foreground/40 mb-1.5 uppercase tracking-[0.15em]">🔍 Descobertas: {discoveredTags[0]?.category}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {discoveredTags.map(({ tag, emoji, label, popularity_score }) => {
+                      const isSelected = selectedTags.includes(tag);
+                      const qty = tagQuantities[tag] || 50;
+                      return (
+                        <div key={tag} className="inline-flex items-center gap-0">
+                          <button
+                            onClick={() => toggleTagSelection(tag)}
+                            disabled={isScraping}
+                            className={`inline-flex items-center gap-0.5 px-2 py-[5px] text-[10px] font-semibold transition-all duration-200
+                              ${isSelected
+                                ? 'bg-primary/12 text-primary border border-primary/15 tag-glow scale-[1.04] rounded-l-lg border-r-0'
+                                : 'bg-secondary/25 text-foreground/45 border border-transparent hover:bg-secondary/50 hover:text-foreground/75 hover:scale-[1.04] rounded-lg'
+                              }`}
+                          >
+                            {isSelected && <Check className="h-2.5 w-2.5" />}
+                            <span className="text-[10px]">{emoji}</span>
+                            {label}
+                            {popularity_score > 70 && <Zap className="h-2 w-2 text-yellow-500" />}
+                          </button>
+                          {isSelected && (
+                            <div className="inline-flex items-center bg-primary/8 border border-primary/15 border-l-0 rounded-r-lg overflow-hidden">
+                              <button onClick={(e) => { e.stopPropagation(); setTagQty(tag, qty - 10); }} className="px-1 py-[5px] text-[9px] text-primary/60 hover:text-primary hover:bg-primary/10 transition-all">−</button>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={qty || ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value.replace(/\D/g, '');
+                                  setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
+                                }}
+                                onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
+                              />
+                              <button onClick={(e) => { e.stopPropagation(); setTagQty(tag, qty + 10); }} className="px-1 py-[5px] text-[9px] text-primary/60 hover:text-primary hover:bg-primary/10 transition-all">+</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quality & Viral Sort */}
+            {videos.length > 0 && (
+              <div className="flex items-center gap-3 px-1">
+                <button
+                  onClick={() => setSortByQuality(p => !p)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-200 ${
+                    sortByQuality
+                      ? 'bg-primary/12 text-primary border border-primary/15'
+                      : 'bg-secondary/25 text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                  }`}
+                >
+                  <Star className="h-2.5 w-2.5" />
+                  Qualidade
+                </button>
+                {currentVideo && (
+                  <div className="flex items-center gap-2 text-[10px]">
+                    {tiktokApi.getViralScore(currentVideo) === 'trending' && (
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-bold border border-red-500/20">
+                        <TrendingUp className="h-2.5 w-2.5" />🔥 TRENDING
+                      </span>
+                    )}
+                    {tiktokApi.getViralScore(currentVideo) === 'hot' && (
+                      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 font-bold border border-orange-500/20">
+                        <Zap className="h-2.5 w-2.5" />⚡ HOT
+                      </span>
+                    )}
+                    <span className="text-muted-foreground/50">
+                      Qualidade: {tiktokApi.getQualityScore(currentVideo)}/100
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="rounded-2xl glass overflow-hidden">
+              <button
+                onClick={() => setShowFilters(p => !p)}
+                className="flex items-center justify-between w-full px-4 py-2.5 hover:bg-secondary/10 transition-all duration-200"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3 w-3 text-muted-foreground/50" />
+                  <span className="text-xs font-semibold text-foreground/60">Filtros</span>
+                  {(filters.minViews > 0 || filters.minLikes > 0 || filters.minShares > 0 || filters.minComments > 0 || filters.minDuration > 0) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-glow" />
+                  )}
+                </div>
+                <ChevronDown className={`h-3 w-3 text-muted-foreground/40 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showFilters && (
+                <div className="px-4 pb-3 space-y-2.5 border-t border-border/10 animate-fade-in">
+                  {[
+                    { key: 'minViews' as const, label: 'Views', icon: Eye, presets: [0, 10000, 50000, 100000, 500000, 1000000] },
+                    { key: 'minLikes' as const, label: 'Likes', icon: Heart, presets: [0, 1000, 5000, 10000, 50000, 100000] },
+                    { key: 'minShares' as const, label: 'Shares', icon: Share2, presets: [0, 100, 500, 1000, 5000, 10000] },
+                    { key: 'minComments' as const, label: 'Comments', icon: MessageCircle, presets: [0, 100, 500, 1000, 5000] },
+                  ].map(({ key, label, icon: Icon, presets }) => (
+                    <div key={key} className="space-y-1 pt-1.5">
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                        <Icon className="h-2.5 w-2.5" />
+                        <span className="font-medium">{label}</span>
+                        {filters[key] > 0 && <span className="text-primary font-bold ml-auto">{tiktokApi.formatNumber(filters[key])}+</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {presets.map(val => (
+                          <button
+                            key={val}
+                            onClick={() => { setFilters(prev => ({ ...prev, [key]: val })); setCurrentIndex(0); }}
+                            className={`px-2 py-[3px] rounded-lg text-[10px] font-semibold transition-all duration-200
+                              ${filters[key] === val
+                                ? 'bg-primary/10 text-primary border border-primary/12 tag-glow'
+                                : 'bg-secondary/25 text-foreground/35 border border-transparent hover:bg-secondary/50 hover:text-foreground/60 hover:scale-[1.06] active:scale-[0.94]'
+                              }`}
+                          >
+                            {val === 0 ? 'Todos' : tiktokApi.formatNumber(val) + '+'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Duration filter */}
+                  <div className="space-y-1 pt-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                      <Film className="h-2.5 w-2.5" />
+                      <span className="font-medium">Duração mín.</span>
+                      {filters.minDuration > 0 && <span className="text-primary font-bold ml-auto">{filters.minDuration}s+</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[0, 5, 10, 15, 20, 30].map(val => (
+                        <button
+                          key={val}
+                          onClick={() => { setFilters(prev => ({ ...prev, minDuration: val })); setCurrentIndex(0); }}
+                          className={`px-2 py-[3px] rounded-lg text-[10px] font-semibold transition-all duration-200
+                            ${filters.minDuration === val
+                              ? 'bg-primary/10 text-primary border border-primary/12 tag-glow'
+                              : 'bg-secondary/25 text-foreground/35 border border-transparent hover:bg-secondary/50 hover:text-foreground/60 hover:scale-[1.06] active:scale-[0.94]'
+                            }`}
+                        >
+                          {val === 0 ? 'Todos' : `${val}s+`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setFilters({ minViews: 0, minLikes: 0, minShares: 0, minComments: 0, minDuration: 0 }); setCurrentIndex(0); }}
+                    className="text-[10px] text-muted-foreground/50 hover:text-foreground font-medium transition-all duration-200 pt-1 hover:scale-[1.05]"
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Stats bar */}
+            {downloadedCount > 0 && (
+              <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground/40 py-1">
+                <Download className="h-3 w-3" />
+                {downloadedCount} baixados • {totalFiltered} disponíveis
+              </div>
+            )}
+            </>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* Bottom shortcuts */}
+      {currentVideo && (
+        <footer className="border-t border-border/10 px-6 py-2 flex-shrink-0 glass-subtle">
+          <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 text-[10px] text-muted-foreground/40">
+            <span className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded-md bg-secondary/30 text-foreground/30 font-mono text-[9px] border border-border/15">↑↓</kbd>
+              Navegar
+            </span>
+            <span className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded-md bg-secondary/30 text-foreground/30 font-mono text-[9px] border border-border/15">Espaço</kbd>
+              Play/Pause
+            </span>
+            <span className="flex items-center gap-1.5">
+              <kbd className="px-1.5 py-0.5 rounded-md bg-secondary/30 text-foreground/30 font-mono text-[9px] border border-border/15">M</kbd>
+              Mudo
+            </span>
+          </div>
+        </footer>
+      )}
+    </div>
+  );
+};
+
+export default Index;

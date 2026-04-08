@@ -1,0 +1,152 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 25% 5%;
+    --foreground: 210 20% 93%;
+
+    --card: 222 20% 8%;
+    --card-foreground: 210 20% 93%;
+
+    --popover: 222 20% 9%;
+    --popover-foreground: 210 20% 93%;
+
+    --primary: 32 95% 52%;
+    --primary-foreground: 220 25% 5%;
+
+    --secondary: 220 16% 12%;
+    --secondary-foreground: 210 15% 75%;
+
+    --muted: 220 16% 11%;
+    --muted-foreground: 215 12% 48%;
+
+    --accent: 165 55% 42%;
+    --accent-foreground: 220 25% 5%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 210 20% 95%;
+
+    --border: 220 15% 13%;
+    --input: 220 16% 13%;
+    --ring: 32 95% 52%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 220 25% 5%;
+    --sidebar-foreground: 210 15% 80%;
+    --sidebar-primary: 32 95% 52%;
+    --sidebar-primary-foreground: 220 25% 5%;
+    --sidebar-accent: 220 16% 11%;
+    --sidebar-accent-foreground: 210 15% 80%;
+    --sidebar-border: 220 15% 12%;
+    --sidebar-ring: 32 95% 52%;
+
+    --success: 145 55% 42%;
+    --warning: 32 95% 52%;
+    --info: 210 75% 52%;
+
+    --glow-primary: 0 0 20px hsl(32 95% 52% / 0.12), 0 0 60px hsl(32 95% 52% / 0.04);
+    --glow-primary-strong: 0 0 24px hsl(32 95% 52% / 0.25), 0 0 80px hsl(32 95% 52% / 0.08);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -30%, hsl(32 95% 52% / 0.04), transparent),
+      radial-gradient(ellipse 50% 40% at 100% 50%, hsl(220 80% 40% / 0.03), transparent),
+      radial-gradient(ellipse 40% 60% at 0% 80%, hsl(165 55% 42% / 0.02), transparent);
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .glow-primary {
+    box-shadow: var(--glow-primary);
+  }
+  .glow-primary-strong {
+    box-shadow: var(--glow-primary-strong);
+  }
+
+  .glass {
+    @apply bg-card/60 backdrop-blur-xl border border-border/25;
+  }
+  .glass-subtle {
+    @apply bg-card/35 backdrop-blur-lg border border-border/15;
+  }
+  .glass-strong {
+    @apply bg-card/80 backdrop-blur-2xl border border-border/30;
+  }
+
+  .btn-glow {
+    box-shadow: 0 0 16px hsl(32 95% 52% / 0.2), 0 1px 3px hsl(0 0% 0% / 0.3), inset 0 1px 0 hsl(0 0% 100% / 0.06);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .btn-glow:hover {
+    box-shadow: 0 0 28px hsl(32 95% 52% / 0.35), 0 2px 8px hsl(0 0% 0% / 0.3), inset 0 1px 0 hsl(0 0% 100% / 0.08);
+    transform: translateY(-1px);
+  }
+  .btn-glow:active {
+    transform: translateY(0);
+    box-shadow: 0 0 12px hsl(32 95% 52% / 0.2), 0 1px 2px hsl(0 0% 0% / 0.3);
+  }
+
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px) scale(1.005);
+    box-shadow: 0 8px 30px hsl(0 0% 0% / 0.25);
+  }
+
+  .player-glow {
+    box-shadow:
+      0 0 50px hsl(32 95% 52% / 0.06),
+      0 0 100px hsl(32 95% 52% / 0.03),
+      0 12px 40px hsl(0 0% 0% / 0.45);
+  }
+  .player-glow-active {
+    box-shadow:
+      0 0 40px hsl(32 95% 52% / 0.12),
+      0 0 80px hsl(32 95% 52% / 0.05),
+      0 12px 40px hsl(0 0% 0% / 0.5);
+  }
+
+  .input-glow:focus {
+    box-shadow: 0 0 0 1px hsl(32 95% 52% / 0.15), 0 0 20px hsl(32 95% 52% / 0.06);
+  }
+
+  .tag-glow {
+    box-shadow: 0 0 12px hsl(32 95% 52% / 0.15), inset 0 0 8px hsl(32 95% 52% / 0.05);
+  }
+
+  .gradient-line {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(32 95% 52% / 0.15) 20%,
+      hsl(32 95% 52% / 0.3) 50%,
+      hsl(32 95% 52% / 0.15) 80%,
+      transparent
+    );
+  }
+
+  .avatar-glow {
+    box-shadow: 0 0 12px hsl(32 95% 52% / 0.3), 0 0 4px hsl(32 95% 52% / 0.15);
+  }
+}
