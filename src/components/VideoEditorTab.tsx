@@ -528,17 +528,20 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
-    if (editMode === 'popup_only' && !popupMedia && !(rotationEnabled && rotationPopups.length > 0)) {
-      toast({ title: "Popup necessário", description: "Adicione uma imagem ou vídeo de popup.", variant: "destructive" });
-      return;
-    }
-    if (editMode === 'audio_only' && !popupAudio) {
-      toast({ title: "Áudio necessário", description: "Adicione um áudio para o modo Só Áudio.", variant: "destructive" });
-      return;
-    }
-    if (editMode === 'popup_audio' && !popupMedia && !popupAudio && !bgMusic) {
-      toast({ title: "Nada configurado", description: "Adicione pelo menos uma edição (popup ou música).", variant: "destructive" });
-      return;
+    const rotationActive = rotationEnabled && rotationPopups.length > 0;
+    if (!rotationActive) {
+      if (editMode === 'popup_only' && !popupMedia) {
+        toast({ title: "Popup necessário", description: "Adicione uma imagem ou vídeo de popup.", variant: "destructive" });
+        return;
+      }
+      if (editMode === 'audio_only' && !popupAudio) {
+        toast({ title: "Áudio necessário", description: "Adicione um áudio para o modo Só Áudio.", variant: "destructive" });
+        return;
+      }
+      if (editMode === 'popup_audio' && !popupMedia && !popupAudio && !bgMusic) {
+        toast({ title: "Nada configurado", description: "Adicione pelo menos uma edição (popup ou música).", variant: "destructive" });
+        return;
+      }
     }
 
     if (popupMedia && popupMediaType === 'image' && opacity <= 0) {
