@@ -49,17 +49,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    let mounted = true;
+    let pendingUserId: string | null = null;
+
+    const loadUserData = (userId: string) => {
+      // Deduplicate: skip if already fetching for this user
+      if (pendingUserId === userId) return;
+      pendingUserId = userId;
+      Promise.all([fetchProfile(userId), fetchRole(userId)]).finally(() => {
+        if (pendingUserId === userId) pendingUserId = null;
+      });
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         setSession(session);
         setUser(session?.user ?? null);
-
         if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-            fetchRole(session.user.id);
-          }, 0);
+          loadUserData(session.user.id);
         } else {
+          pendingUserId = null;
           setProfile(null);
           setRole(null);
         }
@@ -68,16 +78,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
-        fetchRole(session.user.id);
+        loadUserData(session.user.id);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

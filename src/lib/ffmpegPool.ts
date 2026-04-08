@@ -131,7 +131,9 @@ export class FFmpegWorkerPool {
 
     const processNext = async (inst: FFmpegInstance): Promise<void> => {
       while (jobIndex < jobs.length) {
-        const job = jobs[jobIndex++];
+        const idx = jobIndex++;
+        const job = jobs[idx];
+        if (!job) break; // safety guard against concurrent index access
         inst.busy = true;
         videoProgress.set(job.id, 0);
         reportProgress();

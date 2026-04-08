@@ -498,8 +498,11 @@ const Index = () => {
       setCurrentIndex(i => Math.min(i, Math.max(0, next.length - 1)));
       return next;
     });
-    tiktokApi.deleteVideos([id]).catch(err => console.error('Delete error:', err));
-  }, [currentVideo]);
+    tiktokApi.deleteVideos([id]).catch(err => {
+      console.error('Delete error:', err);
+      toast({ title: 'Erro ao remover vídeo', description: 'Não foi possível remover da base de dados.', variant: 'destructive' });
+    });
+  }, [currentVideo, toast]);
 
   const handleDismissOffTopicVideos = useCallback(() => {
     if (!nicheWarning) return;
@@ -517,7 +520,10 @@ const Index = () => {
       return next;
     });
     setNicheWarning(null);
-    tiktokApi.deleteVideos(idsToRemove).catch(err => console.error('Delete error:', err));
+    tiktokApi.deleteVideos(idsToRemove).catch(err => {
+      console.error('Delete error:', err);
+      toast({ title: 'Erro ao remover vídeos', description: 'Não foi possível remover da base de dados.', variant: 'destructive' });
+    });
     toast({ title: "Vídeos dispensados", description: `${idsToRemove.length} vídeos fora do nicho foram removidos.` });
   }, [nicheWarning, toast]);
 
@@ -588,6 +594,7 @@ const Index = () => {
           if (contentType.includes('video/')) {
             const proxyBlob = await proxyRes.blob();
             if (proxyBlob.size > 1024 && !cancelled) {
+              clearPreviewObjectUrl();
               const blobUrl = URL.createObjectURL(proxyBlob);
               previewObjectUrlRef.current = blobUrl;
               setPreviewVideoSrc(blobUrl);
@@ -1224,7 +1231,10 @@ const Index = () => {
         // Remove downloaded video from preview and DB
         setVideos(prev => prev.filter(v => v.id !== currentVideo.id));
         setCurrentIndex(i => Math.min(i, videos.length - 2));
-        tiktokApi.deleteVideos([currentVideo.id]).catch(err => console.error('Delete error:', err));
+        tiktokApi.deleteVideos([currentVideo.id]).catch(err => {
+          console.error('Delete error:', err);
+          toast({ title: 'Erro ao remover vídeo', description: 'Não foi possível remover da base de dados.', variant: 'destructive' });
+        });
       } else {
         toast({ title: "Erro no download", description: result.error || "Não foi possível baixar.", variant: "destructive" });
       }

@@ -63,6 +63,16 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const { user } = useAuth();
   const [configLoaded, setConfigLoaded] = useState(false);
   const configSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popupMediaPreviewUrlRef = useRef<string | null>(null);
+
+  // Helper: revoke old popup preview blob URL then set new one
+  const setPopupMediaPreviewWithCleanup = (url: string | null) => {
+    if (popupMediaPreviewUrlRef.current?.startsWith('blob:')) {
+      URL.revokeObjectURL(popupMediaPreviewUrlRef.current);
+    }
+    popupMediaPreviewUrlRef.current = url?.startsWith('blob:') ? url : null;
+    setPopupMediaPreview(url);
+  };
 
   // Popup config
   const [popupMedia, setPopupMedia] = useState<File | null>(null);
@@ -263,28 +273,43 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     };
   }, [videos]);
 
-  // Auto-save config to DB when settings change (debounced)
+  // Ref holds latest config values — avoids listing all as saveConfig dependencies
+  const latestConfigRef = useRef({
+    appearAt, popupDuration, endVideoWithPopup, opacity,
+    popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume,
+    editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects,
+  });
+  useEffect(() => {
+    latestConfigRef.current = {
+      appearAt, popupDuration, endVideoWithPopup, opacity,
+      popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume,
+      editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects,
+    };
+  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects]);
+
+  // Auto-save config to DB when settings change (debounced, 2 dependencies only)
   const saveConfig = useCallback(() => {
     if (!user || !configLoaded) return;
     if (configSaveTimeout.current) clearTimeout(configSaveTimeout.current);
     configSaveTimeout.current = setTimeout(async () => {
-      const config = {
-        appearAt, popupDuration, endVideoWithPopup, opacity,
-        popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume: bgMusicVolume,
-        editBatchQuantity, parallelWorkers, popupFullscreen,
-        popupTransform: normalizePopupTransform(popupTransform),
-        effects,
-      };
+      const cfg = latestConfigRef.current;
+      const config = { ...cfg, popupTransform: normalizePopupTransform(cfg.popupTransform) };
       await supabase.from('editor_configs').upsert(
         { user_id: user.id, config: config as any, updated_at: new Date().toISOString() } as any,
         { onConflict: 'user_id' }
       );
     }, 1500);
-  }, [user, configLoaded, appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects]);
+  }, [user, configLoaded]);
 
+  // Trigger save when any config value changes
   useEffect(() => {
     saveConfig();
-  }, [saveConfig]);
+  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects, saveConfig]);
+
+  // Cancel pending save on unmount (Problem 16)
+  useEffect(() => {
+    return () => { if (configSaveTimeout.current) clearTimeout(configSaveTimeout.current); };
+  }, []);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -336,7 +361,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     setPopupMedia(file);
     setPopupMediaType(isVideo ? 'video' : 'image');
     if (isVideo) {
-      setPopupMediaPreview(URL.createObjectURL(file));
+      setPopupMediaPreviewWithCleanup(URL.createObjectURL(file));
     } else {
       const reader = new FileReader();
       reader.onload = (ev) => setPopupMediaPreview(ev.target?.result as string);
@@ -397,7 +422,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       const file = new File([blob], 'test-popup.mp4', { type: blob.type || 'video/mp4' });
       setPopupMedia(file);
       setPopupMediaType('video');
-      setPopupMediaPreview(URL.createObjectURL(file));
+      setPopupMediaPreviewWithCleanup(URL.createObjectURL(file));
       toast({ title: 'Vídeo de teste carregado', description: 'Popup configurado automaticamente.' });
     } catch (err) {
       console.error('Erro ao carregar vídeo de teste:', err);
@@ -841,7 +866,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
                     const isTransient = transientPatterns.some((p) => errMsg.toLowerCase().includes(p.toLowerCase()));
                     if (isTransient && jobAttempt < MAX_JOB_RETRIES) {
-                      addLog(`[${videoNum}] Falha transitória, re-submetendo (tentativa ${jobAttempt + 2})...`, 'warn');
+                      const waitSec = Math.round(2500 * (jobAttempt + 1) / 1000);
+                      addLog(`[${videoNum}] Falha transitória — tentando novamente em ${waitSec}s (tentativa ${jobAttempt + 2}/${MAX_JOB_RETRIES + 1})...`, 'warn');
                       await new Promise(r => setTimeout(r, 2500 * (jobAttempt + 1)));
                       continue;
                     }
@@ -1038,7 +1064,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         addLog(`Erro geral no servidor: ${String(err).slice(0, 160)}`, 'error');
         toast({ title: "Erro no servidor", description: String(err), variant: "destructive" });
       } finally {
-        if (sessionId) cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId);
+        if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
         setProcessing(false);
         setProcessStartTime(null);
         setProcessingStatus('');
@@ -1100,7 +1126,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               const file = new File([blob], `popup.${ext}`, { type: blob.type });
               setPopupMedia(file);
               setPopupMediaType(t.popupMediaType || 'image');
-              setPopupMediaPreview(URL.createObjectURL(blob));
+              setPopupMediaPreviewWithCleanup(URL.createObjectURL(blob));
             } catch (e) {
               console.error('Failed to load popup from template:', e);
             }

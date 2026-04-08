@@ -73,21 +73,31 @@ export async function getFFmpeg(onProgress?: (msg: string) => void): Promise<FFm
 
   loadingPromise = (async () => {
     const ffmpeg = new FFmpeg();
+    let cachedCoreURL: string | null = null;
+    let cachedWasmURL: string | null = null;
+    try {
+      cachedCoreURL = await getCachedAssetURL(coreURL, 'text/javascript', 'motor JS', onProgress);
+      cachedWasmURL = await getCachedAssetURL(wasmURL, 'application/wasm', 'motor WASM', onProgress);
 
-    const cachedCoreURL = await getCachedAssetURL(coreURL, 'text/javascript', 'motor JS', onProgress);
-    const cachedWasmURL = await getCachedAssetURL(wasmURL, 'application/wasm', 'motor WASM', onProgress);
+      onProgress?.('Inicializando motor...');
+      await ffmpeg.load({ coreURL: cachedCoreURL, wasmURL: cachedWasmURL });
 
-    onProgress?.('Inicializando motor...');
-    await ffmpeg.load({ coreURL: cachedCoreURL, wasmURL: cachedWasmURL });
+      // Revoke blob URLs — FFmpeg already copied the WASM data internally
+      if (cachedCoreURL?.startsWith('blob:')) URL.revokeObjectURL(cachedCoreURL);
+      if (cachedWasmURL?.startsWith('blob:')) URL.revokeObjectURL(cachedWasmURL);
 
-    ffmpegInstance = ffmpeg;
-    onProgress?.('Pronto!');
-    return ffmpeg;
+      ffmpegInstance = ffmpeg;
+      onProgress?.('Pronto!');
+      return ffmpeg;
+    } catch (err) {
+      // Clean up blob URLs on failure too
+      if (cachedCoreURL?.startsWith('blob:')) URL.revokeObjectURL(cachedCoreURL);
+      if (cachedWasmURL?.startsWith('blob:')) URL.revokeObjectURL(cachedWasmURL);
+      ffmpegInstance = null;
+      loadingPromise = null; // Allow retry
+      throw err;
+    }
   })();
-
-  loadingPromise.catch(() => {
-    loadingPromise = null; // Allow retry on failure
-  });
 
   return loadingPromise;
 }
