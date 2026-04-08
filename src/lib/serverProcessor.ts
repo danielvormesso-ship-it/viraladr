@@ -278,9 +278,10 @@ export async function pollJobStatus(
     if (data.status === 'done') return data;
     if (data.status === 'failed') throw new Error(data.error || 'Processing failed');
 
-    // Adaptive polling: start at 1s for early/fast stages, ramp up to 5s as job progresses
-    const adaptiveInterval = data.status === 'queued'
-      ? 3000
+    // C3: Adaptive polling by stage — fast during active work, slow while queued
+    const adaptiveInterval =
+      data.status === 'queued' ? 5000
+      : data.status === 'downloading' || data.status === 'probing' ? 1000
       : Math.min(5000, 1000 + Math.floor((data.progress ?? 0) / 25) * 1000);
     await new Promise((r) => setTimeout(r, adaptiveInterval));
   }

@@ -789,6 +789,21 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           failed: '❌ Falhou',
         };
 
+        // V4: Pipeline overlap — pre-submit next video's job while current job is being processed
+        const prefetchedJobs = new Map<string, string>(); // video.id → pre-submitted jobId ('' = in-flight)
+        const prefetchNextJob = async (nextVideo: TikTokVideo): Promise<void> => {
+          if (prefetchedJobs.has(nextVideo.id)) return;
+          prefetchedJobs.set(nextVideo.id, ''); // sentinel: prefetch in flight
+          try {
+            const nextJobId = await submitVideoJob(
+              serverConfig.url, serverConfig.apiKey, sessionId, nextVideo.downloadUrl, processConfig,
+            );
+            prefetchedJobs.set(nextVideo.id, nextJobId);
+          } catch {
+            prefetchedJobs.delete(nextVideo.id); // will fall back to normal submit
+          }
+        };
+
         const processOne = async (): Promise<void> => {
           while (processQueue.length > 0) {
             const video = processQueue.shift()!;
@@ -822,13 +837,28 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
                 for (let jobAttempt = 0; jobAttempt <= MAX_JOB_RETRIES; jobAttempt++) {
                   try {
-                    jobId = await submitVideoJob(
-                      serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
-                    );
-                    if (jobAttempt > 0) {
-                      addLog(`[${videoNum}] Re-submetido (tentativa ${jobAttempt + 1}): ${jobId.slice(0, 8)}...`, 'warn');
+                    // V4: On first attempt, use pre-submitted jobId if available
+                    const prefetchedId = jobAttempt === 0 ? prefetchedJobs.get(video.id) : undefined;
+                    if (prefetchedId !== undefined) prefetchedJobs.delete(video.id);
+
+                    if (prefetchedId) {
+                      jobId = prefetchedId;
+                      addLog(`[${videoNum}] Job pré-carregado: ${jobId.slice(0, 8)}... (pipeline overlap)`, 'info');
                     } else {
-                      addLog(`[${videoNum}] Job criado: ${jobId.slice(0, 8)}... — aguardando processamento`, 'info');
+                      jobId = await submitVideoJob(
+                        serverConfig.url, serverConfig.apiKey, sessionId, video.downloadUrl, processConfig,
+                      );
+                      if (jobAttempt > 0) {
+                        addLog(`[${videoNum}] Re-submetido (tentativa ${jobAttempt + 1}): ${jobId.slice(0, 8)}...`, 'warn');
+                      } else {
+                        addLog(`[${videoNum}] Job criado: ${jobId.slice(0, 8)}... — aguardando processamento`, 'info');
+                        // Pre-submit next video in background while we poll current job
+                        const nextVideo = processQueue[0];
+                        const wouldTriggerRefresh = (videosSinceLastAssetRefresh + 1) >= ASSET_SESSION_REFRESH_EVERY;
+                        if (nextVideo && !wouldTriggerRefresh) {
+                          prefetchNextJob(nextVideo); // fire-and-forget
+                        }
+                      }
                     }
 
                     // Poll for completion with live status updates
