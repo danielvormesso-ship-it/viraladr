@@ -1100,8 +1100,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           saveAs(zipBlob, zipName);
           addLog(`ZIP baixado: ${zipName} (${(zipBlob.size / 1024 / 1024).toFixed(1)}MB)`, 'success');
           
-          // Remove processed videos from the list
-          if (successfulVideoIds.size > 0) {
+          // Remove processed videos from the list (never in preview mode)
+          if (successfulVideoIds.size > 0 && !isPreview) {
             setVideos(prev => prev.filter(v => !successfulVideoIds.has(v.id)));
             addLog(`${successfulVideoIds.size} vídeos editados removidos da lista.`, 'success');
           }
