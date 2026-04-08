@@ -131,6 +131,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   // U4: Track completion timestamps for rolling-window ETA
   const completionTimesRef = useRef<number[]>([]);
 
+  // U2: Per-video status grid
+  const [videoStatuses, setVideoStatuses] = useState<Record<string, { status: string; progress: number; title: string }>>({});
+
+  // Post-batch error report
+  const [batchReport, setBatchReport] = useState<{
+    total: number; success: number; failed: number;
+    errors: Array<{ title: string; error: string; errorType: string }>;
+  } | null>(null);
+
   const addLog = useCallback((msg: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setProcessLogs(prev => {
@@ -138,6 +147,17 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       return next.length > 500 ? next.slice(-500) : next;
     });
   }, []);
+
+  const classifyError = (msg: string): string => {
+    const l = msg.toLowerCase();
+    if (l.includes('codec') || l.includes('bvc2') || l.includes('bytevc')) return 'Codec incompatível';
+    if (l.includes('timeout') || l.includes('tempo limite') || l.includes('timed out') || l.includes('travado')) return 'Timeout / Travamento';
+    if (l.includes('filter') || l.includes('filtergraph') || l.includes('streamcopy')) return 'Erro de filtros FFmpeg';
+    if (l.includes('download') || l.includes('network') || l.includes('conexão') || l.includes('fetch')) return 'Falha de download';
+    if (l.includes('popup') || l.includes('asset') || l.includes('session')) return 'Asset / Sessão expirada';
+    if (l.includes('memory') || l.includes('oom') || l.includes('sigkill')) return 'Memória insuficiente';
+    return 'Erro genérico de servidor';
+  };
 
   // Auto-scroll logs
   useEffect(() => {
@@ -540,6 +560,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     setProcessStartTime(Date.now());
     setElapsedTime(0);
     setProcessLogs([]);
+    setVideoStatuses({});
+    setBatchReport(null);
     setProcessProgress({ current: 0, total: videosToProcess.length, videoProgress: 0, activeWorkers: 0 });
     addLog(`Iniciando ${isPreview ? 'preview' : 'processamento'} de ${videosToProcess.length} vídeo${videosToProcess.length > 1 ? 's' : ''}...`, 'info');
 
@@ -765,6 +787,17 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         // Replace processTargets with filtered list
         const finalTargets = compatibleTargets;
 
+        // U2: Initialize video status grid
+        const gridStatuses: Record<string, { status: string; progress: number; title: string }> = {};
+        for (const v of finalTargets) gridStatuses[v.id] = { status: 'pending', progress: 0, title: v.title };
+        setVideoStatuses(gridStatuses);
+
+        // Track per-video failures for post-batch report
+        const failedDetails: Array<{ title: string; error: string; errorType: string }> = [];
+
+        const updateVideoStatus = (id: string, upd: Partial<{ status: string; progress: number }>) =>
+          setVideoStatuses(prev => ({ ...prev, [id]: { ...(prev[id] ?? { status: 'pending', progress: 0, title: id }), ...upd } }));
+
         // Process videos on server (safe mode: low parallelism + minimal retries)
         const zip = new JSZip();
         let successCount = 0;
@@ -810,6 +843,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             let success = false;
             const videoNum = ++startedCount;
             addLog(`[${videoNum}/${finalTargets.length}] Enviando job: ${video.title.slice(0, 40)}...`, 'info');
+            updateVideoStatus(video.id, { status: 'processing', progress: 0 });
 
             try {
               if (videosSinceLastAssetRefresh >= ASSET_SESSION_REFRESH_EVERY) {
@@ -866,6 +900,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                       serverConfig.url, serverConfig.apiKey, jobId,
                       (status) => {
                         const label = statusLabels[status.status] || status.status;
+                        updateVideoStatus(video.id, { status: status.status, progress: status.progress });
                         setProcessingStatus(`${label} — ${videoNum}/${finalTargets.length} (${status.progress}%)`);
                         setProcessProgress({
                           current: completedCount,
@@ -965,6 +1000,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 zip.file(`${paddedNum}_${safeName}_editado.mp4`, new Uint8Array(result));
                 successfulVideoIds.add(video.id);
                 success = true;
+                updateVideoStatus(video.id, { status: 'done', progress: 100 });
                 addLog(`✓ ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
                 if (usedLegacyEndpoint) {
                   addLog(`ℹ Vídeo processado no endpoint legado (/api/process-url)`, 'info');
@@ -974,6 +1010,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               }
             } catch (err: any) {
               const errMsg = String(err?.message || err || '');
+              failedDetails.push({ title: video.title, error: errMsg.slice(0, 200), errorType: classifyError(errMsg) });
+              updateVideoStatus(video.id, { status: 'failed', progress: 0 });
               addLog(`✗ Erro servidor: ${errMsg.slice(0, 900)}`, 'error');
               console.error(`Video ${video.id} failed:`, errMsg);
 
@@ -1107,6 +1145,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           }
         }
         addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');
+        setBatchReport({ total: finalTargets.length, success: successCount, failed: failCount, errors: failedDetails });
 
         const toastTitle = isPreview
           ? (successCount > 0 ? "Preview concluído!" : "Falha no preview")
@@ -1138,6 +1177,34 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
     // Server offline fallback
     toast({ title: "Servidor offline", description: "O servidor de processamento não está disponível. Tente novamente.", variant: "destructive" });
+  };
+
+  const downloadReport = () => {
+    if (!batchReport) return;
+    const lines: string[] = [
+      '=== Relatório de Processamento ===',
+      `Data: ${new Date().toLocaleString('pt-BR')}`,
+      '',
+      'RESUMO',
+      `Total processado: ${batchReport.total}`,
+      `Sucesso:          ${batchReport.success}`,
+      `Falhas:           ${batchReport.failed}`,
+      '',
+    ];
+    if (batchReport.errors.length > 0) {
+      const byType: Record<string, typeof batchReport.errors> = {};
+      for (const e of batchReport.errors) {
+        if (!byType[e.errorType]) byType[e.errorType] = [];
+        byType[e.errorType].push(e);
+      }
+      lines.push('ERROS POR TIPO');
+      for (const [type, items] of Object.entries(byType)) {
+        lines.push('', `${type} (${items.length}x):`);
+        for (const item of items) lines.push(`  - ${item.title}: ${item.error}`);
+      }
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    saveAs(blob, `relatorio_batch_${new Date().toISOString().slice(0, 10)}.txt`);
   };
 
   const overallProgress = processProgress.total > 0
@@ -1582,26 +1649,108 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         </div>
       )}
 
-      {/* Detailed Log Panel */}
-      {processLogs.length > 0 && (
+      {/* U2: Video Status Grid */}
+      {Object.keys(videoStatuses).length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="bg-secondary/50 px-4 py-2 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-bold text-foreground">📋 Log detalhado</span>
-            <span className="text-[10px] text-muted-foreground">{processLogs.length} entradas</span>
+          <div className="bg-secondary/50 px-4 py-2.5 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-bold text-foreground">📊 Status dos vídeos</span>
+            <div className="flex gap-3 text-[11px] font-medium">
+              <span className="text-green-400">✅ {Object.values(videoStatuses).filter(s => s.status === 'done').length}</span>
+              <span className="text-red-400">❌ {Object.values(videoStatuses).filter(s => s.status === 'failed').length}</span>
+              <span className="text-yellow-400">⏳ {Object.values(videoStatuses).filter(s => s.status !== 'done' && s.status !== 'failed').length}</span>
+            </div>
           </div>
-          <div className="max-h-60 overflow-y-auto p-3 space-y-1 font-mono text-[11px]">
-            {processLogs.map((log, i) => (
-              <div key={i} className={`flex gap-2 ${
-                log.type === 'success' ? 'text-green-400' :
-                log.type === 'error' ? 'text-red-400' :
-                log.type === 'warn' ? 'text-yellow-400' :
-                'text-muted-foreground'
-              }`}>
-                <span className="text-muted-foreground/60 flex-shrink-0">{log.time}</span>
-                <span>{log.msg}</span>
+          <div className="p-2.5 grid grid-cols-5 gap-1.5 max-h-72 overflow-y-auto">
+            {Object.entries(videoStatuses).map(([id, vs]) => {
+              const thumbnail = videos.find(v => v.id === id)?.thumbnail;
+              const icon =
+                vs.status === 'done' ? '✅' :
+                vs.status === 'failed' ? '❌' :
+                vs.status === 'downloading' ? '⬇️' :
+                vs.status === 'probing' ? '🔍' : '⏳';
+              const borderColor =
+                vs.status === 'done' ? 'border-green-500/50' :
+                vs.status === 'failed' ? 'border-red-500/50' :
+                (vs.status === 'processing' || vs.status === 'downloading') ? 'border-primary/50' :
+                'border-white/[0.06]';
+              return (
+                <div key={id} className={`relative rounded-lg border ${borderColor} overflow-hidden bg-secondary/60`} style={{ aspectRatio: '9/16' }}>
+                  {thumbnail && (
+                    <img src={thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" loading="lazy" />
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[15px] drop-shadow-sm">{icon}</span>
+                  </div>
+                  {(vs.status === 'processing' || vs.status === 'downloading') && vs.progress > 0 && (
+                    <div className="absolute bottom-4 left-1 right-1 h-0.5 bg-black/40 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary transition-all duration-300 rounded-full" style={{ width: `${vs.progress}%` }} />
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-gradient-to-t from-black/60 to-transparent">
+                    <p className="text-[7px] text-white/85 truncate leading-tight">{vs.title.slice(0, 22)}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Batch Error Report */}
+      {!processing && batchReport && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="bg-secondary/50 px-4 py-2.5 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-bold text-foreground">📋 Relatório do batch</span>
+            <button
+              onClick={downloadReport}
+              className="text-[11px] text-primary hover:text-primary/80 font-medium flex items-center gap-1"
+            >
+              <Download className="h-3 w-3" /> Baixar .txt
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-secondary/60 p-2.5">
+                <p className="text-xl font-bold">{batchReport.total}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
               </div>
-            ))}
-            <div ref={logsEndRef} />
+              <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-2.5">
+                <p className="text-xl font-bold text-green-400">{batchReport.success}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">✅ Sucesso</p>
+              </div>
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2.5">
+                <p className="text-xl font-bold text-red-400">{batchReport.failed}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">❌ Falhas</p>
+              </div>
+            </div>
+            {batchReport.errors.length > 0 && (() => {
+              const byType: Record<string, typeof batchReport.errors> = {};
+              for (const e of batchReport.errors) {
+                if (!byType[e.errorType]) byType[e.errorType] = [];
+                byType[e.errorType].push(e);
+              }
+              return (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-foreground">Erros por tipo:</p>
+                  {Object.entries(byType).map(([type, items]) => (
+                    <div key={type} className="rounded-lg bg-red-500/5 border border-red-500/20 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-red-400">{type}</span>
+                        <span className="text-[10px] text-red-400/70 font-medium">{items.length}×</span>
+                      </div>
+                      <div className="space-y-1 max-h-28 overflow-y-auto">
+                        {items.map((item, i) => (
+                          <div key={i} className="text-[10px] text-muted-foreground leading-snug">
+                            <span className="font-medium text-foreground/80">{item.title.slice(0, 35)}:</span>{' '}
+                            <span>{item.error.slice(0, 130)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
