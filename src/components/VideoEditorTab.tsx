@@ -574,11 +574,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     // A1: Rotation confirmation modal
     if (!isPreview && rotationEnabled && rotationPopups.length > 0) {
       const totalSlots = Math.ceil(videosToProcess.length / rotationEvery);
-      const audioWarning = rotationAudios.length === 0
-        ? 'Nenhum áudio configurado para rotação.'
-        : rotationAudios.length < totalSlots
-          ? `Apenas ${rotationAudios.length} áudio(s) para ${totalSlots} grupos (serão reutilizados).`
-          : '';
+      const audioWarning = editMode === 'popup_only'
+        ? ''
+        : rotationAudios.length === 0
+          ? 'Nenhum áudio configurado para rotação.'
+          : rotationAudios.length < totalSlots
+            ? `Apenas ${rotationAudios.length} áudio(s) para ${totalSlots} grupos (serão reutilizados).`
+            : '';
       const confirmed = await new Promise<boolean>((resolve) => {
         rotationConfirmResolveRef.current = resolve;
         setRotationConfirmData({
@@ -1545,7 +1547,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             onClick={() => setRotationEnabled(v => !v)}
             className="w-full px-5 py-2.5 flex items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            <span className="flex items-center gap-2"><span>🔄</span> Rotação de assets {rotationEnabled && rotationPopups.length > 0 && <span className="text-primary font-bold">({rotationPopups.length} popups)</span>}</span>
+            <span className="flex items-center gap-2"><span>🔄</span> Rotação de assets {rotationEnabled && (editMode === 'audio_only' ? rotationAudios.length > 0 : rotationPopups.length > 0) && <span className="text-primary font-bold">({editMode === 'audio_only' ? `${rotationAudios.length} áudios` : `${rotationPopups.length} popups`})</span>}</span>
             <span>{rotationEnabled ? '▲' : '▼'}</span>
           </button>
           {rotationEnabled && (
@@ -1555,51 +1557,61 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 <Input type="number" min={1} value={rotationEvery} onChange={(e) => setRotationEvery(Math.max(1, Number(e.target.value) || 1))} className="w-20 h-8 text-sm font-mono bg-white/[0.03] border-white/[0.08]" />
                 <span className="text-[10px] text-muted-foreground">vídeo(s)</span>
               </div>
-              {/* Rotation popups */}
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Popups ({rotationPopups.length})</label>
-                <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
-                  <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Adicionar popups (múltiplos)</span>
-                  <input type="file" multiple accept="image/png,image/jpeg,video/mp4,video/webm" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationPopups(p => [...p, ...f]); e.target.value = ''; }} />
-                </label>
-                {rotationPopups.length > 0 && (
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {rotationPopups.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
-                        <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
-                        <button onClick={() => setRotationPopups(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Rotation audios */}
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Áudios ({rotationAudios.length})</label>
-                <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
-                  <Music className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Adicionar áudios (múltiplos)</span>
-                  <input type="file" multiple accept="audio/*" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationAudios(p => [...p, ...f]); e.target.value = ''; }} />
-                </label>
-                {rotationAudios.length > 0 && (
-                  <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {rotationAudios.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
-                        <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
-                        <button onClick={() => setRotationAudios(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Rotation popups — hidden in audio_only mode */}
+              {editMode !== 'audio_only' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Popups ({rotationPopups.length})</label>
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
+                    <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Adicionar popups (múltiplos)</span>
+                    <input type="file" multiple accept="image/png,image/jpeg,video/mp4,video/webm" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationPopups(p => [...p, ...f]); e.target.value = ''; }} />
+                  </label>
+                  {rotationPopups.length > 0 && (
+                    <div className="space-y-1 max-h-24 overflow-y-auto">
+                      {rotationPopups.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
+                          <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
+                          <button onClick={() => setRotationPopups(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Rotation audios — hidden in popup_only mode */}
+              {editMode !== 'popup_only' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Áudios ({rotationAudios.length})</label>
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
+                    <Music className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Adicionar áudios (múltiplos)</span>
+                    <input type="file" multiple accept="audio/*" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationAudios(p => [...p, ...f]); e.target.value = ''; }} />
+                  </label>
+                  {rotationAudios.length > 0 && (
+                    <div className="space-y-1 max-h-24 overflow-y-auto">
+                      {rotationAudios.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between px-2 py-1 rounded bg-white/[0.03] text-[10px]">
+                          <span className="text-foreground/70 truncate">{i + 1}. {f.name}</span>
+                          <button onClick={() => setRotationAudios(p => p.filter((_, idx) => idx !== i))} className="text-destructive/70 hover:text-destructive ml-2 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Summary */}
-              {rotationPopups.length > 0 && (
+              {((editMode === 'audio_only' && rotationAudios.length > 0) || (editMode !== 'audio_only' && rotationPopups.length > 0)) && (
                 <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-[10px] text-muted-foreground space-y-0.5">
                   <p>📊 {Math.ceil(batchQuantity / rotationEvery)} grupo(s) · até {rotationEvery} vídeos cada</p>
-                  <p>🖼️ {rotationPopups.length} popup(s) · 🔊 {rotationAudios.length} áudio(s)</p>
-                  {rotationAudios.length > 0 && rotationAudios.length < Math.ceil(batchQuantity / rotationEvery) && (
-                    <p className="text-yellow-400">⚠️ Menos áudios que grupos — serão reutilizados em ciclo</p>
+                  {editMode === 'audio_only' && <p>🔊 {rotationAudios.length} áudio(s)</p>}
+                  {editMode === 'popup_only' && <p>🖼️ {rotationPopups.length} popup(s)</p>}
+                  {editMode === 'popup_audio' && (
+                    <>
+                      <p>🖼️ {rotationPopups.length} popup(s) · 🔊 {rotationAudios.length} áudio(s)</p>
+                      {rotationAudios.length > 0 && rotationAudios.length < Math.ceil(batchQuantity / rotationEvery) && (
+                        <p className="text-yellow-400">⚠️ Menos áudios que grupos — serão reutilizados em ciclo</p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
