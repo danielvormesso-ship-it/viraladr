@@ -529,9 +529,10 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   // A4: date string and file namer (computed once per render — stable within a session)
   const _today = new Date();
-  const zipDateStr = `${String(_today.getDate()).padStart(2, '0')}/${String(_today.getMonth() + 1).padStart(2, '0')}`;
+  const zipDateStr = `${String(_today.getDate()).padStart(2, '0')}-${String(_today.getMonth() + 1).padStart(2, '0')}`;
   const getZipFileName = (seqNum: number, tag: string): string => {
-    const safe = tag.trim().slice(0, 20);
+    // Strip / and \ to prevent JSZip from treating the name as a path with subfolders
+    const safe = tag.trim().replace(/[/\\]/g, '-').slice(0, 20);
     return safe ? `${seqNum} ${zipDateStr} ${safe}.mp4` : `${seqNum} ${zipDateStr}.mp4`;
   };
 
