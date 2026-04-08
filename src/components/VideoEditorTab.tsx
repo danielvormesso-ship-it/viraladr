@@ -713,7 +713,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         let completedCount = 0;
         let startedCount = 0;
         const successfulVideoIds = new Set<string>();
-        const SERVER_PARALLEL = 2; // Pipeline: enquanto job 1 processa, job 2 já baixa
+        const SERVER_PARALLEL = 6; // Pipeline: enquanto job 1 processa, job 2 já baixa
         const retryableFailedVideos: typeof finalTargets = [];
 
         const processQueue = [...finalTargets];
@@ -931,8 +931,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const workerCount = Math.min(SERVER_PARALLEL, finalTargets.length);
         const workers: Promise<void>[] = [];
         for (let w = 0; w < workerCount; w++) {
-          // Stagger workers by 4s to avoid overwhelming the server queue
-          if (w > 0) await new Promise(r => setTimeout(r, 4000));
+          // Stagger workers by 500ms to avoid overwhelming the server queue
+          if (w > 0) await new Promise(r => setTimeout(r, 500));
           workers.push(processOne());
         }
         await Promise.all(workers);
