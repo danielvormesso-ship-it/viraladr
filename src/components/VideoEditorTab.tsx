@@ -128,6 +128,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [processStartTime, setProcessStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  // U4: Track completion timestamps for rolling-window ETA
+  const completionTimesRef = useRef<number[]>([]);
 
   const addLog = useCallback((msg: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -141,6 +143,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: processing ? 'auto' : 'smooth' });
   }, [processLogs, processing]);
+
+  // U4: Record completion timestamp each time a video finishes
+  useEffect(() => {
+    if (processing && processProgress.current > 0) {
+      completionTimesRef.current = [...completionTimesRef.current.slice(-9), Date.now()];
+    }
+  }, [processProgress.current]);
 
   // Timer effect
   useEffect(() => {
@@ -481,7 +490,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const BATCH_PRESETS = [50, 100, 150, 200, 250, 300, 350, 400];
   const batchQuantity = Math.min(editBatchQuantity, videos.length);
 
-  const handleProcess = async () => {
+  const handleProcess = async (options?: { previewMode?: boolean }) => {
+    const isPreview = options?.previewMode === true;
     if (!popupMedia && !popupAudio && !bgMusic) {
       toast({ title: "Nada configurado", description: "Adicione pelo menos uma edição (popup ou música).", variant: "destructive" });
       return;
@@ -496,7 +506,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       return;
     }
 
-    const videosToProcess = videos.slice(0, batchQuantity);
+    const videosToProcess = videos.slice(0, isPreview ? 1 : batchQuantity);
     if (videosToProcess.length === 0) {
       toast({ title: "Sem vídeos", description: "Busque vídeos primeiro.", variant: "destructive" });
       return;
@@ -520,12 +530,18 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       return;
     }
 
+    // U5: Request browser notification permission proactively
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    completionTimesRef.current = [];
     setProcessing(true);
     setProcessStartTime(Date.now());
     setElapsedTime(0);
     setProcessLogs([]);
     setProcessProgress({ current: 0, total: videosToProcess.length, videoProgress: 0, activeWorkers: 0 });
-    addLog(`Iniciando processamento de ${videosToProcess.length} vídeos...`, 'info');
+    addLog(`Iniciando ${isPreview ? 'preview' : 'processamento'} de ${videosToProcess.length} vídeo${videosToProcess.length > 1 ? 's' : ''}...`, 'info');
 
 
 
@@ -1062,13 +1078,20 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         }
         addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');
 
-        toast({
-          title: successCount > 0 ? "Processamento concluído!" : "Falha no processamento",
-          description: successCount > 0
-            ? `${successCount} vídeos editados e baixados.${localFallbackCount > 0 ? ` ${localFallbackCount} foram processados no navegador após falha no servidor.` : ''}${duplicateCount > 0 ? ` ${duplicateCount} duplicados ignorados.` : ''}${stoppedByBreaker ? ' Processamento interrompido automaticamente para evitar desperdício.' : ''}`
-            : "Não foi possível processar nenhum vídeo.",
-          variant: successCount > 0 ? "default" : "destructive",
-        });
+        const toastTitle = isPreview
+          ? (successCount > 0 ? "Preview concluído!" : "Falha no preview")
+          : (successCount > 0 ? "Processamento concluído!" : "Falha no processamento");
+        const toastDesc = isPreview
+          ? (successCount > 0 ? "Vídeo de teste processado! Verifique o resultado antes de processar o lote completo." : "Não foi possível processar o vídeo de teste.")
+          : (successCount > 0
+            ? `${successCount} vídeos editados e baixados.${localFallbackCount > 0 ? ` ${localFallbackCount} processados no navegador.` : ''}${duplicateCount > 0 ? ` ${duplicateCount} duplicados ignorados.` : ''}${stoppedByBreaker ? ' Interrompido por alta taxa de falhas.' : ''}`
+            : "Não foi possível processar nenhum vídeo.");
+        toast({ title: toastTitle, description: toastDesc, variant: successCount > 0 ? "default" : "destructive" });
+
+        // U5: Browser notification when tab is hidden (background)
+        if (successCount > 0 && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+          new Notification(toastTitle, { body: toastDesc, icon: '/favicon.ico' });
+        }
       } catch (err) {
         console.error('Server processing error:', err);
         addLog(`Erro geral no servidor: ${String(err).slice(0, 160)}`, 'error');
@@ -1446,9 +1469,20 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         </p>
       </div>
 
+      {/* U1: Preview Button */}
+      <Button
+        onClick={() => handleProcess({ previewMode: true })}
+        disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic)}
+        variant="outline"
+        className="w-full h-10 gap-2 text-sm"
+      >
+        <Eye className="h-4 w-4" />
+        Testar com 1 vídeo
+      </Button>
+
       {/* Process Button */}
       <Button
-        onClick={handleProcess}
+        onClick={() => handleProcess()}
         disabled={processing || videos.length === 0 || (!popupMedia && !popupAudio && !bgMusic)}
         className="w-full h-14 gap-2 text-sm font-bold"
         size="lg"
@@ -1497,12 +1531,24 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             />
           </div>
 
-          {/* Estimated info */}
-          {processProgress.current > 1 && (
-            <p className="text-[10px] text-muted-foreground text-center">
-              ~{formatTime(Math.round((elapsedTime / processProgress.current) * (processProgress.total - processProgress.current)))} restantes
-            </p>
-          )}
+          {/* U4: Rolling-window ETA */}
+          {processProgress.current >= 1 && processProgress.current < processProgress.total && (() => {
+            const times = completionTimesRef.current;
+            const remaining = processProgress.total - processProgress.current;
+            let etaSec: number | null = null;
+            if (times.length >= 2) {
+              const windowMs = times[times.length - 1] - times[0];
+              if (windowMs > 0) etaSec = Math.round((remaining / ((times.length - 1) / windowMs)) / 1000);
+            }
+            if (etaSec === null && elapsedTime > 0) {
+              etaSec = Math.round((elapsedTime / processProgress.current) * remaining);
+            }
+            return etaSec !== null ? (
+              <p className="text-[10px] text-muted-foreground text-center">
+                ~{formatTime(etaSec)} restantes
+              </p>
+            ) : null;
+          })()}
         </div>
       )}
 
