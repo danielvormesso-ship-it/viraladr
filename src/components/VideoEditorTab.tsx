@@ -822,6 +822,18 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           failed: '❌ Falhou',
         };
 
+        // Hard timeout wrapper: if pollJobStatus hangs beyond 15 min, reject so the worker continues
+        const withJobTimeout = <T>(p: Promise<T>, label: string): Promise<T> =>
+          Promise.race([
+            p,
+            new Promise<T>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Timeout global de 15 minutos excedido — job sem resposta (${label})`)),
+                15 * 60 * 1000,
+              )
+            ),
+          ]);
+
         // V4: Pipeline overlap — pre-submit next video's job while current job is being processed
         const prefetchedJobs = new Map<string, string>(); // video.id → pre-submitted jobId ('' = in-flight)
         const prefetchNextJob = async (nextVideo: TikTokVideo): Promise<void> => {
@@ -895,20 +907,23 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                       }
                     }
 
-                    // Poll for completion with live status updates
-                    finalStatus = await pollJobStatus(
-                      serverConfig.url, serverConfig.apiKey, jobId,
-                      (status) => {
-                        const label = statusLabels[status.status] || status.status;
-                        updateVideoStatus(video.id, { status: status.status, progress: status.progress });
-                        setProcessingStatus(`${label} — ${videoNum}/${finalTargets.length} (${status.progress}%)`);
-                        setProcessProgress({
-                          current: completedCount,
-                          total: finalTargets.length,
-                          videoProgress: status.progress,
-                          activeWorkers: Math.min(SERVER_PARALLEL, finalTargets.length - completedCount),
-                        });
-                      },
+                    // Poll for completion with live status updates (15-min hard cap)
+                    finalStatus = await withJobTimeout(
+                      pollJobStatus(
+                        serverConfig.url, serverConfig.apiKey, jobId,
+                        (status) => {
+                          const label = statusLabels[status.status] || status.status;
+                          updateVideoStatus(video.id, { status: status.status, progress: status.progress });
+                          setProcessingStatus(`${label} — ${videoNum}/${finalTargets.length} (${status.progress}%)`);
+                          setProcessProgress({
+                            current: completedCount,
+                            total: finalTargets.length,
+                            videoProgress: status.progress,
+                            activeWorkers: Math.min(SERVER_PARALLEL, finalTargets.length - completedCount),
+                          });
+                        },
+                      ),
+                      `vídeo ${videoNum}`,
                     );
                     pollSuccess = true;
                     break;
@@ -1067,7 +1082,34 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           if (w > 0 && workerCount > 3) await new Promise(r => setTimeout(r, 200));
           workers.push(processOne());
         }
+
+        // Watchdog: every 2 min check if completedCount advanced.
+        // After 4 min of no progress, drain the queue so stuck workers don't block new ones.
+        // The withJobTimeout (15 min) ensures stuck workers eventually resolve.
+        let watchdogLastCompleted = completedCount;
+        let watchdogStuckCycles = 0;
+        const watchdogTimer = setInterval(() => {
+          if (completedCount < finalTargets.length) {
+            if (completedCount === watchdogLastCompleted) {
+              watchdogStuckCycles++;
+              addLog(`⚠ Watchdog [${watchdogStuckCycles}]: nenhum vídeo concluído nos últimos 2 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 15 min.`, 'warn');
+              if (watchdogStuckCycles >= 2) {
+                // 4 min of no progress — drain the queue so no new items are picked up
+                // Stuck workers will be killed by withJobTimeout
+                if (processQueue.length > 0) {
+                  addLog(`⚠ Watchdog: drenando fila (${processQueue.length} pendentes) — workers travados serão interrompidos pelo timeout.`, 'error');
+                  processQueue.length = 0;
+                }
+              }
+            } else {
+              watchdogStuckCycles = 0;
+            }
+            watchdogLastCompleted = completedCount;
+          }
+        }, 2 * 60 * 1000);
+
         await Promise.all(workers);
+        clearInterval(watchdogTimer);
 
         // === RETRY PHASE: retry failed videos one by one ===
         if (retryableFailedVideos.length > 0 && !stoppedByBreaker) {
@@ -1093,12 +1135,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               );
               addLog(`[Retry ${retryNum}] Job: ${jobId.slice(0, 8)}...`, 'info');
 
-              await pollJobStatus(
-                serverConfig.url, serverConfig.apiKey, jobId,
-                (status) => {
-                  const label = statusLabels[status.status] || status.status;
-                  setProcessingStatus(`Retry ${retryNum}/${retryableFailedVideos.length}: ${label} (${status.progress}%)`);
-                },
+              await withJobTimeout(
+                pollJobStatus(
+                  serverConfig.url, serverConfig.apiKey, jobId,
+                  (status) => {
+                    const label = statusLabels[status.status] || status.status;
+                    setProcessingStatus(`Retry ${retryNum}/${retryableFailedVideos.length}: ${label} (${status.progress}%)`);
+                  },
+                ),
+                `retry ${retryNum}`,
               );
 
               const result = await downloadJobResult(serverConfig.url, serverConfig.apiKey, jobId);
