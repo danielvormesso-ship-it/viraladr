@@ -1,0 +1,1 @@
+ALTER TABLE public.tiktok_videos ADD COLUMN IF NOT EXISTS hashtag text DEFAULT NULL;

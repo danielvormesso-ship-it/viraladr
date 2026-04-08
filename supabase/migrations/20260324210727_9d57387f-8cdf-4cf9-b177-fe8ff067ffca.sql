@@ -1,0 +1,1 @@
+CREATE POLICY "Anyone can delete tiktok videos" ON public.tiktok_videos FOR DELETE USING (true);

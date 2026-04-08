@@ -1,0 +1,1 @@
+DELETE FROM public.hashtag_cache;

@@ -1,0 +1,1 @@
+ALTER TABLE public.tiktok_videos ADD CONSTRAINT tiktok_videos_tiktok_id_key UNIQUE (tiktok_id);
