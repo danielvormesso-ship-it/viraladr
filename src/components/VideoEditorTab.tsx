@@ -1657,7 +1657,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             <div className="flex gap-3 text-[11px] font-medium">
               <span className="text-green-400">✅ {Object.values(videoStatuses).filter(s => s.status === 'done').length}</span>
               <span className="text-red-400">❌ {Object.values(videoStatuses).filter(s => s.status === 'failed').length}</span>
-              <span className="text-yellow-400">⏳ {Object.values(videoStatuses).filter(s => s.status !== 'done' && s.status !== 'failed').length}</span>
+              <span className="text-yellow-400">⏳ {Object.values(videoStatuses).filter(s => s.status !== 'pending' && s.status !== 'done' && s.status !== 'failed').length}</span>
             </div>
           </div>
           <div className="p-2.5 grid grid-cols-5 gap-1.5 max-h-72 overflow-y-auto">
