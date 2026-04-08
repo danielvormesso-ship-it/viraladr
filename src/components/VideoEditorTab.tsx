@@ -638,42 +638,54 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const compatibleTargets: typeof processTargets = [];
         const incompatibleVideos: { title: string; codec: string }[] = [];
 
-        for (let i = 0; i < processTargets.length; i++) {
-          const video = processTargets[i];
-          try {
-            const probe = await probeVideoCodec(serverConfig.url, serverConfig.apiKey, video.downloadUrl);
-
-            // Verificar codec incompatível
-            if (!probe.compatible) {
-              incompatibleVideos.push({ title: video.title.slice(0, 40), codec: probe.codecTag || probe.codecName });
-              addLog(`⏭ ${video.title.slice(0, 40)} — codec incompatível (${probe.codecTag || probe.codecName}), removido da fila`, 'warn');
+        let probeCount = 0;
+        const probeResults = await Promise.all(
+          processTargets.map(async (video) => {
+            try {
+              const probe = await probeVideoCodec(serverConfig.url, serverConfig.apiKey, video.downloadUrl);
+              probeCount++;
+              setProcessingStatus(`Verificando codecs: ${probeCount}/${processTargets.length}...`);
+              return { video, probe, error: false };
+            } catch {
+              probeCount++;
+              setProcessingStatus(`Verificando codecs: ${probeCount}/${processTargets.length}...`);
+              return { video, probe: null, error: true };
             }
-            // Verificar resolução problemática (ímpar ou muito pequena/grande)
-            else if (typeof probe.width === 'number' && typeof probe.height === 'number') {
-              const hasOddDimension = probe.width % 2 !== 0 || probe.height % 2 !== 0;
-              const tooSmall = probe.width < 120 || probe.height < 120;
-              const tooLarge = probe.width > 3840 || probe.height > 3840;
+          })
+        );
 
-              if (hasOddDimension || tooSmall || tooLarge) {
-                const reason = hasOddDimension
-                  ? `resolução ímpar (${probe.width}x${probe.height})`
-                  : tooSmall
-                    ? `muito pequeno (${probe.width}x${probe.height})`
-                    : `muito grande (${probe.width}x${probe.height})`;
-                incompatibleVideos.push({ title: video.title.slice(0, 40), codec: reason });
-                addLog(`⏭ ${video.title.slice(0, 40)} — ${reason}, removido da fila`, 'warn');
-              } else {
-                compatibleTargets.push(video);
-              }
-            } else {
-              compatibleTargets.push(video);
-              addLog(`⚠ ${video.title.slice(0, 40)} — resolução não detectada no probe, mantendo na fila`, 'warn');
-            }
-          } catch {
+        for (const { video, probe, error } of probeResults) {
+          if (error || !probe) {
             compatibleTargets.push(video);
             addLog(`⚠ ${video.title.slice(0, 40)} — falha no probe, mantendo na fila`, 'warn');
+            continue;
           }
-          setProcessingStatus(`Verificando codecs: ${i + 1}/${processTargets.length}...`);
+          // Verificar codec incompatível
+          if (!probe.compatible) {
+            incompatibleVideos.push({ title: video.title.slice(0, 40), codec: probe.codecTag || probe.codecName });
+            addLog(`⏭ ${video.title.slice(0, 40)} — codec incompatível (${probe.codecTag || probe.codecName}), removido da fila`, 'warn');
+          }
+          // Verificar resolução problemática (ímpar ou muito pequena/grande)
+          else if (typeof probe.width === 'number' && typeof probe.height === 'number') {
+            const hasOddDimension = probe.width % 2 !== 0 || probe.height % 2 !== 0;
+            const tooSmall = probe.width < 120 || probe.height < 120;
+            const tooLarge = probe.width > 3840 || probe.height > 3840;
+
+            if (hasOddDimension || tooSmall || tooLarge) {
+              const reason = hasOddDimension
+                ? `resolução ímpar (${probe.width}x${probe.height})`
+                : tooSmall
+                  ? `muito pequeno (${probe.width}x${probe.height})`
+                  : `muito grande (${probe.width}x${probe.height})`;
+              incompatibleVideos.push({ title: video.title.slice(0, 40), codec: reason });
+              addLog(`⏭ ${video.title.slice(0, 40)} — ${reason}, removido da fila`, 'warn');
+            } else {
+              compatibleTargets.push(video);
+            }
+          } else {
+            compatibleTargets.push(video);
+            addLog(`⚠ ${video.title.slice(0, 40)} — resolução não detectada no probe, mantendo na fila`, 'warn');
+          }
         }
 
         if (incompatibleVideos.length > 0) {
