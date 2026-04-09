@@ -874,6 +874,8 @@ const Index = () => {
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
+        // Enforce exact limit early so progressive display never exceeds totalTarget
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
         const newlyAdded = approvedVideos.length - beforeApproved;
         addLog(`🎯 Rodada ${round + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
 
@@ -889,8 +891,8 @@ const Index = () => {
         }
       }
 
-      let unique = approvedVideos;
-      if (unique.length > totalTarget) unique = unique.slice(0, totalTarget);
+      // unique is already capped — slice is a safety net
+      const unique = approvedVideos.slice(0, totalTarget);
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
@@ -1095,19 +1097,26 @@ const Index = () => {
 
     let firstProgressiveInsertAt = -1; // I: track position for first index jump
 
+    let progressiveShownCount = 0; // tracks new videos shown from this search
+
     const showProgressively = (batch: TikTokVideo[]) => {
-      if (batch.length === 0) return;
+      if (batch.length === 0 || progressiveShownCount >= totalTarget) return;
+      // Trim so we never show more than totalTarget new videos in total
+      const remaining = totalTarget - progressiveShownCount;
+      const trimmed = batch.slice(0, remaining);
+      progressiveShownCount += trimmed.length;
       if (firstProgressiveInsertAt === -1) {
         firstProgressiveInsertAt = videosRef.current.length;
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
       }
       setResultFilterMode("ai");
-      setVideos(prev => dedupeVideos([...prev, ...batch]));
+      setVideos(prev => dedupeVideos([...prev, ...trimmed]));
     };
 
     if (allGeneric) {
       addLog(`⚡ Hashtags genéricas detectadas — filtro de nicho desativado`);
-      approvedVideos = initialCandidates;
+      // Enforce exact limit before progressive display
+      approvedVideos = initialCandidates.slice(0, totalTarget);
       showProgressively(approvedVideos); // I
 
       const MAX_GENERIC_ROUNDS = 6;
@@ -1130,6 +1139,8 @@ const Index = () => {
         if (retryCandidates.length === 0) break;
         const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...retryCandidates]);
+        // Enforce exact limit
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
         showProgressively(approvedVideos.slice(before)); // I
       }
     } else {
@@ -1196,14 +1207,16 @@ const Index = () => {
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
+        // Enforce exact limit so progressive display never exceeds totalTarget
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
         const newlyAdded = approvedVideos.length - beforeApproved;
         addLog(`🎯 Rodada ${round + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
         showProgressively(approvedVideos.slice(beforeApproved)); // I
       }
     }
 
-    let unique = approvedVideos;
-    if (unique.length > totalTarget) unique = unique.slice(0, totalTarget);
+    // approvedVideos is already capped — slice is a safety net
+    const unique = approvedVideos.slice(0, totalTarget);
 
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     addLog(`🏁 Concluído: ${unique.length}/${totalTarget} vídeos em ${elapsed}s`);
