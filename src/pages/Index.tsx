@@ -8,7 +8,7 @@ import { activityTracker } from "@/lib/activityTracker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { tiktokApi, TikTokVideo } from "@/lib/api/tiktok";
+import { tiktokApi, TikTokVideo, getVideoKey, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -131,27 +131,6 @@ const Index = () => {
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const normalizeUrl = (url: string | null | undefined) =>
-    (url || "").trim().toLowerCase().split('#')[0].split('?')[0].replace(/\/+$/, "");
-
-  const getVideoKey = (video: TikTokVideo) => {
-    if (video.tiktok_id) return `id:${video.tiktok_id}`;
-    const source = normalizeUrl(video.source_url);
-    if (source) return `source:${source}`;
-    const direct = normalizeUrl(video.video_url);
-    if (direct) return `video:${direct}`;
-    return `meta:${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
-  };
-
-  const dedupeVideos = (input: TikTokVideo[]) => {
-    const seen = new Set<string>();
-    return input.filter((video) => {
-      const key = getVideoKey(video);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  };
 
   const distributeExactTotal = useCallback((keys: string[], total: number) => {
     if (keys.length === 0) return {} as Record<string, number>;
@@ -1253,18 +1232,6 @@ const Index = () => {
 
     // Always slice from 0 since downloaded videos are removed from the list
     const videosToDownloadRaw = filteredVideos.slice(0, requestedCount);
-
-    const normalizeUrl = (url: string | null) =>
-      (url || "").trim().toLowerCase().split("?")[0].replace(/\/+$/, "");
-
-    const getVideoKey = (video: TikTokVideo) => {
-      if (video.tiktok_id) return `id:${video.tiktok_id}`;
-      const source = normalizeUrl(video.source_url);
-      if (source) return `source:${source}`;
-      const direct = normalizeUrl(video.video_url);
-      if (direct) return `video:${direct}`;
-      return `meta:${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
-    };
 
     const seenVideoKeys = new Set<string>();
     const videosToDownload = videosToDownloadRaw.filter((video) => {

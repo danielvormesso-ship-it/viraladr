@@ -29,7 +29,7 @@ function normalizeUrl(url: string | null | undefined): string {
   return url.trim().toLowerCase().split('#')[0].split('?')[0].replace(/\/+$/, '');
 }
 
-function getVideoKey(video: TikTokVideo): string {
+export function getVideoKey(video: TikTokVideo): string {
   if (video.tiktok_id) return `id:${video.tiktok_id}`;
   const source = normalizeUrl(video.source_url);
   if (source) return `source:${source}`;
@@ -38,7 +38,7 @@ function getVideoKey(video: TikTokVideo): string {
   return `meta:${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}`;
 }
 
-function dedupeVideos(videos: TikTokVideo[]): TikTokVideo[] {
+export function dedupeVideos(videos: TikTokVideo[]): TikTokVideo[] {
   const seen = new Set<string>();
   return videos.filter((video) => {
     const key = getVideoKey(video);
