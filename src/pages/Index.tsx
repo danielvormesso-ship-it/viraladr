@@ -739,6 +739,8 @@ const Index = () => {
       const startTime = performance.now();
       addLog(`📊 Meta: ${totalTarget} vídeos`);
 
+      const seenIds = await tiktokApi.getSeenVideoIds();
+
       const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
         if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
         if (v.shares < filters.minShares || v.comments < filters.minComments) return false;
@@ -810,6 +812,7 @@ const Index = () => {
       const initialCandidates = initialRaw.filter((video) => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
+        if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
         seenCandidateKeys.add(key);
         return true;
       });
@@ -844,6 +847,7 @@ const Index = () => {
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
+            if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
             seenCandidateKeys.add(key);
             return true;
           });
@@ -894,6 +898,10 @@ const Index = () => {
       // unique is already capped — slice is a safety net
       const unique = approvedVideos.slice(0, totalTarget);
 
+      // Mark seen so this user won't get the same videos again
+      const seenIdsToMark = unique.map(v => v.tiktok_id).filter(Boolean) as string[];
+      tiktokApi.markVideosSeen(seenIdsToMark).catch(() => {});
+
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
       if (unique.length > 0) {
@@ -936,7 +944,10 @@ const Index = () => {
     setCacheStatus(null);
     activityTracker.logSearch(tag);
     try {
-      const result = await tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh);
+      const [result, seenIds] = await Promise.all([
+        tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh),
+        tiktokApi.getSeenVideoIds(),
+      ]);
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -944,9 +955,12 @@ const Index = () => {
         setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
       }
 
-      if (result.videos && result.videos.length > 0) {
+      const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
+      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+
+      if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(dedupeVideos(result.videos));
+        setVideos(dedupeVideos(unseenVideos));
         setCurrentIndex(0);
       } else {
         setResultFilterMode("strict");
@@ -1080,12 +1094,14 @@ const Index = () => {
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags em paralelo...`);
 
+    const seenIds = await tiktokApi.getSeenVideoIds();
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
     const seenCandidateKeys = new Set(existingVideoKeys);
     const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
     const initialCandidates = initialRaw.filter((video) => {
       const key = getVideoKey(video);
       if (seenCandidateKeys.has(key)) return false;
+      if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
       seenCandidateKeys.add(key);
       return true;
     });
@@ -1132,6 +1148,7 @@ const Index = () => {
         const retryCandidates = retryRaw.filter((video) => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
+          if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
           seenCandidateKeys.add(key);
           return true;
         });
@@ -1178,6 +1195,7 @@ const Index = () => {
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
+            if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
             seenCandidateKeys.add(key);
             return true;
           });
@@ -1218,6 +1236,9 @@ const Index = () => {
     // approvedVideos is already capped — slice is a safety net
     const unique = approvedVideos.slice(0, totalTarget);
 
+    // Mark seen so this user won't get the same videos again
+    tiktokApi.markVideosSeen(unique.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     addLog(`🏁 Concluído: ${unique.length}/${totalTarget} vídeos em ${elapsed}s`);
 
@@ -1249,11 +1270,17 @@ const Index = () => {
     activityTracker.logSearch('foryou');
 
     try {
-      const result = await tiktokApi.scrapeForYou(foryouQuantity, filters);
+      const [result, seenIds] = await Promise.all([
+        tiktokApi.scrapeForYou(foryouQuantity, filters),
+        tiktokApi.getSeenVideoIds(),
+      ]);
 
-      if (result.videos && result.videos.length > 0) {
+      const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
+      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+
+      if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(dedupeVideos(result.videos));
+        setVideos(dedupeVideos(unseenVideos));
         setCurrentIndex(0);
       }
 
@@ -1702,6 +1729,7 @@ const Index = () => {
                         src={previewThumbnailSrc || '/placeholder.svg'}
                         alt={currentVideo.title}
                         className="absolute inset-0 w-full h-full object-cover"
+                        loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
                       />
                     )}
@@ -1712,6 +1740,7 @@ const Index = () => {
                       className={`w-full h-full object-cover ${isPreviewReady ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
                       loop
                       playsInline
+                      preload="metadata"
                       muted={isMuted}
                       autoPlay={isPlaying}
                       poster={previewThumbnailSrc || '/placeholder.svg'}
@@ -1728,6 +1757,7 @@ const Index = () => {
                     src={previewThumbnailSrc || '/placeholder.svg'}
                     alt={currentVideo.title}
                     className="w-full h-full object-cover"
+                    loading="lazy"
                     onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
                   />
                 )}

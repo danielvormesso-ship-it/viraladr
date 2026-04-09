@@ -180,6 +180,36 @@ export const tiktokApi = {
     if (error) throw error;
   },
 
+  async getSeenVideoIds(): Promise<Set<string>> {
+    try {
+      const userId = await getCurrentUserId();
+      const { data, error } = await (supabase as any)
+        .from('seen_videos')
+        .select('tiktok_id')
+        .eq('user_id', userId);
+      if (error) {
+        console.warn('Erro ao buscar vídeos vistos:', error);
+        return new Set<string>();
+      }
+      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
+    } catch {
+      return new Set<string>();
+    }
+  },
+
+  async markVideosSeen(tiktokIds: string[]): Promise<void> {
+    if (tiktokIds.length === 0) return;
+    try {
+      const userId = await getCurrentUserId();
+      const rows = tiktokIds.map(tiktok_id => ({ user_id: userId, tiktok_id }));
+      await (supabase as any)
+        .from('seen_videos')
+        .upsert(rows, { onConflict: 'user_id,tiktok_id' });
+    } catch (err) {
+      console.warn('Erro ao salvar vídeos vistos:', err);
+    }
+  },
+
   async getVideoCount(minViews = 0): Promise<number> {
     const userId = await getCurrentUserId();
 
