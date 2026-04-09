@@ -250,10 +250,10 @@ const Index = () => {
     // Reject Thai, Vietnamese tonal marks, Devanagari, Tamil, etc.
     if (/[\u0E00-\u0E7F\u0900-\u097F\u0B80-\u0BFF\u1000-\u109F]/.test(text)) return false;
 
-    // Reject high English density (expanded word list)
-    const engWords = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|my|me|we|be|do|so|go|up|if|of|at|on|in|it|to|is|no|or|an|by|i love|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
+    // Reject high English density — words ambiguous with Portuguese (do/no/me/so/in/on/etc.) are excluded
+    const engWords = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|we|i love|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
     const engMatches = text.match(engWords);
-    if (engMatches && engMatches.length >= 2) return false;
+    if (engMatches && engMatches.length >= 4) return false;
 
     // Positive Portuguese indicators — at least one must be present
     const brChars = /[ãáàâéêíóôõúüç]/;
@@ -758,11 +758,18 @@ const Index = () => {
       const safeTagCount = Math.max(1, newTags.length);
       let totalNew = 0;
 
-      const fetchCandidates = async (requestedPerTag: number, forceRefresh: boolean) => {
-        const freshVideos: TikTokVideo[] = [];
+      // H: preload thumbnails in the background as soon as videos are fetched
+      const preloadThumbnails = (vids: TikTokVideo[]) => {
+        vids.forEach(v => { if (v.thumbnail) { const img = new Image(); img.src = v.thumbnail; } });
+      };
 
-        for (let i = 0; i < newTags.length; i += PARALLEL) {
-          const batch = newTags.slice(i, i + PARALLEL);
+      // F: fetchCandidates uses Promise.allSettled (parallel) — tagsOverride for D (retry pool)
+      const fetchCandidates = async (requestedPerTag: number, forceRefresh: boolean, tagsOverride?: string[]) => {
+        const freshVideos: TikTokVideo[] = [];
+        const tagsToFetch = tagsOverride || newTags;
+
+        for (let i = 0; i < tagsToFetch.length; i += PARALLEL) {
+          const batch = tagsToFetch.slice(i, i + PARALLEL);
           const batchResults = await Promise.allSettled(
             batch.map(tag => tiktokApi.scrapeByHashtag(tag, Math.min(requestedPerTag, 500), undefined, forceRefresh, true))
           );
@@ -780,10 +787,18 @@ const Index = () => {
           });
         }
 
-        return dedupeVideos(freshVideos);
+        const result = dedupeVideos(freshVideos);
+        preloadThumbnails(result); // H
+        return result;
       };
 
-      const OVERFETCH_MULTIPLIER = 5;
+      // D: retry pool — AI tags excluded from initial distribution (low-priority ones)
+      const retryTagPool: string[] = hashtags
+        .map((h: any) => h.tag)
+        .filter((tag: string) => !newTags.includes(tag));
+
+      // E: fetch more candidates when target is large
+      const OVERFETCH_MULTIPLIER = totalTarget > 50 ? 8 : 5;
       const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
       addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
       setScrapeProgress(`Buscando ${newTags.length} hashtags em paralelo...`);
@@ -804,6 +819,7 @@ const Index = () => {
 
       let approvedVideos: TikTokVideo[] = [];
       const MAX_FILTER_ROUNDS = 6;
+      let firstProgressiveInsertAt = -1; // I: track position for first index jump
 
       for (let round = 0; round < MAX_FILTER_ROUNDS; round++) {
         const deficit = totalTarget - approvedVideos.length;
@@ -821,7 +837,10 @@ const Index = () => {
           addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
           setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
           const retryPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
-          const retryRaw = await fetchCandidates(retryPerTag, true);
+          // D: use pool tags on retries to diversify sources
+          const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
+          if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas: ${poolBatch.map(t => '#' + t).join(', ')}`);
+          const retryRaw = await fetchCandidates(retryPerTag, true, poolBatch);
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
@@ -855,7 +874,19 @@ const Index = () => {
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
-        addLog(`🎯 Rodada ${round + 1}: +${approvedVideos.length - beforeApproved} aprovados (${approvedVideos.length}/${totalTarget})`);
+        const newlyAdded = approvedVideos.length - beforeApproved;
+        addLog(`🎯 Rodada ${round + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
+
+        // I: show approved videos immediately after each round
+        if (newlyAdded > 0) {
+          const batchToShow = approvedVideos.slice(beforeApproved);
+          if (firstProgressiveInsertAt === -1) {
+            firstProgressiveInsertAt = videosRef.current.length;
+            setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
+          }
+          setResultFilterMode("ai");
+          setVideos(prev => dedupeVideos([...prev, ...batchToShow]));
+        }
       }
 
       let unique = approvedVideos;
@@ -867,12 +898,13 @@ const Index = () => {
         setResultFilterMode("ai");
         setVideos(prev => {
           const merged = dedupeVideos([...prev, ...unique]);
-          setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+          // Only update index if nothing was shown progressively
+          if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
           return merged;
         });
         detectOffTopicVideos(unique, newTags);
         addLog(`✅ ${unique.length} vídeos${genderFilter !== "none" ? ` (${genderFilter === "female" ? "femininos" : "masculinos"})` : ""} prontos!`);
-      } else {
+      } else if (firstProgressiveInsertAt === -1) {
         setNicheWarning(null);
         addLog(`⚠️ Nenhum vídeo passou na validação visual`);
       }
@@ -902,7 +934,7 @@ const Index = () => {
     setCacheStatus(null);
     activityTracker.logSearch(tag);
     try {
-      const result = await tiktokApi.scrapeByHashtag(tag, 50, undefined, forceRefresh);
+      const result = await tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh);
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -988,15 +1020,23 @@ const Index = () => {
     const totalExpandedQty = Object.values(expandedQty).reduce((s, q) => s + q, 0) || 1;
     let totalNew = 0;
 
-    const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean) => {
-      const freshVideos: TikTokVideo[] = [];
+    // H: preload thumbnails in the background as soon as each batch arrives
+    const preloadThumbnails = (vids: TikTokVideo[]) => {
+      vids.forEach(v => { if (v.thumbnail) { const img = new Image(); img.src = v.thumbnail; } });
+    };
 
-      for (let i = 0; i < expandedTags.length; i += PARALLEL) {
-        const batch = expandedTags.slice(i, i + PARALLEL);
+    // F: parallel fetching — tagsOverride for D (retry pool tags)
+    const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean, tagsOverride?: string[]) => {
+      const freshVideos: TikTokVideo[] = [];
+      const tagsToFetch = tagsOverride || expandedTags;
+
+      for (let i = 0; i < tagsToFetch.length; i += PARALLEL) {
+        const batch = tagsToFetch.slice(i, i + PARALLEL);
         const batchResults = await Promise.allSettled(
           batch.map(tag => {
-            const tagWeight = (expandedQty[tag] || 50) / totalExpandedQty;
-            const requestAmount = Math.min(Math.ceil(requestedMultiplier * tagWeight), 500);
+            const requestAmount = tagsOverride
+              ? Math.min(Math.ceil(requestedMultiplier / tagsToFetch.length), 500)
+              : Math.min(Math.ceil(requestedMultiplier * ((expandedQty[tag] || 50) / totalExpandedQty)), 500);
             return tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true);
           })
         );
@@ -1017,10 +1057,23 @@ const Index = () => {
         });
       }
 
-      return dedupeVideos(freshVideos);
+      const result = dedupeVideos(freshVideos);
+      preloadThumbnails(result); // H
+      return result;
     };
 
-    const OVERFETCH_MULTIPLIER = 5;
+    // D: retry pool — sub-tags from selected presets not used in the initial expanded set
+    const retryTagPool: string[] = [];
+    for (const tagStr of selectedTags) {
+      if (tagStr.includes(',')) {
+        tagStr.split(',').map(t => t.trim()).filter(Boolean).forEach(st => {
+          if (!expandedTags.includes(st) && !retryTagPool.includes(st)) retryTagPool.push(st);
+        });
+      }
+    }
+
+    // E: fetch more candidates when target is large
+    const OVERFETCH_MULTIPLIER = totalTarget > 50 ? 8 : 5;
     const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags em paralelo...`);
@@ -1040,9 +1093,22 @@ const Index = () => {
 
     let approvedVideos: TikTokVideo[] = [];
 
+    let firstProgressiveInsertAt = -1; // I: track position for first index jump
+
+    const showProgressively = (batch: TikTokVideo[]) => {
+      if (batch.length === 0) return;
+      if (firstProgressiveInsertAt === -1) {
+        firstProgressiveInsertAt = videosRef.current.length;
+        setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
+      }
+      setResultFilterMode("ai");
+      setVideos(prev => dedupeVideos([...prev, ...batch]));
+    };
+
     if (allGeneric) {
       addLog(`⚡ Hashtags genéricas detectadas — filtro de nicho desativado`);
       approvedVideos = initialCandidates;
+      showProgressively(approvedVideos); // I
 
       const MAX_GENERIC_ROUNDS = 6;
       for (let round = 1; round < MAX_GENERIC_ROUNDS && approvedVideos.length < totalTarget; round++) {
@@ -1050,7 +1116,10 @@ const Index = () => {
         addLog(`🔁 Retry genérico ${round}: faltam ${deficit}, buscando mais...`);
         setScrapeProgress(`Buscando +${deficit} vídeos genéricos...`);
         const retryTarget = deficit * 5;
-        const retryRaw = await fetchCandidates(retryTarget, true);
+        // D: use pool tags to diversify sources
+        const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
+        if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
+        const retryRaw = await fetchCandidates(retryTarget, true, poolBatch);
         const retryCandidates = retryRaw.filter((video) => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
@@ -1059,7 +1128,9 @@ const Index = () => {
         });
         addLog(`📊 Retry genérico ${round}: ${retryCandidates.length} candidatos novos`);
         if (retryCandidates.length === 0) break;
+        const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...retryCandidates]);
+        showProgressively(approvedVideos.slice(before)); // I
       }
     } else {
       const groupLabels = selectedTags.map(tagStr => {
@@ -1089,7 +1160,10 @@ const Index = () => {
           addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
           setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
           const retryTarget = deficit * 5;
-          const retryRaw = await fetchCandidates(retryTarget, true);
+          // D: use pool tags to diversify retry sources
+          const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
+          if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
+          const retryRaw = await fetchCandidates(retryTarget, true, poolBatch);
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
@@ -1122,7 +1196,9 @@ const Index = () => {
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
-        addLog(`🎯 Rodada ${round + 1}: +${approvedVideos.length - beforeApproved} aprovados (${approvedVideos.length}/${totalTarget})`);
+        const newlyAdded = approvedVideos.length - beforeApproved;
+        addLog(`🎯 Rodada ${round + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
+        showProgressively(approvedVideos.slice(beforeApproved)); // I
       }
     }
 
@@ -1136,7 +1212,7 @@ const Index = () => {
     if (unique.length > 0) {
       setVideos(prev => {
         const merged = dedupeVideos([...prev, ...unique]);
-        setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+        if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
         return merged;
       });
       detectOffTopicVideos(unique, expandedTags);
