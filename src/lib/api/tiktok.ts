@@ -18,6 +18,15 @@ export interface TikTokVideo {
   owner_user_id?: string | null;
 }
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function formatNumber(num: number): string {
   if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
   if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
@@ -104,7 +113,7 @@ export const tiktokApi = {
     });
     if (error) throw error;
 
-    const videos = dedupeVideos((data?.videos || []) as TikTokVideo[]);
+    const videos = shuffleArray(dedupeVideos((data?.videos || []) as TikTokVideo[]));
     return {
       ...data,
       videos,
@@ -183,15 +192,9 @@ export const tiktokApi = {
   async getSeenVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const { data, error } = await (supabase as any)
-        .from('seen_videos')
-        .select('tiktok_id')
-        .eq('user_id', userId);
-      if (error) {
-        console.warn('Erro ao buscar vídeos vistos:', error);
-        return new Set<string>();
-      }
-      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
+      const raw = localStorage.getItem(`seen_videos_${userId}`);
+      if (!raw) return new Set<string>();
+      return new Set<string>(JSON.parse(raw));
     } catch {
       return new Set<string>();
     }
@@ -201,10 +204,11 @@ export const tiktokApi = {
     if (tiktokIds.length === 0) return;
     try {
       const userId = await getCurrentUserId();
-      const rows = tiktokIds.map(tiktok_id => ({ user_id: userId, tiktok_id }));
-      await (supabase as any)
-        .from('seen_videos')
-        .upsert(rows, { onConflict: 'user_id,tiktok_id' });
+      const key = `seen_videos_${userId}`;
+      const raw = localStorage.getItem(key);
+      const existing: string[] = raw ? JSON.parse(raw) : [];
+      const merged = Array.from(new Set([...existing, ...tiktokIds]));
+      localStorage.setItem(key, JSON.stringify(merged));
     } catch (err) {
       console.warn('Erro ao salvar vídeos vistos:', err);
     }
