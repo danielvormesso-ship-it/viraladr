@@ -466,7 +466,14 @@ const Index = () => {
     });
   }, [totalFiltered, isScraping]);
 
-  const togglePlay = useCallback(() => setIsPlaying((p) => !p), []);
+  const togglePlay = useCallback(() => {
+    if (!previewVideoSrc && !isPreviewLoading) {
+      loadPreviewRef.current?.();
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(p => !p);
+    }
+  }, [previewVideoSrc, isPreviewLoading]);
   const toggleMute = useCallback(() => setIsMuted((p) => !p), []);
 
   const handleRemoveVideo = useCallback(() => {
@@ -509,14 +516,8 @@ const Index = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const wheelCooldownRef = useRef(false);
-  const previewObjectUrlRef = useRef<string | null>(null);
-
-  const clearPreviewObjectUrl = useCallback(() => {
-    if (previewObjectUrlRef.current) {
-      URL.revokeObjectURL(previewObjectUrlRef.current);
-      previewObjectUrlRef.current = null;
-    }
-  }, []);
+  const loadTokenRef = useRef(0);
+  const loadPreviewRef = useRef<(() => void) | null>(null);
 
   const handleWheelNavigate = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -531,86 +532,56 @@ const Index = () => {
     }, 240);
   }, [handlePrev, handleNext]);
 
+  // On video change: reset player to thumbnail-only, do NOT start loading
   useEffect(() => {
-    let cancelled = false;
+    loadTokenRef.current++;
+    setPreviewVideoSrc(null);
+    setIsPreviewReady(false);
+    setIsPreviewLoading(false);
+    setPreviewThumbnailSrc(currentVideo?.thumbnail || '/placeholder.svg');
+  }, [currentVideo?.id]);
 
-    const loadPreview = async () => {
-      clearPreviewObjectUrl();
-      setIsPreviewReady(false);
-
-      if (!currentVideo) {
-        setPreviewVideoSrc(null);
-        setPreviewThumbnailSrc('/placeholder.svg');
+  // Fallback: when source_url fails or isn't available, get CDN URL via edge function
+  const loadPreviewFallback = useCallback(async () => {
+    if (!currentVideo) return;
+    const token = loadTokenRef.current;
+    setIsPreviewLoading(true);
+    const videoUrl = currentVideo.source_url || (currentVideo.tiktok_id ? `https://www.tiktok.com/@user/video/${currentVideo.tiktok_id}` : null);
+    if (!videoUrl) { setIsPreviewLoading(false); return; }
+    try {
+      const { data, error } = await supabase.functions.invoke('download-tiktok', {
+        body: { video_url: videoUrl, tiktok_id: currentVideo.tiktok_id, mode: 'url' },
+      });
+      if (token !== loadTokenRef.current) return; // navigated away
+      if (!error && data?.success && data?.download_url) {
+        setPreviewVideoSrc(data.download_url);
+      } else {
         setIsPreviewLoading(false);
-        return;
       }
+    } catch {
+      if (token !== loadTokenRef.current) return;
+      setIsPreviewLoading(false);
+    }
+  }, [currentVideo]);
 
-      setPreviewThumbnailSrc(currentVideo.thumbnail || '/placeholder.svg');
+  // Primary load: try source_url directly, fall back to edge function
+  const loadPreview = useCallback(() => {
+    if (!currentVideo || previewVideoSrc) return;
+    loadTokenRef.current++;
+    setIsPreviewReady(false);
+    setIsPreviewLoading(true);
+    if (currentVideo.source_url) {
+      // Set directly — browser streams natively, no download needed
+      setPreviewVideoSrc(currentVideo.source_url);
+      // isPreviewLoading cleared by onCanPlay or onError on the video element
+    } else {
+      setIsPreviewLoading(false);
+      loadPreviewFallback();
+    }
+  }, [currentVideo, previewVideoSrc, loadPreviewFallback]);
 
-      const videoUrl = currentVideo.source_url || (currentVideo.tiktok_id ? `https://www.tiktok.com/@user/video/${currentVideo.tiktok_id}` : null);
-      if (!videoUrl) {
-        setPreviewVideoSrc(null);
-        setIsPreviewLoading(false);
-        return;
-      }
-
-      setIsPreviewLoading(true);
-
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const proxyRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/download-tiktok`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
-          },
-          body: JSON.stringify({ video_url: videoUrl, tiktok_id: currentVideo.tiktok_id, mode: 'proxy' }),
-        });
-
-        if (proxyRes.ok) {
-          const contentType = proxyRes.headers.get('content-type') || '';
-          if (contentType.includes('video/')) {
-            const proxyBlob = await proxyRes.blob();
-            if (proxyBlob.size > 1024 && !cancelled) {
-              clearPreviewObjectUrl();
-              const blobUrl = URL.createObjectURL(proxyBlob);
-              previewObjectUrlRef.current = blobUrl;
-              setPreviewVideoSrc(blobUrl);
-              setIsPreviewLoading(false);
-              return;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Falha no proxy do player principal:', err);
-      }
-
-      try {
-        const { data, error } = await supabase.functions.invoke('download-tiktok', {
-          body: { video_url: videoUrl, tiktok_id: currentVideo.tiktok_id, mode: 'url' },
-        });
-
-        if (!cancelled && !error && data?.success && data?.download_url) {
-          setPreviewVideoSrc(data.download_url);
-        } else if (!cancelled) {
-          setPreviewVideoSrc(null);
-        }
-      } catch (err) {
-        console.warn('Falha ao resolver URL do preview:', err);
-        if (!cancelled) setPreviewVideoSrc(null);
-      } finally {
-        if (!cancelled) setIsPreviewLoading(false);
-      }
-    };
-
-    loadPreview();
-
-    return () => {
-      cancelled = true;
-      clearPreviewObjectUrl();
-    };
-  }, [currentVideo?.id, currentVideo?.source_url, currentVideo?.tiktok_id, currentVideo?.thumbnail, clearPreviewObjectUrl]);
+  // Keep ref in sync so togglePlay can call it without stale closure
+  loadPreviewRef.current = loadPreview;
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -1722,43 +1693,35 @@ const Index = () => {
           >
             {currentVideo ? (
               <div className={`relative rounded-2xl overflow-hidden ${isPlaying ? 'player-glow-active' : 'player-glow'} border border-border/15 transition-all duration-500`} style={{ aspectRatio: '9/16' }}>
-                {previewVideoSrc ? (
-                  <>
-                    {!isPreviewReady && (
-                      <img
-                        src={previewThumbnailSrc || '/placeholder.svg'}
-                        alt={currentVideo.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        loading="lazy"
-                        onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
-                      />
-                    )}
-                    <video
-                      ref={videoRef}
-                      key={currentVideo.id}
-                      src={previewVideoSrc}
-                      className={`w-full h-full object-cover ${isPreviewReady ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
-                      loop
-                      playsInline
-                      preload="metadata"
-                      muted={isMuted}
-                      autoPlay={isPlaying}
-                      poster={previewThumbnailSrc || '/placeholder.svg'}
-                      onLoadedData={() => setIsPreviewReady(true)}
-                      onCanPlay={() => setIsPreviewReady(true)}
-                      onError={() => {
-                        setPreviewVideoSrc(null);
-                        setIsPreviewReady(false);
-                      }}
-                    />
-                  </>
-                ) : (
-                  <img
-                    src={previewThumbnailSrc || '/placeholder.svg'}
-                    alt={currentVideo.title}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
+                {/* Thumbnail always visible — fades out only when video is ready */}
+                <img
+                  src={previewThumbnailSrc || '/placeholder.svg'}
+                  alt={currentVideo.title}
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${previewVideoSrc && isPreviewReady ? 'opacity-0' : 'opacity-100'}`}
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.svg'; }}
+                />
+                {/* Video element — only mounted when we have a source to play */}
+                {previewVideoSrc && (
+                  <video
+                    ref={videoRef}
+                    key={currentVideo.id}
+                    src={previewVideoSrc}
+                    className={`w-full h-full object-cover transition-opacity duration-200 ${isPreviewReady ? 'opacity-100' : 'opacity-0'}`}
+                    loop
+                    playsInline
+                    preload="none"
+                    muted={isMuted}
+                    autoPlay
+                    poster={previewThumbnailSrc || '/placeholder.svg'}
+                    onLoadedData={() => { setIsPreviewReady(true); setIsPreviewLoading(false); }}
+                    onCanPlay={() => { setIsPreviewReady(true); setIsPreviewLoading(false); }}
+                    onError={() => {
+                      setIsPreviewReady(false);
+                      setIsPreviewLoading(false);
+                      const wasDirect = !!(currentVideo?.source_url && previewVideoSrc === currentVideo.source_url);
+                      setPreviewVideoSrc(null);
+                      if (wasDirect) loadPreviewFallback();
+                    }}
                   />
                 )}
 
@@ -1773,7 +1736,7 @@ const Index = () => {
 
                 <div className="absolute inset-0 z-10 cursor-pointer" onClick={togglePlay} onWheel={handleWheelNavigate} aria-label="Interação do player" />
 
-                {!isPlaying && (
+                {(!previewVideoSrc || !isPlaying) && !isPreviewLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-30 pointer-events-none">
                     <div className="h-14 w-14 rounded-full bg-primary/20 backdrop-blur-xl flex items-center justify-center border border-primary/30 glow-primary transition-all duration-300">
                       <Play className="h-6 w-6 text-foreground fill-foreground ml-0.5" />
