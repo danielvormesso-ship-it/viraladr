@@ -903,11 +903,13 @@ const Index = () => {
 
       // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
       const MAX_EXTRA_ROUNDS = 5;
+      let consecutiveEmpty = 0;
       for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
         const deficit = totalTarget - approvedVideos.length;
         addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
         setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
         const extraPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
+        // Always try alternative tags in extra rounds to diversify sources
         const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
         if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
         const extraRaw = await fetchCandidates(extraPerTag, true, poolBatch);
@@ -919,9 +921,16 @@ const Index = () => {
           return true;
         });
         if (extraCandidates.length === 0) {
-          addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, encerrando`);
-          break;
+          consecutiveEmpty++;
+          if (consecutiveEmpty >= 2) {
+            addLog(`⚠️ Rodada extra ${extra + 1}: pool esgotado após ${consecutiveEmpty} tentativas vazias`);
+            break;
+          }
+          addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, tentando com outras hashtags...`);
+          continue;
         }
+        consecutiveEmpty = 0;
+        // Try AI filter first, but if it rejects too many, accept all candidates to complete the target
         addLog(`🤖 Filtrando ${extraCandidates.length} vídeos (extra ${extra + 1})...`);
         const [nicheFiltered, thumbFiltered] = await Promise.all([
           applyNicheTitleFilter(extraCandidates, aiSearchDescription, newTags, addLog),
@@ -930,9 +939,17 @@ const Index = () => {
         const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
         const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
         const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
-        const extraApproved = hadSignal
+        let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
+        // If AI filter yielded too few, accept remaining unfiltered candidates to complete the target
+        if (extraApproved.length < deficit && extraCandidates.length > extraApproved.length) {
+          const approvedKeys = new Set(extraApproved.map(getVideoKey));
+          const unfiltered = extraCandidates.filter(v => !approvedKeys.has(getVideoKey(v)));
+          const needed = deficit - extraApproved.length;
+          extraApproved = [...extraApproved, ...unfiltered.slice(0, needed)];
+          addLog(`  📋 Completando com ${Math.min(needed, unfiltered.length)} vídeos sem filtro AI`);
+        }
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
@@ -1300,6 +1317,7 @@ const Index = () => {
 
     // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
     const MAX_EXTRA_ROUNDS = 5;
+    let consecutiveEmpty = 0;
     for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
       const deficit = totalTarget - approvedVideos.length;
       addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
@@ -1316,9 +1334,15 @@ const Index = () => {
         return true;
       });
       if (extraCandidates.length === 0) {
-        addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, encerrando`);
-        break;
+        consecutiveEmpty++;
+        if (consecutiveEmpty >= 2) {
+          addLog(`⚠️ Rodada extra ${extra + 1}: pool esgotado após ${consecutiveEmpty} tentativas vazias`);
+          break;
+        }
+        addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, tentando com outras hashtags...`);
+        continue;
       }
+      consecutiveEmpty = 0;
       if (allGeneric) {
         const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraCandidates]);
@@ -1335,9 +1359,17 @@ const Index = () => {
         const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
         const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
         const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
-        const extraApproved = hadSignal
+        let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
+        // If AI filter yielded too few, accept remaining unfiltered candidates to complete the target
+        if (extraApproved.length < deficit && extraCandidates.length > extraApproved.length) {
+          const approvedKeys = new Set(extraApproved.map(getVideoKey));
+          const unfiltered = extraCandidates.filter(v => !approvedKeys.has(getVideoKey(v)));
+          const needed = deficit - extraApproved.length;
+          extraApproved = [...extraApproved, ...unfiltered.slice(0, needed)];
+          addLog(`  📋 Completando com ${Math.min(needed, unfiltered.length)} vídeos sem filtro AI`);
+        }
         const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);

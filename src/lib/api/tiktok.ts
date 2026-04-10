@@ -195,20 +195,24 @@ export const tiktokApi = {
       const raw = localStorage.getItem(`seen_videos_${userId}`);
       if (!raw) return new Set<string>();
       return new Set<string>(JSON.parse(raw));
-    } catch {
+    } catch (err) {
+      console.warn('Erro ao ler seen_videos do localStorage:', err);
       return new Set<string>();
     }
   },
 
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
     if (tiktokIds.length === 0) return;
+    const MAX_SEEN_IDS = 500;
     try {
       const userId = await getCurrentUserId();
       const key = `seen_videos_${userId}`;
       const raw = localStorage.getItem(key);
       const existing: string[] = raw ? JSON.parse(raw) : [];
       const merged = Array.from(new Set([...existing, ...tiktokIds]));
-      localStorage.setItem(key, JSON.stringify(merged));
+      // Keep only the most recent IDs to avoid localStorage bloat
+      const trimmed = merged.length > MAX_SEEN_IDS ? merged.slice(-MAX_SEEN_IDS) : merged;
+      localStorage.setItem(key, JSON.stringify(trimmed));
     } catch (err) {
       console.warn('Erro ao salvar vídeos vistos:', err);
     }
