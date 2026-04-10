@@ -901,6 +901,54 @@ const Index = () => {
         }
       }
 
+      // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
+      const MAX_EXTRA_ROUNDS = 5;
+      for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
+        const deficit = totalTarget - approvedVideos.length;
+        addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
+        setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
+        const extraPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
+        const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
+        if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
+        const extraRaw = await fetchCandidates(extraPerTag, true, poolBatch);
+        const extraCandidates = extraRaw.filter((video) => {
+          const key = getVideoKey(video);
+          if (seenCandidateKeys.has(key)) return false;
+          if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+          seenCandidateKeys.add(key);
+          return true;
+        });
+        if (extraCandidates.length === 0) {
+          addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, encerrando`);
+          break;
+        }
+        addLog(`🤖 Filtrando ${extraCandidates.length} vídeos (extra ${extra + 1})...`);
+        const [nicheFiltered, thumbFiltered] = await Promise.all([
+          applyNicheTitleFilter(extraCandidates, aiSearchDescription, newTags, addLog),
+          applyThumbnailValidation(extraCandidates, aiSearchDescription, addLog),
+        ]);
+        const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
+        const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
+        const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
+        const extraApproved = hadSignal
+          ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
+          : extraCandidates;
+        const beforeApproved = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+        const newlyAdded = approvedVideos.length - beforeApproved;
+        addLog(`🎯 Extra ${extra + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
+        if (newlyAdded > 0) {
+          const batchToShow = approvedVideos.slice(beforeApproved);
+          if (firstProgressiveInsertAt === -1) {
+            firstProgressiveInsertAt = videosRef.current.length;
+            setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
+          }
+          setResultFilterMode("ai");
+          setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(batchToShow)]));
+        }
+      }
+
       // unique is already capped — slice is a safety net
       const unique = approvedVideos.slice(0, totalTarget);
 
@@ -1247,6 +1295,55 @@ const Index = () => {
         const newlyAdded = approvedVideos.length - beforeApproved;
         addLog(`🎯 Rodada ${round + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
         showProgressively(approvedVideos.slice(beforeApproved)); // I
+      }
+    }
+
+    // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
+    const MAX_EXTRA_ROUNDS = 5;
+    for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
+      const deficit = totalTarget - approvedVideos.length;
+      addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
+      setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
+      const extraTarget = deficit * 5;
+      const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
+      if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
+      const extraRaw = await fetchCandidates(extraTarget, true, poolBatch);
+      const extraCandidates = extraRaw.filter((video) => {
+        const key = getVideoKey(video);
+        if (seenCandidateKeys.has(key)) return false;
+        if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+        seenCandidateKeys.add(key);
+        return true;
+      });
+      if (extraCandidates.length === 0) {
+        addLog(`⚠️ Rodada extra ${extra + 1}: nenhum vídeo novo, encerrando`);
+        break;
+      }
+      if (allGeneric) {
+        const before = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...extraCandidates]);
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+        showProgressively(approvedVideos.slice(before));
+        addLog(`🎯 Extra ${extra + 1}: +${approvedVideos.length - before} aprovados (${approvedVideos.length}/${totalTarget})`);
+      } else {
+        addLog(`🤖 Filtrando ${extraCandidates.length} vídeos (extra ${extra + 1})...`);
+        const mergeNicheDesc = selectedTags.map(t => PRESET_HASHTAGS.find(p => p.tag === t)?.label).filter(Boolean).join(', ') || expandedTags.slice(0, 8).map(t => '#' + t).join(', ');
+        const [nicheFiltered, thumbFiltered] = await Promise.all([
+          applyNicheTitleFilter(extraCandidates, mergeNicheDesc, expandedTags, addLog),
+          applyThumbnailValidation(extraCandidates, mergeNicheDesc, addLog),
+        ]);
+        const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
+        const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
+        const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
+        const extraApproved = hadSignal
+          ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
+          : extraCandidates;
+        const before = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+        const newlyAdded = approvedVideos.length - before;
+        addLog(`🎯 Extra ${extra + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
+        showProgressively(approvedVideos.slice(before));
       }
     }
 
