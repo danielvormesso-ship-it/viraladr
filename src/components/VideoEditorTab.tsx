@@ -186,6 +186,14 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       }, 500);
     }
   }, [flushVideoStatuses]);
+  // Cleanup flush timer on unmount
+  useEffect(() => {
+    return () => {
+      if (videoStatusesFlushTimerRef.current) {
+        clearTimeout(videoStatusesFlushTimerRef.current);
+      }
+    };
+  }, []);
 
   // Post-batch error report
   const [batchReport, setBatchReport] = useState<{
