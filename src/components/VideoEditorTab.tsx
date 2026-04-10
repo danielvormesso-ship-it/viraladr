@@ -797,6 +797,15 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           mode: editMode,
         };
 
+        console.log('[processConfig-debug]', {
+          confettiGold: processConfig.effects?.confettiGold,
+          pixNotifications: processConfig.effects?.pixNotifications,
+          pixBank: processConfig.effects?.pixBank,
+          pixCount: processConfig.effects?.pixCount,
+          mode: processConfig.mode,
+          effects: processConfig.effects,
+        });
+
         const browserFallbackConfig: VideoEditConfig = {
           popupMedia: popupMedia || undefined,
           popupMediaType,
