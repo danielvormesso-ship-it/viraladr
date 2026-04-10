@@ -86,6 +86,35 @@ const PRESET_HASHTAGS = [
   { tag: "fatocurioso,fatoscuriosos,curiosidadesdomundo,naoesabia,mundocurioso,fatosdomundo,planetaterra,cienciacuriosa,universocurioso,ninguémsabia,fatosmundiais,fatosreais,fatoshistoricos,fatossobrenatureza,fatoscientificos,fatosincriveis,fatosaleatorios,fatossobre,fatobr,fatoraro", emoji: "💡", label: "Fato Curioso", group: "satisfying" },
 ];
 
+// BR content ranking: BR hashtags → top, PT words → priority, 3+ ES words → bottom
+function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
+  if (vids.length === 0) return vids;
+
+  const BR_HASHTAGS = new Set(['brasil', 'br', 'brasileiros', 'brasileiro', 'tiktokviral🇧🇷', 'fyp🇧🇷', 'tiktoker']);
+  const PT_WORDS = new Set(['kkk', 'né', 'tô', 'pra', 'vc', 'rsrs', 'mds', 'caramba', 'mano', 'cara', 'nossa', 'brasil', 'brasileiro', 'br', 'saudade', 'gente', 'aqui', 'também', 'então', 'muito', 'quando', 'porque']);
+  const ES_WORDS = new Set(['que', 'con', 'para', 'como', 'pero', 'muy', 'esto', 'eso', 'una', 'los', 'las', 'del', 'hola', 'gracias', 'amigo', 'hermano', 'vamos', 'bueno', 'malo']);
+
+  const score = (v: TikTokVideo): number => {
+    const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
+    const words = new Set((text.match(/\b[\wáéíóúãõâêôàçñü]+\b/g) || []));
+    const hashtags = (text.match(/#[\w🇧🇷áéíóúãõâêôàç]+/g) || []).map(h => h.slice(1));
+
+    // Tier 3 — BR hashtags at top
+    if (hashtags.some(h => BR_HASHTAGS.has(h) || h.includes('🇧🇷'))) return 3;
+
+    // Tier 2 — Portuguese signal words
+    if ([...PT_WORDS].some(w => words.has(w))) return 2;
+
+    // Tier 0 — 3+ Spanish words → bottom
+    const esCount = [...ES_WORDS].filter(w => words.has(w)).length;
+    if (esCount >= 3) return 0;
+
+    return 1; // Tier 1 — neutral
+  };
+
+  return [...vids].sort((a, b) => score(b) - score(a));
+}
+
 const Index = () => {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const videosRef = useRef<TikTokVideo[]>([]);
@@ -849,7 +878,7 @@ const Index = () => {
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
           }
           setResultFilterMode("ai");
-          setVideos(prev => dedupeVideos([...prev, ...batchToShow]));
+          setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(batchToShow)]));
         }
       }
 
@@ -865,7 +894,7 @@ const Index = () => {
       if (unique.length > 0) {
         setResultFilterMode("ai");
         setVideos(prev => {
-          const merged = dedupeVideos([...prev, ...unique]);
+          const merged = dedupeVideos([...prev, ...rankByBrazilianContent(unique)]);
           // Only update index if nothing was shown progressively
           if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
           return merged;
@@ -918,7 +947,7 @@ const Index = () => {
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(dedupeVideos(unseenVideos));
+        setVideos(rankByBrazilianContent(dedupeVideos(unseenVideos)));
         setCurrentIndex(0);
       } else {
         setResultFilterMode("strict");
@@ -1084,7 +1113,7 @@ const Index = () => {
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
       }
       setResultFilterMode("ai");
-      setVideos(prev => dedupeVideos([...prev, ...trimmed]));
+      setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(trimmed)]));
     };
 
     if (allGeneric) {
@@ -1203,7 +1232,7 @@ const Index = () => {
     setResultFilterMode("ai");
     if (unique.length > 0) {
       setVideos(prev => {
-        const merged = dedupeVideos([...prev, ...unique]);
+        const merged = dedupeVideos([...prev, ...rankByBrazilianContent(unique)]);
         if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
         return merged;
       });
@@ -1238,7 +1267,7 @@ const Index = () => {
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(dedupeVideos(unseenVideos));
+        setVideos(rankByBrazilianContent(dedupeVideos(unseenVideos)));
         setCurrentIndex(0);
       }
 
