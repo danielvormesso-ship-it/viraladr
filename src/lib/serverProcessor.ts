@@ -61,7 +61,9 @@ export function getServerConfig(): { url: string; apiKey: string } {
         }
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to read server config from localStorage:', e);
+  }
   return { url: DEFAULT_SERVER_URL, apiKey: DEFAULT_API_KEY };
 }
 

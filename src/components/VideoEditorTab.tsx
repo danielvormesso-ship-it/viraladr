@@ -286,7 +286,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       } else {
         localStorage.removeItem('viraladr_batch_v1');
       }
-    } catch {}
+    } catch (e) { console.warn('localStorage error:', e); }
   }, []);
 
   // Resolve a guaranteed playable video for preview
@@ -526,7 +526,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleLoadTestPopup = async () => {
     try {
-      const res = await fetch('/test-popup.mp4', { cache: 'no-cache' });
+      const res = await fetch('/test-popup.mp4');
       if (!res.ok) throw new Error('Vídeo de teste não encontrado');
       const blob = await res.blob();
       const file = new File([blob], 'test-popup.mp4', { type: blob.type || 'video/mp4' });
@@ -542,7 +542,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleLoadTestPopupAudio = async () => {
     try {
-      const res = await fetch('/test-popup-audio.mp3', { cache: 'no-cache' });
+      const res = await fetch('/test-popup-audio.mp3');
       if (!res.ok) throw new Error('Áudio de teste não encontrado');
       const blob = await res.blob();
       const file = new File([blob], 'test-popup-audio.mp3', { type: blob.type || 'audio/mpeg' });
@@ -691,7 +691,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       batchVideoIdsRef.current = videosToProcess.map(v => v.id);
       try {
         localStorage.setItem('viraladr_batch_v1', JSON.stringify({ videoIds: batchVideoIdsRef.current, completedIds: [], timestamp: Date.now() }));
-      } catch {}
+      } catch (e) { console.warn('localStorage error:', e); }
       setBatchResumeData(null);
     }
     setProcessStartTime(Date.now());
@@ -712,8 +712,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       try {
         addLog(
           muteEntireAudio
-            ? `Modo: Servidor Railway com mute total (${serverConfig.url})`
-            : `Modo: Servidor Railway (${serverConfig.url})`,
+            ? `Modo: Servidor Railway com mute total`
+            : `Modo: Servidor Railway`,
           'info'
         );
         const shouldRequirePopup = Boolean(popupMedia);
@@ -1058,9 +1058,9 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                   try {
                     // V4: On first attempt, use pre-submitted jobId if available
                     const prefetchedId = jobAttempt === 0 ? prefetchedJobs.get(video.id) : undefined;
-                    if (prefetchedId !== undefined) prefetchedJobs.delete(video.id);
+                    if (prefetchedId !== undefined && prefetchedId !== '') prefetchedJobs.delete(video.id);
 
-                    if (prefetchedId) {
+                    if (prefetchedId && prefetchedId !== '') {
                       jobId = prefetchedId;
                       addLog(`[${videoNum}] Job pré-carregado: ${jobId.slice(0, 8)}... (pipeline overlap)`, 'info');
                     } else {
@@ -1191,7 +1191,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                   batchCompletedIdsRef.current.add(video.id);
                   try {
                     localStorage.setItem('viraladr_batch_v1', JSON.stringify({ videoIds: batchVideoIdsRef.current, completedIds: Array.from(batchCompletedIdsRef.current), timestamp: Date.now() }));
-                  } catch {}
+                  } catch (e) { console.warn('localStorage error:', e); }
                 }
                 success = true;
                 updateVideoStatus(video.id, { status: 'done', progress: 100 });
@@ -1436,7 +1436,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       } finally {
         if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
         setProcessing(false);
-        try { localStorage.removeItem('viraladr_batch_v1'); } catch {}
+        try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); }
         setProcessStartTime(null);
         setProcessingStatus('');
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
@@ -1570,7 +1570,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             </button>
             <button
               className="text-xs px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-muted-foreground border border-white/10 transition-colors"
-              onClick={() => { try { localStorage.removeItem('viraladr_batch_v1'); } catch {} setBatchResumeData(null); }}
+              onClick={() => { try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); } setBatchResumeData(null); }}
             >
               Descartar
             </button>
