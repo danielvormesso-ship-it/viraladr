@@ -538,12 +538,7 @@ const Index = () => {
 
       setPreviewThumbnailSrc(currentVideo.thumbnail || '/placeholder.svg');
 
-      // Try source_url directly — browser streams natively, no proxy needed
-      if (currentVideo.source_url) {
-        if (!cancelled) setPreviewVideoSrc(currentVideo.source_url);
-        return;
-      }
-
+      // source_url is blocked by CORS — always resolve via edge function (mode: 'url')
       const videoUrl = currentVideo.tiktok_id
         ? `https://www.tiktok.com/@user/video/${currentVideo.tiktok_id}`
         : null;
@@ -552,7 +547,6 @@ const Index = () => {
         return;
       }
 
-      // No source_url — get CDN URL via edge function (mode: 'url', no proxy blob download)
       setIsPreviewLoading(true);
       try {
         const { data, error } = await supabase.functions.invoke('download-tiktok', {
@@ -574,7 +568,7 @@ const Index = () => {
     loadPreview();
 
     return () => { cancelled = true; };
-  }, [currentVideo?.id, currentVideo?.source_url, currentVideo?.tiktok_id, currentVideo?.thumbnail]);
+  }, [currentVideo?.id, currentVideo?.tiktok_id, currentVideo?.thumbnail]);
 
   useEffect(() => {
     const vid = videoRef.current;
