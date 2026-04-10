@@ -1993,15 +1993,16 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 <select
                   value={pixBank}
                   onChange={e => setPixBank(e.target.value)}
+                  style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
                   className="w-full rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-foreground px-2 py-1.5 appearance-none cursor-pointer focus:outline-none focus:border-green-500/50"
                 >
-                  <option value="nubank">Nubank</option>
-                  <option value="itau">Itaú</option>
-                  <option value="bradesco">Bradesco</option>
-                  <option value="c6">C6 Bank</option>
-                  <option value="inter">Inter</option>
-                  <option value="picpay">PicPay</option>
-                  <option value="mercadopago">Mercado Pago</option>
+                  <option value="nubank" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Nubank</option>
+                  <option value="itau" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Itaú</option>
+                  <option value="bradesco" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Bradesco</option>
+                  <option value="c6" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>C6 Bank</option>
+                  <option value="inter" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Inter</option>
+                  <option value="picpay" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>PicPay</option>
+                  <option value="mercadopago" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Mercado Pago</option>
                 </select>
               </div>
               <div className="space-y-1">
@@ -2009,13 +2010,14 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 <select
                   value={pixCount}
                   onChange={e => setPixCount(e.target.value)}
+                  style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
                   className="w-full rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-foreground px-2 py-1.5 appearance-none cursor-pointer focus:outline-none focus:border-green-500/50"
                 >
-                  <option value="3">3 notificações</option>
-                  <option value="5">5 notificações</option>
-                  <option value="10">10 notificações</option>
-                  <option value="20">20 notificações</option>
-                  <option value="50">50 notificações</option>
+                  <option value="3" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>3 notificações</option>
+                  <option value="5" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>5 notificações</option>
+                  <option value="10" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>10 notificações</option>
+                  <option value="20" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>20 notificações</option>
+                  <option value="50" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>50 notificações</option>
                 </select>
               </div>
             </div>
