@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,7 @@ const normalizePopupTransform = (raw?: Partial<PopupTransform> | null): PopupTra
   return { x, y, width, height, rotation };
 };
 
-export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
+const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -168,32 +168,6 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   // U2: Per-video status grid
   const [videoStatuses, setVideoStatuses] = useState<Record<string, { status: string; progress: number; title: string }>>({});
-  const videoStatusesBufferRef = useRef<Record<string, { status: string; progress: number; title: string }>>({});
-  const videoStatusesFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flushVideoStatuses = useCallback(() => {
-    const buf = videoStatusesBufferRef.current;
-    if (Object.keys(buf).length > 0) {
-      setVideoStatuses(prev => ({ ...prev, ...buf }));
-      videoStatusesBufferRef.current = {};
-    }
-  }, []);
-  const throttledUpdateVideoStatus = useCallback((id: string, upd: Partial<{ status: string; progress: number }>) => {
-    videoStatusesBufferRef.current[id] = { ...(videoStatusesBufferRef.current[id] ?? { status: 'pending', progress: 0, title: id }), ...upd } as any;
-    if (!videoStatusesFlushTimerRef.current) {
-      videoStatusesFlushTimerRef.current = setTimeout(() => {
-        videoStatusesFlushTimerRef.current = null;
-        flushVideoStatuses();
-      }, 500);
-    }
-  }, [flushVideoStatuses]);
-  // Cleanup flush timer on unmount
-  useEffect(() => {
-    return () => {
-      if (videoStatusesFlushTimerRef.current) {
-        clearTimeout(videoStatusesFlushTimerRef.current);
-      }
-    };
-  }, []);
 
   // Post-batch error report
   const [batchReport, setBatchReport] = useState<{
@@ -977,7 +951,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         // Track per-video failures for post-batch report
         const failedDetails: Array<{ title: string; error: string; errorType: string }> = [];
 
-        const updateVideoStatus = throttledUpdateVideoStatus;
+        const updateVideoStatus = (id: string, upd: Partial<{ status: string; progress: number }>) =>
+          setVideoStatuses(prev => ({ ...prev, [id]: { ...(prev[id] ?? { status: 'pending', progress: 0, title: id }), ...upd } }));
 
         // Process videos on server (safe mode: low parallelism + minimal retries)
         const zip = new JSZip();
@@ -1420,7 +1395,6 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           }
         }
         addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');
-        flushVideoStatuses();
         setBatchReport({ total: finalTargets.length, success: successCount, failed: failCount, errors: failedDetails });
 
         const toastTitle = isPreview
@@ -2349,3 +2323,48 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     </div>
   );
 };
+
+class VideoEditorErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[VideoEditorTab] Render error:', error, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center space-y-4">
+          <AlertTriangle className="h-10 w-10 text-destructive mx-auto" />
+          <h2 className="text-lg font-semibold">Erro no Editor</h2>
+          <p className="text-sm text-muted-foreground">
+            Ocorreu um erro inesperado. O processamento em background pode continuar funcionando.
+          </p>
+          <pre className="text-xs text-left bg-secondary/50 rounded p-3 max-h-32 overflow-auto">
+            {this.state.error?.message}
+          </pre>
+          <button
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export const VideoEditorTab = (props: VideoEditorTabProps) => (
+  <VideoEditorErrorBoundary>
+    <VideoEditorTabInner {...props} />
+  </VideoEditorErrorBoundary>
+);
