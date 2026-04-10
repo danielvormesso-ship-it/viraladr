@@ -236,6 +236,10 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         if (c.popupFullscreen !== undefined) setPopupFullscreen(toBool(c.popupFullscreen, true));
         if (c.popupTransform) setPopupTransform(normalizePopupTransform(c.popupTransform));
         if (c.effects && typeof c.effects === 'object') setEffects({ ...defaultEffects, ...c.effects });
+        if (c.confettiGold !== undefined) setConfettiGold(toBool(c.confettiGold, false));
+        if (c.pixNotifications !== undefined) setPixNotifications(toBool(c.pixNotifications, false));
+        if (c.pixBank !== undefined) setPixBank(String(c.pixBank));
+        if (c.pixCount !== undefined) setPixCount(String(c.pixCount));
       }
       setConfigLoaded(true);
     };
@@ -355,14 +359,16 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     appearAt, popupDuration, endVideoWithPopup, opacity,
     popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume,
     editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects,
+    confettiGold, pixNotifications, pixBank, pixCount,
   });
   useEffect(() => {
     latestConfigRef.current = {
       appearAt, popupDuration, endVideoWithPopup, opacity,
       popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume,
       editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects,
+      confettiGold, pixNotifications, pixBank, pixCount,
     };
-  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects]);
+  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects, confettiGold, pixNotifications, pixBank, pixCount]);
 
   // Auto-save config to DB when settings change (debounced, 2 dependencies only)
   const saveConfig = useCallback(() => {
@@ -381,7 +387,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   // Trigger save when any config value changes
   useEffect(() => {
     saveConfig();
-  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects, saveConfig]);
+  }, [appearAt, popupDuration, endVideoWithPopup, opacity, popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume, editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects, confettiGold, pixNotifications, pixBank, pixCount, saveConfig]);
 
   // Cancel pending save on unmount (Problem 16)
   useEffect(() => {

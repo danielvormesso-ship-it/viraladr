@@ -18,6 +18,12 @@ export interface ServerProcessConfig {
     darkOverlayIntensity: number;
     fireworks: boolean;
     particles: boolean;
+    confetti?: boolean;
+    confettiGold?: boolean;
+    shootingStars?: boolean;
+    pixNotifications?: boolean;
+    pixBank?: string;
+    pixCount?: number;
   };
   mode?: 'popup_audio' | 'popup_only' | 'audio_only';
 }
