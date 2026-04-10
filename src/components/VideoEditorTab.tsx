@@ -74,6 +74,14 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     setPopupMediaPreview(url);
   };
 
+  useEffect(() => {
+    return () => {
+      if (popupMediaPreviewUrlRef.current?.startsWith('blob:')) {
+        URL.revokeObjectURL(popupMediaPreviewUrlRef.current);
+      }
+    };
+  }, []);
+
   // Popup config
   const [popupMedia, setPopupMedia] = useState<File | null>(null);
   const [popupMediaType, setPopupMediaType] = useState<'image' | 'video'>('image');
@@ -138,7 +146,8 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const detectedRAM = (navigator as any).deviceMemory as number | undefined;
   const detectedCores = navigator.hardwareConcurrency || 0;
 
-  const serverConfig = getServerConfig();
+  const serverConfigRef = useRef(getServerConfig());
+  const serverConfig = serverConfigRef.current;
   const [serverConnected, setServerConnected] = useState<boolean | null>(null);
   const [checkingServer, setCheckingServer] = useState(false);
 
@@ -159,6 +168,24 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   // U2: Per-video status grid
   const [videoStatuses, setVideoStatuses] = useState<Record<string, { status: string; progress: number; title: string }>>({});
+  const videoStatusesBufferRef = useRef<Record<string, { status: string; progress: number; title: string }>>({});
+  const videoStatusesFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushVideoStatuses = useCallback(() => {
+    const buf = videoStatusesBufferRef.current;
+    if (Object.keys(buf).length > 0) {
+      setVideoStatuses(prev => ({ ...prev, ...buf }));
+      videoStatusesBufferRef.current = {};
+    }
+  }, []);
+  const throttledUpdateVideoStatus = useCallback((id: string, upd: Partial<{ status: string; progress: number }>) => {
+    videoStatusesBufferRef.current[id] = { ...(videoStatusesBufferRef.current[id] ?? { status: 'pending', progress: 0, title: id }), ...upd } as any;
+    if (!videoStatusesFlushTimerRef.current) {
+      videoStatusesFlushTimerRef.current = setTimeout(() => {
+        videoStatusesFlushTimerRef.current = null;
+        flushVideoStatuses();
+      }, 500);
+    }
+  }, [flushVideoStatuses]);
 
   // Post-batch error report
   const [batchReport, setBatchReport] = useState<{
@@ -533,8 +560,12 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   };
 
   // Check server connection on mount
+  const lastHealthCheckRef = useRef<number>(0);
   useEffect(() => {
     if (serverConfig.url) {
+      const now = Date.now();
+      if (now - lastHealthCheckRef.current < 5000) return;
+      lastHealthCheckRef.current = now;
       setCheckingServer(true);
       checkServerHealth(serverConfig.url).then(ok => {
         setServerConnected(ok);
@@ -938,8 +969,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         // Track per-video failures for post-batch report
         const failedDetails: Array<{ title: string; error: string; errorType: string }> = [];
 
-        const updateVideoStatus = (id: string, upd: Partial<{ status: string; progress: number }>) =>
-          setVideoStatuses(prev => ({ ...prev, [id]: { ...(prev[id] ?? { status: 'pending', progress: 0, title: id }), ...upd } }));
+        const updateVideoStatus = throttledUpdateVideoStatus;
 
         // Process videos on server (safe mode: low parallelism + minimal retries)
         const zip = new JSZip();
@@ -1382,6 +1412,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           }
         }
         addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');
+        flushVideoStatuses();
         setBatchReport({ total: finalTargets.length, success: successCount, failed: failCount, errors: failedDetails });
 
         const toastTitle = isPreview

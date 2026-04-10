@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Download, ChevronUp, ChevronDown, Eye, Heart, MessageCircle, Share2, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
@@ -114,6 +114,20 @@ function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
 
   return [...vids].sort((a, b) => score(b) - score(a));
 }
+
+// Hoisted regex patterns for isBrazilianContent (avoid re-creation per call)
+const NON_BR_AUTHOR_PATTERNS = /^(the_|mr_|mrs_|miss_|queen|king|vibes_|baby_|princess|prince|daddy|mommy|babe\d)/i;
+const NON_BR_CONTENT_PATTERNS = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap)\b/i;
+const FOREIGN_LANG_PATTERNS = /\b(yapay[ıi]m|anla[dğ]|kadar[ıi]m|bercanda|serius|luôn|aussi|facile|apprend[sr]?|c'est|donc|alors|cette|cette|cette|cette|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|tres|même|être|faire|comme|peut|j'ai|l'on|qu'il|qu'on|cette|cette|maniere|manière|nouvell|dembrasser|questa|quello|dieser|diese|terima ?kasih|salamat|salamat po|costrucion|construccion|encuentro|siempre|porque|cuando|donde|también|tambien|aunque|todavía|todavia|necesito|puedo|quiero|jefesito|enamorado|comear|sprawiaj|kobiety|szpach|legiobb|zagad|sprawia|piéces|essentielles|dressing|mignon|minimalist|setup|organisez|organisez|rangement|ikea hack|centavos|despensa|action diy|pièces)\b/i;
+const FOREIGN_SENTENCE_PATTERNS = /\b(du |de la |les |des |une |un |est |et |en |au |aux |sur |sous |par |qui |que |il |elle |nous |vous |ils |elles |mon |ton |son |mes |tes |ses |notre |votre |leur |ce |cet |ces |el |la |los |las |del |al |con |sin |por |para |pero |como |más |muy |tiene |puede |hay |donde |cuando |quien |ese |eso |esta |estos |estas |aquí |allí )\b/gi;
+const CJK_PATTERN = /[\u3000-\u9FFF\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF]/;
+const CYRILLIC_PATTERN = /[\u0400-\u04FF]/;
+const ARABIC_PATTERN = /[\u0600-\u06FF\u0750-\u077F]/;
+const OTHER_SCRIPT_PATTERN = /[\u0E00-\u0E7F\u0900-\u097F\u0B80-\u0BFF\u1000-\u109F]/;
+const ENG_WORDS_PATTERN = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|we|i love|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
+const BR_CHARS_PATTERN = /[ãáàâéêíóôõúüç]/;
+const BR_WORDS_PATTERN = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|treinar|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|marido|namorad|namoral|partiu|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|oi |hein|eita|uai|oxe|vish|krl|pqp|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
+const BR_HASHTAGS_PATTERN = /#(parati|dancinha|novelinha|tiktokbr|brasilvibes|brasileira|brasileiro|mulherlinda|mulherbonita|gatinha|novinha|dancafeminina|garotadançando|corpofeminino|shape|treino|academia|sertanejo|funk|pagode|humor|comedia|zoeira|pegadinha|risada|desafio|react|chocante|exposed|polemico|motivacao|receita|dica|curiosidade|rotina|viagem|musica|piseiroforr[oó]|bregafunk|asmeninadotiktok|dancinhasdotiktok|jeitinhobrasileiro|bolotinha|morena|morenalinda|pretinha|carioca|paulista|mineira|nordestina|sulista|gaúcha|flamengo|corinthians|palmeiras|recife|salvador|fortaleza|riodejaneiro|saopaulo|curitiba|belemdo[pP]ara)\b/i;
 
 const Index = () => {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
@@ -251,48 +265,39 @@ const Index = () => {
     const text = `${title} ${author}`;
 
     // Reject if author has clear non-BR patterns
-    const nonBrAuthorPatterns = /^(the_|mr_|mrs_|miss_|queen|king|vibes_|baby_|princess|prince|daddy|mommy|babe\d)/i;
-    if (nonBrAuthorPatterns.test(author.replace('@', ''))) return false;
+    if (NON_BR_AUTHOR_PATTERNS.test(author.replace('@', ''))) return false;
 
     // Reject if contains non-BR language/culture signals
-    const nonBrContentPatterns = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap)\b/i;
-    if (nonBrContentPatterns.test(text)) return false;
+    if (NON_BR_CONTENT_PATTERNS.test(text)) return false;
 
     // Reject foreign languages by common words (Turkish, Indonesian, French tutorials, etc.)
-    const foreignLangPatterns = /\b(yapay[ıi]m|anla[dğ]|kadar[ıi]m|bercanda|serius|luôn|aussi|facile|apprend[sr]?|c'est|donc|alors|cette|cette|cette|cette|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|tres|même|être|faire|comme|peut|j'ai|l'on|qu'il|qu'on|cette|cette|maniere|manière|nouvell|dembrasser|questa|quello|dieser|diese|terima ?kasih|salamat|salamat po|costrucion|construccion|encuentro|siempre|porque|cuando|donde|también|tambien|aunque|todavía|todavia|necesito|puedo|quiero|jefesito|enamorado|comear|sprawiaj|kobiety|szpach|legiobb|zagad|sprawia|piéces|essentielles|dressing|mignon|minimalist|setup|organisez|organisez|rangement|ikea hack|centavos|despensa|action diy|pièces)\b/i;
-    if (foreignLangPatterns.test(text)) return false;
+    if (FOREIGN_LANG_PATTERNS.test(text)) return false;
 
     // Reject if title is mostly non-Portuguese (detect French/Spanish/Italian/Polish patterns)
-    const foreignSentencePatterns = /\b(du |de la |les |des |une |un |est |et |en |au |aux |sur |sous |par |qui |que |il |elle |nous |vous |ils |elles |mon |ton |son |mes |tes |ses |notre |votre |leur |ce |cet |ces |el |la |los |las |del |al |con |sin |por |para |pero |como |más |muy |tiene |puede |hay |donde |cuando |quien |ese |eso |esta |estos |estas |aquí |allí )\b/gi;
-    const foreignSentenceMatches = text.match(foreignSentencePatterns);
+    const foreignSentenceMatches = text.match(FOREIGN_SENTENCE_PATTERNS);
     if (foreignSentenceMatches && foreignSentenceMatches.length >= 2) return false;
 
      // Reject if contains CJK characters (Chinese/Japanese/Korean)
-    if (/[\u3000-\u9FFF\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF]/.test(text)) return false;
+    if (CJK_PATTERN.test(text)) return false;
 
     // Reject if contains Cyrillic (Russian, etc.)
-    if (/[\u0400-\u04FF]/.test(text)) return false;
+    if (CYRILLIC_PATTERN.test(text)) return false;
 
     // Reject if contains Arabic script
-    if (/[\u0600-\u06FF\u0750-\u077F]/.test(text)) return false;
+    if (ARABIC_PATTERN.test(text)) return false;
 
     // Reject Thai, Vietnamese tonal marks, Devanagari, Tamil, etc.
-    if (/[\u0E00-\u0E7F\u0900-\u097F\u0B80-\u0BFF\u1000-\u109F]/.test(text)) return false;
+    if (OTHER_SCRIPT_PATTERN.test(text)) return false;
 
     // Reject high English density — words ambiguous with Portuguese (do/no/me/so/in/on/etc.) are excluded
-    const engWords = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|we|i love|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
-    const engMatches = text.match(engWords);
+    const engMatches = text.match(ENG_WORDS_PATTERN);
     if (engMatches && engMatches.length >= 4) return false;
 
     // Positive Portuguese indicators — at least one must be present
-    const brChars = /[ãáàâéêíóôõúüç]/;
-    const brWords = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|treinar|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|marido|namorad|namoral|partiu|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|oi |hein|eita|uai|oxe|vish|krl|pqp|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
+    if (BR_CHARS_PATTERN.test(text)) return true;
+    if (BR_WORDS_PATTERN.test(text)) return true;
     // ONLY Brazilian-specific hashtags count — removed global ones (fyp, viral, trending, etc.)
-    const brHashtags = /#(parati|dancinha|novelinha|tiktokbr|brasilvibes|brasileira|brasileiro|mulherlinda|mulherbonita|gatinha|novinha|dancafeminina|garotadançando|corpofeminino|shape|treino|academia|sertanejo|funk|pagode|humor|comedia|zoeira|pegadinha|risada|desafio|react|chocante|exposed|polemico|motivacao|receita|dica|curiosidade|rotina|viagem|musica|piseiroforr[oó]|bregafunk|asmeninadotiktok|dancinhasdotiktok|jeitinhobrasileiro|bolotinha|morena|morenalinda|pretinha|carioca|paulista|mineira|nordestina|sulista|gaúcha|flamengo|corinthians|palmeiras|recife|salvador|fortaleza|riodejaneiro|saopaulo|curitiba|belemdo[pP]ara)\b/i;
-    
-    if (brChars.test(text)) return true;
-    if (brWords.test(text)) return true;
-    if (brHashtags.test(title)) return true;
+    if (BR_HASHTAGS_PATTERN.test(title)) return true;
 
     // If no positive signal at all, reject
     return false;
@@ -352,7 +357,7 @@ const Index = () => {
     return true;
   };
 
-  const filteredVideos = dedupeVideos(
+  const filteredVideos = useMemo(() => dedupeVideos(
     videos.filter(v => {
       if (v.views < filters.minViews) return false;
       if (v.likes < filters.minLikes) return false;
@@ -365,11 +370,14 @@ const Index = () => {
       if (resultFilterMode !== "ai" && !passesAiContentFilter(v)) return false;
       return true;
     })
-  );
-  let sortedFilteredVideos = [...filteredVideos];
-  if (sortByQuality) {
-    sortedFilteredVideos.sort((a, b) => tiktokApi.getQualityScore(b) - tiktokApi.getQualityScore(a));
-  }
+  ), [videos, filters, resultFilterMode, aiContentFilter]);
+  const sortedFilteredVideos = useMemo(() => {
+    const sorted = [...filteredVideos];
+    if (sortByQuality) {
+      sorted.sort((a, b) => tiktokApi.getQualityScore(b) - tiktokApi.getQualityScore(a));
+    }
+    return sorted;
+  }, [filteredVideos, sortByQuality]);
   const totalFiltered = sortedFilteredVideos.length;
   const currentVideo = sortedFilteredVideos[currentIndex] || null;
 
