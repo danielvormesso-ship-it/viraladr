@@ -751,8 +751,6 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             darkOverlay: false,
             fireworks: false,
             particles: false,
-            confettiGold: false,
-            pixNotifications: false,
           };
         })();
 
