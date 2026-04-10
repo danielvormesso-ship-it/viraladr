@@ -942,14 +942,6 @@ const Index = () => {
         let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
-        // If AI filter yielded too few, accept remaining unfiltered candidates to complete the target
-        if (extraApproved.length < deficit && extraCandidates.length > extraApproved.length) {
-          const approvedKeys = new Set(extraApproved.map(getVideoKey));
-          const unfiltered = extraCandidates.filter(v => !approvedKeys.has(getVideoKey(v)));
-          const needed = deficit - extraApproved.length;
-          extraApproved = [...extraApproved, ...unfiltered.slice(0, needed)];
-          addLog(`  📋 Completando com ${Math.min(needed, unfiltered.length)} vídeos sem filtro AI`);
-        }
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
@@ -1362,14 +1354,6 @@ const Index = () => {
         let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
-        // If AI filter yielded too few, accept remaining unfiltered candidates to complete the target
-        if (extraApproved.length < deficit && extraCandidates.length > extraApproved.length) {
-          const approvedKeys = new Set(extraApproved.map(getVideoKey));
-          const unfiltered = extraCandidates.filter(v => !approvedKeys.has(getVideoKey(v)));
-          const needed = deficit - extraApproved.length;
-          extraApproved = [...extraApproved, ...unfiltered.slice(0, needed)];
-          addLog(`  📋 Completando com ${Math.min(needed, unfiltered.length)} vídeos sem filtro AI`);
-        }
         const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
