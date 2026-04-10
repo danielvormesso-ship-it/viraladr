@@ -94,7 +94,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
   const [confettiGold, setConfettiGold] = useState(false);
   const [pixNotifications, setPixNotifications] = useState(false);
-  const [pixBank, setPixBank] = useState('nubank');
+  const [pixBank, setPixBank] = useState('random');
   const [pixCount, setPixCount] = useState('3');
   const [editMode, setEditMode] = useState<'popup_audio' | 'popup_only' | 'audio_only'>('popup_audio');
   // A4: Automatic renaming
@@ -1996,6 +1996,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                   style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
                   className="w-full rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-foreground px-2 py-1.5 appearance-none cursor-pointer focus:outline-none focus:border-green-500/50"
                 >
+                  <option value="random" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Aleatório (todos os bancos)</option>
                   <option value="nubank" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Nubank</option>
                   <option value="itau" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Itaú</option>
                   <option value="bradesco" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>Bradesco</option>
