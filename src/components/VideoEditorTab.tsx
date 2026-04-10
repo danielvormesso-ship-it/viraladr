@@ -148,6 +148,11 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   // U4: Track completion timestamps for rolling-window ETA
   const completionTimesRef = useRef<number[]>([]);
 
+  // U3: Batch persistence
+  const batchCompletedIdsRef = useRef<Set<string>>(new Set());
+  const batchVideoIdsRef = useRef<string[]>([]);
+  const [batchResumeData, setBatchResumeData] = useState<{ videoIds: string[]; completedIds: string[]; pending: number } | null>(null);
+
   // U2: Per-video status grid
   const [videoStatuses, setVideoStatuses] = useState<Record<string, { status: string; progress: number; title: string }>>({});
 
@@ -232,6 +237,22 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     };
     loadConfig();
   }, [user]);
+
+  // U3: Check for resumable batch on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('viraladr_batch_v1');
+      if (!raw) return;
+      const data = JSON.parse(raw) as { videoIds: string[]; completedIds: string[]; timestamp: number };
+      const ageMs = Date.now() - (data.timestamp || 0);
+      const pending = (data.videoIds?.length || 0) - (data.completedIds?.length || 0);
+      if (ageMs < 24 * 60 * 60 * 1000 && pending > 0) {
+        setBatchResumeData({ videoIds: data.videoIds, completedIds: data.completedIds, pending });
+      } else {
+        localStorage.removeItem('viraladr_batch_v1');
+      }
+    } catch {}
+  }, []);
 
   // Resolve a guaranteed playable video for preview
   useEffect(() => {
@@ -565,7 +586,10 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       return;
     }
 
-    const videosToProcess = videos.slice(0, isPreview ? 1 : batchQuantity);
+    const rawVideosToProcess = videos.slice(0, isPreview ? 1 : batchQuantity);
+    const videosToProcess = (!isPreview && batchResumeData)
+      ? rawVideosToProcess.filter(v => !batchResumeData.completedIds.includes(v.id))
+      : rawVideosToProcess;
     if (videosToProcess.length === 0) {
       toast({ title: "Sem vídeos", description: "Busque vídeos primeiro.", variant: "destructive" });
       return;
@@ -620,6 +644,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
     completionTimesRef.current = [];
     setProcessing(true);
+    // U3: Initialize batch persistence
+    if (!isPreview) {
+      batchCompletedIdsRef.current = new Set();
+      batchVideoIdsRef.current = videosToProcess.map(v => v.id);
+      try {
+        localStorage.setItem('viraladr_batch_v1', JSON.stringify({ videoIds: batchVideoIdsRef.current, completedIds: [], timestamp: Date.now() }));
+      } catch {}
+      setBatchResumeData(null);
+    }
     setProcessStartTime(Date.now());
     setElapsedTime(0);
     setProcessLogs([]);
@@ -1098,6 +1131,13 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
                 zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result));
                 successfulVideoIds.add(video.id);
+                // U3: persist batch progress
+                if (!isPreview) {
+                  batchCompletedIdsRef.current.add(video.id);
+                  try {
+                    localStorage.setItem('viraladr_batch_v1', JSON.stringify({ videoIds: batchVideoIdsRef.current, completedIds: Array.from(batchCompletedIdsRef.current), timestamp: Date.now() }));
+                  } catch {}
+                }
                 success = true;
                 updateVideoStatus(video.id, { status: 'done', progress: 100 });
                 addLog(`✓ ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
@@ -1340,6 +1380,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
       } finally {
         if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
         setProcessing(false);
+        try { localStorage.removeItem('viraladr_batch_v1'); } catch {}
         setProcessStartTime(null);
         setProcessingStatus('');
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
@@ -1455,6 +1496,32 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         </div>
       )}
 
+      {/* ===== U3: BATCH RESUME BANNER ===== */}
+      {batchResumeData && (
+        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base">⏸</span>
+            <p className="text-xs text-yellow-300/90 truncate">
+              Batch anterior incompleto — <strong>{batchResumeData.completedIds.length}</strong> concluídos, <strong>{batchResumeData.pending}</strong> pendentes.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              className="text-xs px-2.5 py-1 rounded-md bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border border-yellow-500/30 transition-colors"
+              onClick={() => setBatchResumeData(prev => prev)} // keep — user clicks Processar to resume
+            >
+              Retomar
+            </button>
+            <button
+              className="text-xs px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-muted-foreground border border-white/10 transition-colors"
+              onClick={() => { try { localStorage.removeItem('viraladr_batch_v1'); } catch {} setBatchResumeData(null); }}
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ===== HEADER ===== */}
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-black tracking-tight text-foreground">
@@ -1532,7 +1599,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         </div>
         {/* Upload strip */}
         <div className="px-5 py-3 border-b border-white/[0.06] flex items-center gap-3">
-          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,video/mp4,video/webm,video/quicktime" className="hidden" onChange={handleMediaUpload} />
+          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/gif,video/mp4,video/webm,video/quicktime" className="hidden" onChange={handleMediaUpload} />
           <input ref={audioInputRef} type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
           {editMode !== 'audio_only' && (
             <button
@@ -1586,7 +1653,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                   <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/10 hover:border-primary/30 bg-white/[0.02] cursor-pointer transition-all">
                     <Upload className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Adicionar popups (múltiplos)</span>
-                    <input type="file" multiple accept="image/png,image/jpeg,video/mp4,video/webm" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationPopups(p => [...p, ...f]); e.target.value = ''; }} />
+                    <input type="file" multiple accept="image/png,image/jpeg,image/gif,video/mp4,video/webm" className="hidden" onChange={(e) => { const f = Array.from(e.target.files || []); if (f.length) setRotationPopups(p => [...p, ...f]); e.target.value = ''; }} />
                   </label>
                   {rotationPopups.length > 0 && (
                     <div className="space-y-1 max-h-24 overflow-y-auto">
