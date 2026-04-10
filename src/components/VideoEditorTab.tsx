@@ -92,6 +92,10 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [popupFullscreen, setPopupFullscreen] = useState(false);
   const [popupTransform, setPopupTransform] = useState<PopupTransform>(normalizePopupTransform());
   const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
+  const [confettiGold, setConfettiGold] = useState(false);
+  const [pixNotifications, setPixNotifications] = useState(false);
+  const [pixBank, setPixBank] = useState('nubank');
+  const [pixCount, setPixCount] = useState('3');
   const [editMode, setEditMode] = useState<'popup_audio' | 'popup_only' | 'audio_only'>('popup_audio');
   // A4: Automatic renaming
   const [editorTag, setEditorTag] = useState('');
@@ -713,7 +717,15 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
           addLog('⚠ Ajuste automático aplicado no popup para manter dentro da área visível.', 'warn');
         }
 
-        const effectiveEffects: VisualEffects = (() => {
+        const effectiveEffects = (() => {
+          const base = {
+            ...effects,
+            confettiGold,
+            pixNotifications,
+            pixBank,
+            pixCount: Number(pixCount),
+          };
+
           const hasOpaqueFullscreenImagePopup = Boolean(
             popupMedia &&
             popupMediaType === 'image' &&
@@ -721,18 +733,20 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             opacity >= 99
           );
 
-          if (!hasOpaqueFullscreenImagePopup) return effects;
+          if (!hasOpaqueFullscreenImagePopup) return base;
 
-          const hadVisibleEffects = Boolean(effects.darkOverlay || effects.fireworks || effects.particles);
+          const hadVisibleEffects = Boolean(effects.darkOverlay || effects.fireworks || effects.particles || confettiGold || pixNotifications);
           if (hadVisibleEffects) {
             addLog('ℹ Tela cheia + imagem opaca: desativando efeitos nesse job para evitar travamento no servidor.', 'warn');
           }
 
           return {
-            ...effects,
+            ...base,
             darkOverlay: false,
             fireworks: false,
             particles: false,
+            confettiGold: false,
+            pixNotifications: false,
           };
         })();
 
@@ -1886,46 +1900,126 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Efeitos visuais
           </p>
         </div>
-        <div className="p-4 space-y-2">
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <span>🌑</span>
-              <div>
-                <p className="text-xs font-medium text-foreground">Fundo fosco</p>
-                <p className="text-[10px] text-muted-foreground/70">Escurece o fundo do vídeo enquanto o popup aparece</p>
+        <div className="p-4 space-y-3">
+          {/* 2-column chip grid */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Escurecer */}
+            <button
+              type="button"
+              onClick={() => setEffects(e => ({ ...e, darkOverlay: !e.darkOverlay }))}
+              className={`flex flex-col gap-1.5 rounded-xl border px-3 py-3 text-left transition-all ${effects.darkOverlay ? 'border-primary/50 bg-primary/10' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-lg leading-none">🌑</span>
+                <span className={`h-2 w-2 rounded-full ${effects.darkOverlay ? 'bg-primary' : 'bg-white/20'}`} />
               </div>
-            </div>
-            <Switch checked={effects.darkOverlay} onCheckedChange={(v) => setEffects(e => ({ ...e, darkOverlay: v }))} />
+              <p className="text-xs font-semibold text-foreground">Escurecer</p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">Fundo fosco durante o popup</p>
+            </button>
+
+            {/* Fogos */}
+            <button
+              type="button"
+              onClick={() => setEffects(e => ({ ...e, fireworks: !e.fireworks }))}
+              className={`flex flex-col gap-1.5 rounded-xl border px-3 py-3 text-left transition-all ${effects.fireworks ? 'border-primary/50 bg-primary/10' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-lg leading-none">🎆</span>
+                <span className={`h-2 w-2 rounded-full ${effects.fireworks ? 'bg-primary' : 'bg-white/20'}`} />
+              </div>
+              <p className="text-xs font-semibold text-foreground">Fogos</p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">Explosões coloridas</p>
+            </button>
+
+            {/* Partículas */}
+            <button
+              type="button"
+              onClick={() => setEffects(e => ({ ...e, particles: !e.particles }))}
+              className={`flex flex-col gap-1.5 rounded-xl border px-3 py-3 text-left transition-all ${effects.particles ? 'border-primary/50 bg-primary/10' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-lg leading-none">✨</span>
+                <span className={`h-2 w-2 rounded-full ${effects.particles ? 'bg-primary' : 'bg-white/20'}`} />
+              </div>
+              <p className="text-xs font-semibold text-foreground">Partículas</p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">Brilhos flutuantes</p>
+            </button>
+
+            {/* Confete dourado */}
+            <button
+              type="button"
+              onClick={() => setConfettiGold(v => !v)}
+              className={`flex flex-col gap-1.5 rounded-xl border px-3 py-3 text-left transition-all ${confettiGold ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-lg leading-none">🎊</span>
+                <span className={`h-2 w-2 rounded-full ${confettiGold ? 'bg-yellow-400' : 'bg-white/20'}`} />
+              </div>
+              <p className="text-xs font-semibold text-foreground">Confete dourado</p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">Chuva de confetes dourados</p>
+            </button>
           </div>
+
+          {/* Escurecer — intensity slider when active */}
           {effects.darkOverlay && (
-            <div className="pl-11 pr-4 pb-2 space-y-1.5">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-muted-foreground font-medium">Intensidade: {effects.darkOverlayIntensity}%</span>
               </div>
               <input type="range" min={10} max={90} value={effects.darkOverlayIntensity} onChange={(e) => setEffects(ef => ({ ...ef, darkOverlayIntensity: Number(e.target.value) }))} className="w-full h-1.5 rounded-full appearance-none bg-white/[0.08] accent-primary cursor-pointer" />
-              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Aumentar = vídeo fica mais escuro atrás do popup · ↓ Diminuir = escurecimento mais suave</p>
+              <p className="text-[10px] text-muted-foreground/70 leading-tight">↑ Aumentar = mais escuro · ↓ Diminuir = mais suave</p>
             </div>
           )}
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <span>🎆</span>
-              <div>
-                <p className="text-xs font-medium text-foreground">Fogos de artifício</p>
-                <p className="text-[10px] text-muted-foreground/70">Explosões coloridas durante o popup</p>
+
+          {/* Notificações PIX — full-width chip */}
+          <button
+            type="button"
+            onClick={() => setPixNotifications(v => !v)}
+            className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${pixNotifications ? 'border-green-500/50 bg-green-500/10' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'}`}
+          >
+            <span className="text-xl leading-none">💰</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground">Notificações PIX</p>
+              <p className="text-[10px] text-muted-foreground/70">Simula notificações de recebimento PIX</p>
+            </div>
+            <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${pixNotifications ? 'bg-green-400' : 'bg-white/20'}`} />
+          </button>
+
+          {/* PIX config — bank and count selects */}
+          {pixNotifications && (
+            <div className="rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-3 grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Banco</label>
+                <select
+                  value={pixBank}
+                  onChange={e => setPixBank(e.target.value)}
+                  className="w-full rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-foreground px-2 py-1.5 appearance-none cursor-pointer focus:outline-none focus:border-green-500/50"
+                >
+                  <option value="nubank">Nubank</option>
+                  <option value="itau">Itaú</option>
+                  <option value="bradesco">Bradesco</option>
+                  <option value="c6">C6 Bank</option>
+                  <option value="inter">Inter</option>
+                  <option value="picpay">PicPay</option>
+                  <option value="mercadopago">Mercado Pago</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Quantidade</label>
+                <select
+                  value={pixCount}
+                  onChange={e => setPixCount(e.target.value)}
+                  className="w-full rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-foreground px-2 py-1.5 appearance-none cursor-pointer focus:outline-none focus:border-green-500/50"
+                >
+                  <option value="3">3 notificações</option>
+                  <option value="5">5 notificações</option>
+                  <option value="10">10 notificações</option>
+                  <option value="20">20 notificações</option>
+                  <option value="50">50 notificações</option>
+                </select>
               </div>
             </div>
-            <Switch checked={effects.fireworks} onCheckedChange={(v) => setEffects(e => ({ ...e, fireworks: v }))} />
-          </div>
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <span>✨</span>
-              <div>
-                <p className="text-xs font-medium text-foreground">Partículas</p>
-                <p className="text-[10px] text-muted-foreground/70">Brilhos flutuantes durante o popup</p>
-              </div>
-            </div>
-            <Switch checked={effects.particles} onCheckedChange={(v) => setEffects(e => ({ ...e, particles: v }))} />
-          </div>
+          )}
         </div>
       </div>
 
