@@ -677,6 +677,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
     if (serverConnected && serverConfig.url) {
       let sessionId = '';
       let videosSinceLastAssetRefresh = 0;
+      let isRefreshingSession = false;
       try {
         addLog(
           muteEntireAudio
@@ -689,15 +690,21 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         const ASSET_SESSION_REFRESH_EVERY = (!rotationEnabled && shouldRequirePopup) ? 3 : Number.POSITIVE_INFINITY;
 
         const refreshAssetSession = async (statusLabel: string) => {
-          setProcessingStatus(statusLabel);
-          addLog('Enviando assets (popup, áudio) para o servidor...', 'info');
-          sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
-            popupMedia: editMode !== 'audio_only' ? (popupMedia || undefined) : undefined,
-            popupAudio: editMode !== 'popup_only' ? (popupAudio || undefined) : undefined,
-            bgMusic: bgMusic || undefined,
-          });
-          videosSinceLastAssetRefresh = 0;
-          addLog(`Assets enviados com sucesso. Session: ${sessionId.slice(0, 8)}...`, 'success');
+          if (isRefreshingSession) return;
+          isRefreshingSession = true;
+          try {
+            setProcessingStatus(statusLabel);
+            addLog('Enviando assets (popup, áudio) para o servidor...', 'info');
+            sessionId = await uploadAssetsToServer(serverConfig.url, serverConfig.apiKey, {
+              popupMedia: editMode !== 'audio_only' ? (popupMedia || undefined) : undefined,
+              popupAudio: editMode !== 'popup_only' ? (popupAudio || undefined) : undefined,
+              bgMusic: bgMusic || undefined,
+            });
+            videosSinceLastAssetRefresh = 0;
+            addLog(`Assets enviados com sucesso. Session: ${sessionId.slice(0, 8)}...`, 'success');
+          } finally {
+            isRefreshingSession = false;
+          }
         };
 
         if (rotationActive) {
@@ -1147,7 +1154,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
 
                 successCount++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result));
+                zip.file(getZipFileName(successCount, editorTag), result);
                 successfulVideoIds.add(video.id);
                 // U3: persist batch progress
                 if (!isPreview) {
@@ -1339,7 +1346,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
                 failCount--;
                 retrySuccess++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result));
+                zip.file(getZipFileName(successCount, editorTag), result);
                 successfulVideoIds.add(video.id);
                 addLog(`✓ Retry OK: ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
               } else {
@@ -1362,7 +1369,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
         if (successCount > 0) {
           addLog(`Compactando ${successCount} vídeos em ZIP...`, 'info');
           setProcessingStatus('Compactando ZIP...');
-          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const zipBlob = await zip.generateAsync({ type: 'blob', streamFiles: true });
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
           const zipName = `editados_${successCount}videos_${timestamp}.zip`;
           saveAs(zipBlob, zipName);
@@ -1589,7 +1596,7 @@ export const VideoEditorTab = ({ videos, setVideos }: VideoEditorTabProps) => {
               const blob = await res.blob();
               const file = new File([blob], `audio.mp3`, { type: blob.type });
               setPopupAudio(file);
-              setPopupAudioPreview(URL.createObjectURL(blob));
+              // popupAudioPreview is set automatically by the useEffect when popupAudio changes
             } catch (e) {
               console.error('Failed to load audio from template:', e);
             }

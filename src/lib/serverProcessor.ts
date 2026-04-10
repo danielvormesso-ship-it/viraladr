@@ -42,7 +42,7 @@ export interface JobStatus {
 const LEGACY_PROCESS_TIMEOUT_MS = 660000; // 11 min
 
 const DEFAULT_SERVER_URL = 'https://ffmpeg-api-production-b226.up.railway.app';
-const DEFAULT_API_KEY = 'viraladr-secret-2025';
+const DEFAULT_API_KEY = import.meta.env.VITE_FFMPEG_API_KEY || '';
 
 const STORAGE_KEY = 'ffmpeg_server_config';
 

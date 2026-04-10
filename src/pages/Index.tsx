@@ -749,7 +749,18 @@ const Index = () => {
 
       // H: preload thumbnails in the background as soon as videos are fetched
       const preloadThumbnails = (vids: TikTokVideo[]) => {
-        vids.forEach(v => { if (v.thumbnail) { const img = new Image(); img.src = v.thumbnail; } });
+        const urls = vids.map(v => v.thumbnail).filter(Boolean) as string[];
+        let active = 0;
+        let idx = 0;
+        const next = () => {
+          while (active < 10 && idx < urls.length) {
+            active++;
+            const img = new Image();
+            img.onload = img.onerror = () => { active--; next(); };
+            img.src = urls[idx++];
+          }
+        };
+        next();
       };
 
       // F: fetchCandidates uses Promise.allSettled (parallel) — tagsOverride for D (retry pool)
@@ -1025,7 +1036,18 @@ const Index = () => {
 
     // H: preload thumbnails in the background as soon as each batch arrives
     const preloadThumbnails = (vids: TikTokVideo[]) => {
-      vids.forEach(v => { if (v.thumbnail) { const img = new Image(); img.src = v.thumbnail; } });
+      const urls = vids.map(v => v.thumbnail).filter(Boolean) as string[];
+      let active = 0;
+      let idx = 0;
+      const next = () => {
+        while (active < 10 && idx < urls.length) {
+          active++;
+          const img = new Image();
+          img.onload = img.onerror = () => { active--; next(); };
+          img.src = urls[idx++];
+        }
+      };
+      next();
     };
 
     // F: parallel fetching — tagsOverride for D (retry pool tags)
