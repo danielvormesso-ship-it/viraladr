@@ -72,10 +72,11 @@ function isBrazilianContent(item: any): boolean {
   return matchCount >= 1;
 }
 
-async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false, maxPages = 10, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null }> {
+async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null; pageLogs: string[] }> {
   const videos: VideoData[] = [];
   const seenIds = new Set<string>();
   let lastCursor: string | null = null;
+  const pageLogs: string[] = [];
 
   const addVideo = (item: any) => {
     const dur = item?.duration || 0;
@@ -122,46 +123,40 @@ async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false,
   };
 
   try {
-    // If a startCursor is provided, resume from there instead of using seed cursors
-    const seedCursors = startCursor !== undefined && startCursor !== null
-      ? [startCursor]
-      : randomOffset
-        ? [0, 20, 60, 120, 240, Math.floor(Math.random() * 400)]
-        : [0, 20, 60, 120];
+    // Single cursor start: use startCursor if resuming, otherwise 0
+    let nextCursor: number | string | undefined = startCursor ?? 0;
+    let pages = 0;
 
-    for (const seedCursor of seedCursors) {
-      if (videos.length >= limit) break;
+    while (videos.length < limit && nextCursor !== undefined && nextCursor !== null && pages < maxPages) {
+      pages++;
+      try {
+        const pageData = await fetchPage(nextCursor);
+        const pageItems = pageData?.data?.videos || [];
+        const logMsg = `page ${pages}: cursor=${nextCursor}, raw=${pageItems.length}, accepted=${videos.length}`;
+        console.log(`[TikWM] #${hashtag} ${logMsg}`);
+        pageLogs.push(logMsg);
+        if (pageItems.length === 0) break;
 
-      let nextCursor: number | string | undefined = seedCursor;
-      let pages = 0;
-
-      while (videos.length < limit && nextCursor !== undefined && nextCursor !== null && pages < maxPages) {
-        pages++;
-        try {
-          const pageData = await fetchPage(nextCursor);
-          const pageItems = pageData?.data?.videos || [];
-          if (pageItems.length === 0) break;
-
-          for (const item of pageItems) {
-            if (videos.length >= limit) break;
-            addVideo(item);
-          }
-
-          const returnedCursor = pageData?.data?.cursor;
-          if (!returnedCursor || returnedCursor === nextCursor) break;
-          nextCursor = returnedCursor;
-          lastCursor = String(returnedCursor);
-        } catch {
-          break;
+        for (const item of pageItems) {
+          if (videos.length >= limit) break;
+          addVideo(item);
         }
+
+        const returnedCursor = pageData?.data?.cursor;
+        if (!returnedCursor || returnedCursor === nextCursor) break;
+        nextCursor = returnedCursor;
+        lastCursor = String(returnedCursor);
+      } catch {
+        break;
       }
     }
 
-    console.log(`[TikWM] #${hashtag}: ${videos.length} videos (maxPages=${maxPages}, startCursor=${startCursor ?? 'none'}, lastCursor=${lastCursor})`);
+    console.log(`[TikWM] #${hashtag}: ${videos.length} videos (pages=${pages}, startCursor=${startCursor ?? 0}, lastCursor=${lastCursor})`);
   } catch (err) {
     console.log('[TikWM] error:', err);
+    pageLogs.push(`error: ${err}`);
   }
-  return { videos, nextCursor: lastCursor };
+  return { videos, nextCursor: lastCursor, pageLogs };
 }
 
 // Helper for Supabase REST calls
@@ -239,7 +234,7 @@ Deno.serve(async (req) => {
     if (light) {
       console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}`);
 
-      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), true, 10, false, 120, inputCursor);
+      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), 10, false, 120, inputCursor);
 
       // Shuffle for variety
       const videos = tikwmResult.videos;
@@ -260,6 +255,7 @@ Deno.serve(async (req) => {
           strategy: 'tikwm',
           videos: result,
           next_cursor: tikwmResult.nextCursor,
+          debug_logs: tikwmResult.pageLogs,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -314,7 +310,7 @@ Deno.serve(async (req) => {
 
       let videos: VideoData[] = [];
 
-      const tikwmResult = await scrapeTikWM(searchTerm, limit * 3, true, 10, true, 120, inputCursor);
+      const tikwmResult = await scrapeTikWM(searchTerm, limit * 3, 10, true, 120, inputCursor);
       strategyUsed = tikwmResult.videos.length > 0 ? 'tikwm' : 'none';
       videos = tikwmResult.videos;
 
