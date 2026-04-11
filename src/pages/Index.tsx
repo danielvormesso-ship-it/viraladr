@@ -1417,7 +1417,7 @@ const Index = () => {
         setScrapeProgress(`IA gerando hashtags extras...`);
         try {
           const { data: aiData } = await supabase.functions.invoke('ai-hashtag-suggest', {
-            body: { description: `Mais vídeos do TikTok sobre: ${primaryTag}. Gere hashtags DIFERENTES das já usadas: ${allTags.join(', ')}` },
+            body: { description: `Preciso de 20-25 hashtags novas do TikTok sobre: ${primaryTag}. Gere hashtags DIFERENTES e VARIADAS das já usadas: ${allTags.join(', ')}. Inclua sinônimos, variações com/sem acento, hashtags compostas e de nichos relacionados.` },
           });
           const aiHashtags: string[] = (aiData?.hashtags || [])
             .map((h: any) => h.tag?.toLowerCase?.().trim())
