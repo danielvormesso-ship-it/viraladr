@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
   try {
     const { hashtag = 'viral', limit = 50, keyword, force = false, light = false, cursor: inputCursor } = await req.json().catch(() => ({}));
     const searchTerm = (keyword || hashtag).replace('#', '').trim().toLowerCase();
-    const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 500));
+    const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 1000));
 
     // ── LIGHT MODE: skip ALL DB operations, just scrape and return ──
     if (light) {

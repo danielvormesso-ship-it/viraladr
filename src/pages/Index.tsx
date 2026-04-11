@@ -817,7 +817,7 @@ const Index = () => {
           if (exhaustedTags.has(tag)) continue;
 
           const remaining = targetCount - freshVideos.length;
-          const requestAmount = Math.min(remaining * 3, 500);
+          const requestAmount = Math.min(remaining * 3, 1000);
 
           try {
             const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
@@ -1180,7 +1180,7 @@ const Index = () => {
         if (exhaustedTags.has(tag)) continue;
 
         const remaining = targetCount - freshVideos.length;
-        const requestAmount = Math.min(remaining * 3, 500);
+        const requestAmount = Math.min(remaining * 3, 1000);
 
         try {
           const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
