@@ -819,14 +819,7 @@ const Index = () => {
           });
         }
 
-        // Dedupe within this batch AND against all previously seen IDs in this session
-        const result = dedupeVideos(freshVideos).filter(v => {
-          if (v.tiktok_id) {
-            if (sessionSeenIds.has(v.tiktok_id)) return false;
-            sessionSeenIds.add(v.tiktok_id);
-          }
-          return true;
-        });
+        const result = dedupeVideos(freshVideos);
         preloadThumbnails(result); // H
         return result;
       };
@@ -846,6 +839,7 @@ const Index = () => {
       const seenCandidateKeys = new Set(existingVideoKeys);
       const initialPerTag = Math.min(Math.ceil(fetchTarget / safeTagCount), 500);
       const initialRaw = await fetchCandidates(initialPerTag, videosRef.current.length > 0);
+      console.log(`[sessionSeenIds] before initial filter: ${sessionSeenIds.size} IDs, initialRaw: ${initialRaw.length} videos`);
       const initialCandidates = initialRaw.filter((video) => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
@@ -855,6 +849,7 @@ const Index = () => {
         if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
         return true;
       });
+      console.log(`[sessionSeenIds] after initial filter: ${sessionSeenIds.size} IDs, passed: ${initialCandidates.length} videos`);
 
       const phase1Time = ((performance.now() - startTime) / 1000).toFixed(1);
       addLog(`📊 Coletados: ${initialCandidates.length} vídeos novos únicos em ${phase1Time}s${existingVideoKeys.size > 0 ? ` (${existingVideoKeys.size} já carregados)` : ''}`);
@@ -1189,14 +1184,7 @@ const Index = () => {
         });
       }
 
-      // Dedupe within this batch AND against all previously seen IDs in this session
-      const result = dedupeVideos(freshVideos).filter(v => {
-        if (v.tiktok_id) {
-          if (sessionSeenIds.has(v.tiktok_id)) return false;
-          sessionSeenIds.add(v.tiktok_id);
-        }
-        return true;
-      });
+      const result = dedupeVideos(freshVideos);
       preloadThumbnails(result); // H
       return result;
     };
