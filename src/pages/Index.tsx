@@ -1708,12 +1708,23 @@ const Index = () => {
           const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
             body: { videos: payload.videos },
           });
+          if (error) {
+            console.error(`[Batch] Batch ${b + 1} edge function error:`, error);
+          }
           if (!error && data?.results) {
+            let batchOk = 0;
+            let batchFail = 0;
             for (const r of data.results) {
               if (r.success && r.download_url) {
                 urlMap.set(r.index, r.download_url);
+                batchOk++;
+              } else {
+                batchFail++;
+                const vid = payload.videos.find((v: any) => v.index === r.index);
+                console.warn(`[Batch] URL falhou idx=${r.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${r.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
               }
             }
+            console.log(`[Batch] Batch ${b + 1}: ${batchOk} OK, ${batchFail} falhas`);
           }
         } catch (err) {
           console.error(`[Batch] Batch ${b + 1} failed:`, err);
@@ -1751,14 +1762,27 @@ const Index = () => {
             const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
               body: { videos: retryVideos },
             });
+            if (error) {
+              console.error(`[Batch] Retry edge function error:`, error);
+            }
             if (!error && data?.results) {
+              let retryOk = 0;
+              let retryFail = 0;
               for (const res of data.results) {
                 if (res.success && res.download_url) {
                   urlMap.set(res.index, res.download_url);
+                  retryOk++;
+                } else {
+                  retryFail++;
+                  const vid = retryVideos.find((v: any) => v.index === res.index);
+                  console.warn(`[Batch] Retry falhou idx=${res.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${res.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
                 }
               }
+              console.log(`[Batch] Retry: ${retryOk} recuperados, ${retryFail} permaneceram com falha`);
             }
-          } catch {}
+          } catch (retryErr) {
+            console.error(`[Batch] Retry chunk failed:`, retryErr);
+          }
 
           if (r + RETRY_BATCH < failedIndices.length) {
             await new Promise(resolve => setTimeout(resolve, 800));
