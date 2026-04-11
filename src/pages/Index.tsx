@@ -934,7 +934,7 @@ const Index = () => {
       }
 
       // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
-      const MAX_EXTRA_ROUNDS = 5;
+      const MAX_EXTRA_ROUNDS = 10;
       let consecutiveEmpty = 0;
       for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
         const deficit = totalTarget - approvedVideos.length;
@@ -956,7 +956,7 @@ const Index = () => {
         });
         if (extraCandidates.length === 0) {
           consecutiveEmpty++;
-          if (consecutiveEmpty >= 2) {
+          if (consecutiveEmpty >= 3) {
             addLog(`⚠️ Rodada extra ${extra + 1}: pool esgotado após ${consecutiveEmpty} tentativas vazias`);
             break;
           }
@@ -1357,7 +1357,7 @@ const Index = () => {
     }
 
     // Extra fetch rounds: if we still haven't reached totalTarget, keep trying (max 5 extra rounds)
-    const MAX_EXTRA_ROUNDS = 5;
+    const MAX_EXTRA_ROUNDS = 10;
     let consecutiveEmpty = 0;
     for (let extra = 0; extra < MAX_EXTRA_ROUNDS && approvedVideos.length < totalTarget; extra++) {
       const deficit = totalTarget - approvedVideos.length;
@@ -1378,7 +1378,7 @@ const Index = () => {
       });
       if (extraCandidates.length === 0) {
         consecutiveEmpty++;
-        if (consecutiveEmpty >= 2) {
+        if (consecutiveEmpty >= 3) {
           addLog(`⚠️ Rodada extra ${extra + 1}: pool esgotado após ${consecutiveEmpty} tentativas vazias`);
           break;
         }
