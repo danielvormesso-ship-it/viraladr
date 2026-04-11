@@ -4,7 +4,7 @@ import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { TikTokVideo } from "@/lib/api/tiktok";
+import { TikTokVideo, tiktokApi } from "@/lib/api/tiktok";
 import { supabase } from "@/integrations/supabase/client";
 import { processVideo, type VideoEditConfig, type PopupTransform } from "@/lib/videoProcessor";
 import { PopupPreviewEditor } from "@/components/PopupPreviewEditor";
@@ -1442,6 +1442,13 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           
           // Remove processed videos from the list (never in preview mode)
           if (successfulVideoIds.size > 0 && !isPreview) {
+            // Mark successfully edited videos as used so they don't appear in future searches
+            const usedTiktokIds = videosToProcess
+              .filter(v => successfulVideoIds.has(v.id) && v.tiktok_id)
+              .map(v => v.tiktok_id!);
+            if (usedTiktokIds.length > 0) {
+              tiktokApi.markVideosUsed(usedTiktokIds).catch(err => console.warn('Erro ao marcar vídeos como usados:', err));
+            }
             setVideos(prev => prev.filter(v => !successfulVideoIds.has(v.id)));
             addLog(`${successfulVideoIds.size} vídeos editados removidos da lista.`, 'success');
           }
