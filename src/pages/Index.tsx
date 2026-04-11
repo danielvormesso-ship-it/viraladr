@@ -1408,6 +1408,81 @@ const Index = () => {
       }
     }
 
+    // AI expansion: if still short, ask AI for more related hashtags and keep fetching
+    if (approvedVideos.length < totalTarget) {
+      const deficit = totalTarget - approvedVideos.length;
+      const primaryTag = expandedTags[0] || selectedTags[0] || '';
+      if (primaryTag) {
+        addLog(`🧠 Faltam ${deficit} vídeos — pedindo hashtags extras à IA para "#${primaryTag}"...`);
+        setScrapeProgress(`IA gerando hashtags extras...`);
+        try {
+          const { data: aiData } = await supabase.functions.invoke('ai-hashtag-suggest', {
+            body: { description: `Mais vídeos do TikTok sobre: ${primaryTag}. Gere hashtags DIFERENTES das já usadas: ${allTags.join(', ')}` },
+          });
+          const aiHashtags: string[] = (aiData?.hashtags || [])
+            .map((h: any) => h.tag?.toLowerCase?.().trim())
+            .filter((t: string) => t && !allTags.includes(t) && !exhaustedTags.has(t));
+
+          if (aiHashtags.length > 0) {
+            addLog(`✨ IA sugeriu ${aiHashtags.length} novas: ${aiHashtags.map(t => '#' + t).join(', ')}`);
+            // Add new tags to pool
+            for (const t of aiHashtags) allTags.push(t);
+
+            // Run extra rounds with the new tags
+            const AI_EXTRA_ROUNDS = 5;
+            for (let aiRound = 0; aiRound < AI_EXTRA_ROUNDS && approvedVideos.length < totalTarget; aiRound++) {
+              const aiDeficit = totalTarget - approvedVideos.length;
+              addLog(`🔄 Rodada IA ${aiRound + 1}: faltam ${aiDeficit}, buscando novas hashtags...`);
+              setScrapeProgress(`Buscando +${aiDeficit} vídeos (IA ${aiRound + 1}/${AI_EXTRA_ROUNDS})...`);
+              const aiRaw = await fetchCandidates(aiDeficit * 5, true);
+              const aiCandidates = aiRaw.filter((video) => {
+                const key = getVideoKey(video);
+                if (seenCandidateKeys.has(key)) return false;
+                if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+                if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
+                seenCandidateKeys.add(key);
+                if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
+                return true;
+              });
+              if (aiCandidates.length === 0) {
+                addLog(`⚠️ Rodada IA ${aiRound + 1}: nenhum vídeo novo`);
+                break;
+              }
+              if (allGeneric) {
+                const before = approvedVideos.length;
+                approvedVideos = dedupeVideos([...approvedVideos, ...aiCandidates]);
+                if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+                showProgressively(approvedVideos.slice(before));
+                addLog(`🎯 IA ${aiRound + 1}: +${approvedVideos.length - before} aprovados (${approvedVideos.length}/${totalTarget})`);
+              } else {
+                const mergeNicheDesc = selectedTags.map(t => PRESET_HASHTAGS.find(p => p.tag === t)?.label).filter(Boolean).join(', ') || expandedTags.slice(0, 8).map(t => '#' + t).join(', ');
+                const [nicheFiltered, thumbFiltered] = await Promise.all([
+                  applyNicheTitleFilter(aiCandidates, mergeNicheDesc, expandedTags, addLog),
+                  applyThumbnailValidation(aiCandidates, mergeNicheDesc, addLog),
+                ]);
+                const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
+                const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
+                const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
+                const aiApproved = hadSignal
+                  ? aiCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
+                  : aiCandidates;
+                const before = approvedVideos.length;
+                approvedVideos = dedupeVideos([...approvedVideos, ...aiApproved]);
+                if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+                const newlyAdded = approvedVideos.length - before;
+                addLog(`🎯 IA ${aiRound + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
+                showProgressively(approvedVideos.slice(before));
+              }
+            }
+          } else {
+            addLog(`⚠️ IA não sugeriu hashtags novas`);
+          }
+        } catch (err) {
+          addLog(`⚠️ Expansão IA falhou: ${err instanceof Error ? err.message : 'erro'}`);
+        }
+      }
+    }
+
     // approvedVideos is already capped — slice is a safety net
     const unique = approvedVideos.slice(0, totalTarget);
 
