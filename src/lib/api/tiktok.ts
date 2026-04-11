@@ -108,8 +108,6 @@ export const tiktokApi = {
     forceRefresh = false,
     lightMode = false
   ): Promise<{ success: boolean; videos_found: number; new_scraped: number; from_cache: boolean; videos: TikTokVideo[] }> {
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log('SESSION [scrapeByHashtag]:', session?.access_token ? 'TOKEN EXISTS' : 'NO TOKEN', session?.user?.id);
     const { data, error } = await supabase.functions.invoke('scrape-tiktok-apify', {
       body: { hashtag, limit, editor, force: forceRefresh, light: lightMode },
     });
@@ -124,8 +122,6 @@ export const tiktokApi = {
   },
 
   async scrapeByKeyword(keyword: string, limit = 50, editor?: string): Promise<{ success: boolean; videos_found: number }> {
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log('SESSION [scrapeByKeyword]:', session?.access_token ? 'TOKEN EXISTS' : 'NO TOKEN', session?.user?.id);
     const { data, error } = await supabase.functions.invoke('scrape-tiktok-apify', {
       body: { keyword, limit, editor },
     });
@@ -137,8 +133,6 @@ export const tiktokApi = {
     quantity: number,
     filters: { minViews?: number; minLikes?: number; minShares?: number; minComments?: number } = {}
   ): Promise<{ success: boolean; new_scraped: number; total_available: number; videos: TikTokVideo[] }> {
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log('SESSION [scrapeForYou]:', session?.access_token ? 'TOKEN EXISTS' : 'NO TOKEN', session?.user?.id);
     const { data, error } = await supabase.functions.invoke('scrape-tiktok-foryou', {
       body: {
         quantity,
