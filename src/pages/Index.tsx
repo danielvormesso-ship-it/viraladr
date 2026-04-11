@@ -1824,7 +1824,21 @@ const Index = () => {
       if (!downloadUrl) return null;
 
       try {
-        const res = await fetch(downloadUrl);
+        // Route CDN URLs through proxy to avoid CORS, fetch others directly
+        let res: Response;
+        if (isCdnUrl(downloadUrl)) {
+          const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-video`;
+          res = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({ url: downloadUrl }),
+          });
+        } else {
+          res = await fetch(downloadUrl);
+        }
         if (!res.ok) return null;
 
         const contentType = res.headers.get('content-type') || '';
