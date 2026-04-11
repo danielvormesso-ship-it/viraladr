@@ -755,7 +755,11 @@ const Index = () => {
       const startTime = performance.now();
       addLog(`📊 Meta: ${totalTarget} vídeos`);
 
-      const seenIds = await tiktokApi.getSeenVideoIds();
+      const [seenIds, usedIds] = await Promise.all([
+        tiktokApi.getSeenVideoIds(),
+        tiktokApi.getUsedVideoIds(),
+      ]);
+      for (const id of usedIds) seenIds.add(id);
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
@@ -1057,10 +1061,12 @@ const Index = () => {
     setCacheStatus(null);
     activityTracker.logSearch(tag);
     try {
-      const [result, seenIds] = await Promise.all([
+      const [result, seenIds, usedIds] = await Promise.all([
         tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh),
         tiktokApi.getSeenVideoIds(),
+        tiktokApi.getUsedVideoIds(),
       ]);
+      for (const id of usedIds) seenIds.add(id);
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -1225,7 +1231,11 @@ const Index = () => {
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
 
-    const seenIds = await tiktokApi.getSeenVideoIds();
+    const [seenIds, usedIds] = await Promise.all([
+      tiktokApi.getSeenVideoIds(),
+      tiktokApi.getUsedVideoIds(),
+    ]);
+    for (const id of usedIds) seenIds.add(id);
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
     const seenCandidateKeys = new Set(existingVideoKeys);
     const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
@@ -1565,10 +1575,12 @@ const Index = () => {
     activityTracker.logSearch('foryou');
 
     try {
-      const [result, seenIds] = await Promise.all([
+      const [result, seenIds, usedIds] = await Promise.all([
         tiktokApi.scrapeForYou(foryouQuantity, filters),
         tiktokApi.getSeenVideoIds(),
+        tiktokApi.getUsedVideoIds(),
       ]);
+      for (const id of usedIds) seenIds.add(id);
 
       const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
       tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
