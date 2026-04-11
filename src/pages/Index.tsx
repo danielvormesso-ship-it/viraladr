@@ -1861,30 +1861,35 @@ const Index = () => {
 
     const seenDownloadUrls = new Set<string>();
 
-    for (let start = 0; start < videosToDownload.length; start += CONCURRENCY) {
-      const chunk = videosToDownload.slice(start, start + CONCURRENCY);
-      const results = await Promise.all(
-        chunk.map((video, i) => downloadFile(video, start + i))
-      );
+    // Continuous worker pool: each worker grabs the next video as soon as it finishes
+    const queue = videosToDownload.map((video, i) => ({ video, index: i }));
+    let queuePos = 0;
 
-      for (const result of results) {
-        if (!result) continue;
+    const worker = async () => {
+      while (queuePos < queue.length) {
+        const pos = queuePos++;
+        const { video, index } = queue[pos];
+        const result = await downloadFile(video, index);
 
-        const normalizedDownloadUrl = result.downloadUrl.split('?')[0];
-        if (seenDownloadUrls.has(normalizedDownloadUrl)) {
-          skippedBySameFile++;
-          continue;
+        if (result) {
+          const normalizedDownloadUrl = result.downloadUrl.split('?')[0];
+          if (seenDownloadUrls.has(normalizedDownloadUrl)) {
+            skippedBySameFile++;
+          } else {
+            seenDownloadUrls.add(normalizedDownloadUrl);
+            const paddedNum = String(successCount + 1).padStart(String(batchCount).length, '0');
+            zip.file(`${paddedNum}_${result.name}.mp4`, new Uint8Array(await result.blob.arrayBuffer()), { compression: 'STORE' });
+            successCount++;
+          }
         }
-        seenDownloadUrls.add(normalizedDownloadUrl);
 
-        const paddedNum = String(successCount + 1).padStart(String(batchCount).length, '0');
-        zip.file(`${paddedNum}_${result.name}.mp4`, result.blob);
-        successCount++;
+        completedCount++;
+        setBatchProgress({ current: Math.min(completedCount, batchCount), total: batchCount, active: true });
       }
+    };
 
-      completedCount += chunk.length;
-      setBatchProgress({ current: Math.min(completedCount, batchCount), total: batchCount, active: true });
-    }
+    const workerCount = Math.min(CONCURRENCY, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
     if (successCount > 0) {
       toast({ title: "Gerando ZIP...", description: "Compactando vídeos..." });
