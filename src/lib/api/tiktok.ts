@@ -194,29 +194,31 @@ export const tiktokApi = {
   async getSeenVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const raw = localStorage.getItem(`seen_videos_${userId}`);
-      if (!raw) return new Set<string>();
-      return new Set<string>(JSON.parse(raw));
+      const { data, error } = await supabase
+        .from('seen_videos')
+        .select('tiktok_id')
+        .eq('user_id', userId);
+      if (error) throw error;
+      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
     } catch (err) {
-      console.warn('Erro ao ler seen_videos do localStorage:', err);
+      console.warn('Erro ao ler seen_videos:', err);
       return new Set<string>();
     }
   },
 
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
     if (tiktokIds.length === 0) return;
-    const MAX_SEEN_IDS = 1000;
     try {
       const userId = await getCurrentUserId();
-      const key = `seen_videos_${userId}`;
-      const raw = localStorage.getItem(key);
-      const existing: string[] = raw ? JSON.parse(raw) : [];
-      const merged = Array.from(new Set([...existing, ...tiktokIds]));
-      // Keep only the most recent IDs to avoid localStorage bloat
-      const trimmed = merged.length > MAX_SEEN_IDS ? merged.slice(-MAX_SEEN_IDS) : merged;
-      localStorage.setItem(key, JSON.stringify(trimmed));
+      const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        await supabase
+          .from('seen_videos')
+          .upsert(batch, { onConflict: 'user_id,tiktok_id' });
+      }
     } catch (err) {
-      console.warn('Erro ao salvar vídeos vistos:', err);
+      console.warn('Erro ao salvar seen_videos:', err);
     }
   },
 

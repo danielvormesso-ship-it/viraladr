@@ -755,7 +755,7 @@ const Index = () => {
       const startTime = performance.now();
       addLog(`📊 Meta: ${totalTarget} vídeos`);
 
-      const seenIds = await tiktokApi.getUsedVideoIds();
+      const seenIds = await tiktokApi.getSeenVideoIds();
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
@@ -1048,7 +1048,7 @@ const Index = () => {
     try {
       const [result, seenIds] = await Promise.all([
         tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh),
-        tiktokApi.getUsedVideoIds(),
+        tiktokApi.getSeenVideoIds(),
       ]);
 
       if (result.from_cache) {
@@ -1214,7 +1214,7 @@ const Index = () => {
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
 
-    const seenIds = await tiktokApi.getUsedVideoIds();
+    const seenIds = await tiktokApi.getSeenVideoIds();
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
     const seenCandidateKeys = new Set(existingVideoKeys);
     const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
@@ -1522,7 +1522,7 @@ const Index = () => {
     try {
       const [result, seenIds] = await Promise.all([
         tiktokApi.scrapeForYou(foryouQuantity, filters),
-        tiktokApi.getUsedVideoIds(),
+        tiktokApi.getSeenVideoIds(),
       ]);
 
       const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
