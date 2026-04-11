@@ -914,12 +914,18 @@ const Index = () => {
         const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
         const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
         const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
-        const roundApproved = hadSignal
+        let roundApproved = hadSignal
           ? roundCandidates.filter((video) => {
               const key = getVideoKey(video);
               return nicheKeys.has(key) || thumbKeys.has(key);
             })
           : roundCandidates;
+
+        // Remove foreign content before counting as approved so deficit compensates automatically
+        const beforeForeignFilter = roundApproved.length;
+        roundApproved = roundApproved.filter(v => !isForeignContent(v));
+        const foreignRemoved = beforeForeignFilter - roundApproved.length;
+        if (foreignRemoved > 0) addLog(`🌐 Rodada ${round + 1}: ${foreignRemoved} vídeos estrangeiros removidos`);
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
@@ -980,6 +986,11 @@ const Index = () => {
         let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
+        // Remove foreign content before counting as approved
+        const beforeForeignExtra = extraApproved.length;
+        extraApproved = extraApproved.filter(v => !isForeignContent(v));
+        const foreignRemovedExtra = beforeForeignExtra - extraApproved.length;
+        if (foreignRemovedExtra > 0) addLog(`🌐 Extra ${extra + 1}: ${foreignRemovedExtra} vídeos estrangeiros removidos`);
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
@@ -1255,8 +1266,12 @@ const Index = () => {
 
     if (allGeneric) {
       addLog(`⚡ Hashtags genéricas detectadas — filtro de nicho desativado`);
+      // Remove foreign content before counting as approved
+      const filteredInitial = initialCandidates.filter(v => !isForeignContent(v));
+      const foreignRemovedInit = initialCandidates.length - filteredInitial.length;
+      if (foreignRemovedInit > 0) addLog(`🌐 Inicial: ${foreignRemovedInit} vídeos estrangeiros removidos`);
       // Enforce exact limit before progressive display
-      approvedVideos = initialCandidates.slice(0, totalTarget);
+      approvedVideos = filteredInitial.slice(0, totalTarget);
       showProgressively(approvedVideos); // I
 
       const MAX_GENERIC_ROUNDS = 6;
@@ -1276,8 +1291,12 @@ const Index = () => {
         });
         addLog(`📊 Retry genérico ${round}: ${retryCandidates.length} candidatos novos`);
         if (retryCandidates.length === 0) break;
+        // Remove foreign content before counting
+        const filteredRetry = retryCandidates.filter(v => !isForeignContent(v));
+        const foreignRemovedRetry = retryCandidates.length - filteredRetry.length;
+        if (foreignRemovedRetry > 0) addLog(`🌐 Retry genérico ${round}: ${foreignRemovedRetry} vídeos estrangeiros removidos`);
         const before = approvedVideos.length;
-        approvedVideos = dedupeVideos([...approvedVideos, ...retryCandidates]);
+        approvedVideos = dedupeVideos([...approvedVideos, ...filteredRetry]);
         // Enforce exact limit
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
         showProgressively(approvedVideos.slice(before)); // I
@@ -1336,12 +1355,18 @@ const Index = () => {
         const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
         const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
         const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
-        const roundApproved = hadSignal
+        let roundApproved = hadSignal
           ? roundCandidates.filter((video) => {
               const key = getVideoKey(video);
               return nicheKeys.has(key) || thumbKeys.has(key);
             })
           : roundCandidates;
+
+        // Remove foreign content before counting as approved
+        const beforeForeignFilter = roundApproved.length;
+        roundApproved = roundApproved.filter(v => !isForeignContent(v));
+        const foreignRemoved = beforeForeignFilter - roundApproved.length;
+        if (foreignRemoved > 0) addLog(`🌐 Rodada ${round + 1}: ${foreignRemoved} vídeos estrangeiros removidos`);
 
         const beforeApproved = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...roundApproved]);
@@ -1381,8 +1406,13 @@ const Index = () => {
       }
       consecutiveEmpty = 0;
       if (allGeneric) {
+        // Remove foreign content before counting
+        const beforeForeignG = extraCandidates.length;
+        const filteredExtra = extraCandidates.filter(v => !isForeignContent(v));
+        const foreignRemovedG = beforeForeignG - filteredExtra.length;
+        if (foreignRemovedG > 0) addLog(`🌐 Extra ${extra + 1}: ${foreignRemovedG} vídeos estrangeiros removidos`);
         const before = approvedVideos.length;
-        approvedVideos = dedupeVideos([...approvedVideos, ...extraCandidates]);
+        approvedVideos = dedupeVideos([...approvedVideos, ...filteredExtra]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
         showProgressively(approvedVideos.slice(before));
         addLog(`🎯 Extra ${extra + 1}: +${approvedVideos.length - before} aprovados (${approvedVideos.length}/${totalTarget})`);
@@ -1399,6 +1429,11 @@ const Index = () => {
         let extraApproved = hadSignal
           ? extraCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
           : extraCandidates;
+        // Remove foreign content before counting
+        const beforeForeignE = extraApproved.length;
+        extraApproved = extraApproved.filter(v => !isForeignContent(v));
+        const foreignRemovedE = beforeForeignE - extraApproved.length;
+        if (foreignRemovedE > 0) addLog(`🌐 Extra ${extra + 1}: ${foreignRemovedE} vídeos estrangeiros removidos`);
         const before = approvedVideos.length;
         approvedVideos = dedupeVideos([...approvedVideos, ...extraApproved]);
         if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
@@ -1449,8 +1484,13 @@ const Index = () => {
                 break;
               }
               if (allGeneric) {
+                // Remove foreign content before counting
+                const beforeForeignAG = aiCandidates.length;
+                const filteredAi = aiCandidates.filter(v => !isForeignContent(v));
+                const foreignRemovedAG = beforeForeignAG - filteredAi.length;
+                if (foreignRemovedAG > 0) addLog(`🌐 IA ${aiRound + 1}: ${foreignRemovedAG} vídeos estrangeiros removidos`);
                 const before = approvedVideos.length;
-                approvedVideos = dedupeVideos([...approvedVideos, ...aiCandidates]);
+                approvedVideos = dedupeVideos([...approvedVideos, ...filteredAi]);
                 if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
                 showProgressively(approvedVideos.slice(before));
                 addLog(`🎯 IA ${aiRound + 1}: +${approvedVideos.length - before} aprovados (${approvedVideos.length}/${totalTarget})`);
@@ -1463,9 +1503,14 @@ const Index = () => {
                 const nicheKeys = new Set(nicheFiltered.map(getVideoKey));
                 const thumbKeys = new Set(thumbFiltered.map(getVideoKey));
                 const hadSignal = nicheKeys.size > 0 || thumbKeys.size > 0;
-                const aiApproved = hadSignal
+                let aiApproved = hadSignal
                   ? aiCandidates.filter(v => nicheKeys.has(getVideoKey(v)) || thumbKeys.has(getVideoKey(v)))
                   : aiCandidates;
+                // Remove foreign content before counting
+                const beforeForeignAN = aiApproved.length;
+                aiApproved = aiApproved.filter(v => !isForeignContent(v));
+                const foreignRemovedAN = beforeForeignAN - aiApproved.length;
+                if (foreignRemovedAN > 0) addLog(`🌐 IA ${aiRound + 1}: ${foreignRemovedAN} vídeos estrangeiros removidos`);
                 const before = approvedVideos.length;
                 approvedVideos = dedupeVideos([...approvedVideos, ...aiApproved]);
                 if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
