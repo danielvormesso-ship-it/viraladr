@@ -1181,13 +1181,19 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                 );
               }
 
-              if (result.byteLength > 1024) {
+              if (!result || result.byteLength === 0) {
+                addLog(`⚠ [ZIP-DEBUG] ${video.title.slice(0, 40)} — ArrayBuffer vazio ou undefined (byteLength=${result?.byteLength ?? 'undefined'})`, 'error');
+              } else if (result.byteLength > 1024) {
                 const fallbackMode = finalStatus?.fallbackMode || 'none';
 
                 successCount++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
+                const fileName = getZipFileName(successCount, editorTag);
                 // Copy into Uint8Array so the fetch ArrayBuffer can be GC'd safely
-                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result), { compression: 'STORE' });
+                const data = new Uint8Array(result);
+                zip.file(fileName, data, { compression: 'STORE' });
+                const zipCount = Object.keys(zip.files).length;
+                addLog(`📦 [ZIP-DEBUG] Adicionado "${fileName}" (${(data.byteLength / 1024 / 1024).toFixed(1)}MB) — ZIP agora tem ${zipCount} arquivo(s)`, 'info');
                 successfulVideoIds.add(video.id);
                 // U3: persist batch progress
                 if (!isPreview) {
@@ -1203,7 +1209,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                   addLog(`ℹ Vídeo processado no endpoint legado (/api/process-url)`, 'info');
                 }
               } else {
-                addLog(`⚠ ${video.title.slice(0, 30)} — arquivo muito pequeno`, 'warn');
+                addLog(`⚠ [ZIP-DEBUG] ${video.title.slice(0, 30)} — arquivo muito pequeno (${result.byteLength} bytes), NÃO adicionado ao ZIP`, 'warn');
               }
             } catch (err: any) {
               const errMsg = String(err?.message || err || '');
@@ -1375,17 +1381,24 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
               const result = await downloadJobResult(serverConfig.url, serverConfig.apiKey, jobId);
 
-              if (result.byteLength > 1024) {
+              if (!result || result.byteLength === 0) {
+                retryFail++;
+                addLog(`⚠ [ZIP-DEBUG] Retry ${retryNum} — ArrayBuffer vazio ou undefined (byteLength=${result?.byteLength ?? 'undefined'})`, 'error');
+              } else if (result.byteLength > 1024) {
                 successCount++;
                 failCount--;
                 retrySuccess++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result), { compression: 'STORE' });
+                const fileName = getZipFileName(successCount, editorTag);
+                const data = new Uint8Array(result);
+                zip.file(fileName, data, { compression: 'STORE' });
+                const zipCount = Object.keys(zip.files).length;
+                addLog(`📦 [ZIP-DEBUG] Retry adicionado "${fileName}" (${(data.byteLength / 1024 / 1024).toFixed(1)}MB) — ZIP agora tem ${zipCount} arquivo(s)`, 'info');
                 successfulVideoIds.add(video.id);
                 addLog(`✓ Retry OK: ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
               } else {
                 retryFail++;
-                addLog(`⚠ Retry falhou: arquivo muito pequeno`, 'warn');
+                addLog(`⚠ [ZIP-DEBUG] Retry ${retryNum} — arquivo muito pequeno (${result.byteLength} bytes), NÃO adicionado`, 'warn');
               }
             } catch (err: any) {
               retryFail++;
@@ -1401,9 +1414,12 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         // === ALWAYS deliver ZIP if we have any successes ===
         if (successCount > 0) {
-          const zipFileCount = Object.keys(zip.files).length;
+          const zipFileNames = Object.keys(zip.files);
+          const zipFileCount = zipFileNames.length;
+          addLog(`📦 [ZIP-DEBUG] Resumo pré-ZIP: successCount=${successCount}, arquivos no ZIP=${zipFileCount}, failCount=${failCount}, completedCount=${completedCount}, total=${finalTargets.length}`, 'info');
           if (zipFileCount !== successCount) {
-            addLog(`⚠ ZIP contém ${zipFileCount} arquivos mas ${successCount} vídeos foram processados — possível perda de dados`, 'error');
+            addLog(`⚠ [ZIP-DEBUG] DIVERGÊNCIA: ZIP tem ${zipFileCount} arquivos mas successCount=${successCount} — possível perda de dados!`, 'error');
+            addLog(`📋 [ZIP-DEBUG] Arquivos no ZIP: ${zipFileNames.join(', ')}`, 'info');
           }
           addLog(`Compactando ${zipFileCount} vídeos em ZIP...`, 'info');
           setProcessingStatus('Compactando ZIP...');
@@ -1411,7 +1427,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
           const zipName = `editados_${zipFileCount}videos_${timestamp}.zip`;
           saveAs(zipBlob, zipName);
-          addLog(`ZIP baixado: ${zipName} (${(zipBlob.size / 1024 / 1024).toFixed(1)}MB)`, 'success');
+          addLog(`📦 [ZIP-DEBUG] ZIP gerado: ${zipName} — blob size=${(zipBlob.size / 1024 / 1024).toFixed(1)}MB, arquivos=${zipFileCount}`, 'success');
           
           // Remove processed videos from the list (never in preview mode)
           if (successfulVideoIds.size > 0 && !isPreview) {
