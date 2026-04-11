@@ -78,6 +78,8 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
   let lastCursor: string | null = null;
   const pageLogs: string[] = [];
 
+  let skippedNoUrl = 0;
+
   const addVideo = (item: any) => {
     const dur = item?.duration || 0;
     const w = item?.width || 0;
@@ -85,6 +87,12 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
     if (w > 0 && h > 0 && h < w * 1.5) return;
     if (dur <= 0 || dur > maxDuration) return;
     if (requireBrazilian && !isBrazilianContent(item)) return;
+
+    const downloadUrl = item?.play || item?.hdplay || null;
+    if (!downloadUrl) {
+      skippedNoUrl++;
+      return;
+    }
 
     const vid: VideoData = {
       tiktok_id: String(item?.video_id || item?.id || crypto.randomUUID()),
@@ -96,7 +104,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
       shares: parseInt(item?.share_count || 0),
       duration: `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, '0')}`,
       author: item?.author?.unique_id || item?.author?.nickname || 'desconhecido',
-      video_url: item?.play || item?.hdplay || null,
+      video_url: downloadUrl,
       source_url: `https://www.tiktok.com/@${item?.author?.unique_id || 'user'}/video/${item?.video_id || item?.id || ''}`,
       status: 'pending',
       hashtag,
@@ -151,7 +159,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
       }
     }
 
-    console.log(`[TikWM] #${hashtag}: ${videos.length} videos (pages=${pages}, startCursor=${startCursor ?? 0}, lastCursor=${lastCursor})`);
+    console.log(`[TikWM] #${hashtag}: ${videos.length} videos (pages=${pages}, startCursor=${startCursor ?? 0}, lastCursor=${lastCursor}, skippedNoUrl=${skippedNoUrl})`);
   } catch (err) {
     console.log('[TikWM] error:', err);
     pageLogs.push(`error: ${err}`);
