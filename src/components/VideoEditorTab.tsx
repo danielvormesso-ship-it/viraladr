@@ -841,7 +841,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           videosToProcess.map(async (video) => {
             await acquireUrlSlot();
             try {
-              const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
+              const videoUrl = video.video_url || video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
               if (!videoUrl) {
                 addLog(`⚠ ${(video.title || video.id).slice(0, 40)} — sem URL de origem, pulando`, 'warn');
                 return null;

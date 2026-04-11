@@ -1692,7 +1692,7 @@ const Index = () => {
         batchPayloads.push({
           batchIndex: start,
           videos: chunk.map((video, i) => ({
-            video_url: video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : ''),
+            video_url: video.video_url || video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : ''),
             tiktok_id: video.tiktok_id || undefined,
             index: start + i,
           })),
@@ -1753,7 +1753,7 @@ const Index = () => {
         for (let r = 0; r < failedIndices.length; r += RETRY_BATCH) {
           const retryChunk = failedIndices.slice(r, r + RETRY_BATCH);
           const retryVideos = retryChunk.map(idx => ({
-            video_url: videosToDownload[idx].source_url || (videosToDownload[idx].tiktok_id ? `https://www.tiktok.com/@user/video/${videosToDownload[idx].tiktok_id}` : ''),
+            video_url: videosToDownload[idx].video_url || videosToDownload[idx].source_url || (videosToDownload[idx].tiktok_id ? `https://www.tiktok.com/@user/video/${videosToDownload[idx].tiktok_id}` : ''),
             tiktok_id: videosToDownload[idx].tiktok_id || undefined,
             index: idx,
           }));
