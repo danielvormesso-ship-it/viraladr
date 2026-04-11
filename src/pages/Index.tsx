@@ -755,7 +755,7 @@ const Index = () => {
       const startTime = performance.now();
       addLog(`📊 Meta: ${totalTarget} vídeos`);
 
-      const seenIds = await tiktokApi.getSeenVideoIds();
+      const seenIds = await tiktokApi.getUsedVideoIds();
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
@@ -1048,7 +1048,7 @@ const Index = () => {
     try {
       const [result, seenIds] = await Promise.all([
         tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh),
-        tiktokApi.getSeenVideoIds(),
+        tiktokApi.getUsedVideoIds(),
       ]);
 
       if (result.from_cache) {
@@ -1214,7 +1214,7 @@ const Index = () => {
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
 
-    const seenIds = await tiktokApi.getSeenVideoIds();
+    const seenIds = await tiktokApi.getUsedVideoIds();
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
     const seenCandidateKeys = new Set(existingVideoKeys);
     const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
@@ -1522,7 +1522,7 @@ const Index = () => {
     try {
       const [result, seenIds] = await Promise.all([
         tiktokApi.scrapeForYou(foryouQuantity, filters),
-        tiktokApi.getSeenVideoIds(),
+        tiktokApi.getUsedVideoIds(),
       ]);
 
       const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
@@ -1571,6 +1571,7 @@ const Index = () => {
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
+        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([currentVideo.tiktok_id]).catch(() => {});
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
         // Remove downloaded video from preview and DB
@@ -1794,6 +1795,10 @@ const Index = () => {
 
     const totalTime = ((performance.now() - batchStartTime) / 1000).toFixed(1);
     console.log(`[Batch Download] ${successCount}/${batchCount} em ${totalTime}s | Direto: ${directUrlCount} | Edge Fn: ${edgeFnCount}`);
+
+    // Mark downloaded videos as used (persisted in Supabase)
+    const usedTiktokIds = videosToDownload.map(v => v.tiktok_id).filter(Boolean) as string[];
+    tiktokApi.markVideosUsed(usedTiktokIds).catch(() => {});
 
     // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));

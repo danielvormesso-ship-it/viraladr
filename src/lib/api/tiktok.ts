@@ -220,6 +220,37 @@ export const tiktokApi = {
     }
   },
 
+  async getUsedVideoIds(): Promise<Set<string>> {
+    try {
+      const userId = await getCurrentUserId();
+      const { data, error } = await supabase
+        .from('used_videos')
+        .select('tiktok_id')
+        .eq('user_id', userId);
+      if (error) throw error;
+      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
+    } catch (err) {
+      console.warn('Erro ao ler used_videos:', err);
+      return new Set<string>();
+    }
+  },
+
+  async markVideosUsed(tiktokIds: string[]): Promise<void> {
+    if (tiktokIds.length === 0) return;
+    try {
+      const userId = await getCurrentUserId();
+      const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        await supabase
+          .from('used_videos')
+          .upsert(batch, { onConflict: 'user_id,tiktok_id' });
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar used_videos:', err);
+    }
+  },
+
   async getVideoCount(minViews = 0): Promise<number> {
     const userId = await getCurrentUserId();
 
