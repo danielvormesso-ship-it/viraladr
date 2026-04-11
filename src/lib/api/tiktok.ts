@@ -179,14 +179,15 @@ export const tiktokApi = {
   },
 
   async deleteVideos(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
+    const validIds = ids.filter(id => id != null && id !== 'undefined' && id !== '');
+    if (validIds.length === 0) return;
     const userId = await getCurrentUserId();
 
     const { error } = await supabase
       .from('tiktok_videos' as any)
       .delete()
       .eq('owner_user_id', userId)
-      .in('id', ids);
+      .in('id', validIds);
 
     if (error) throw error;
   },
