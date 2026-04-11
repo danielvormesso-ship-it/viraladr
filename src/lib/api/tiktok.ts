@@ -203,7 +203,7 @@ export const tiktokApi = {
 
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
     if (tiktokIds.length === 0) return;
-    const MAX_SEEN_IDS = 500;
+    const MAX_SEEN_IDS = 1000;
     try {
       const userId = await getCurrentUserId();
       const key = `seen_videos_${userId}`;

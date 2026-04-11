@@ -90,9 +90,11 @@ const PRESET_HASHTAGS = [
 function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
   if (vids.length === 0) return vids;
 
+  // Remove foreign videos completely
+  const filtered = vids.filter(v => !isForeignContent(v));
+
   const BR_HASHTAGS = new Set(['brasil', 'br', 'brasileiros', 'brasileiro', 'tiktokviral🇧🇷', 'fyp🇧🇷', 'tiktoker']);
   const PT_WORDS = new Set(['kkk', 'né', 'tô', 'pra', 'vc', 'rsrs', 'mds', 'caramba', 'mano', 'cara', 'nossa', 'brasil', 'brasileiro', 'br', 'saudade', 'gente', 'aqui', 'também', 'então', 'muito', 'quando', 'porque']);
-  const ES_WORDS = new Set(['que', 'con', 'para', 'como', 'pero', 'muy', 'esto', 'eso', 'una', 'los', 'las', 'del', 'hola', 'gracias', 'amigo', 'hermano', 'vamos', 'bueno', 'malo']);
 
   const score = (v: TikTokVideo): number => {
     const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
@@ -105,14 +107,33 @@ function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
     // Tier 2 — Portuguese signal words
     if ([...PT_WORDS].some(w => words.has(w))) return 2;
 
-    // Tier 0 — 3+ Spanish words → bottom
-    const esCount = [...ES_WORDS].filter(w => words.has(w)).length;
-    if (esCount >= 3) return 0;
-
     return 1; // Tier 1 — neutral
   };
 
-  return [...vids].sort((a, b) => score(b) - score(a));
+  return [...filtered].sort((a, b) => score(b) - score(a));
+}
+
+// Foreign content detection — REMOVE (not rank) videos that are clearly non-Portuguese
+const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live)\b/gi;
+const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier)\b/gi;
+const FOREIGN_FR_WORDS = /\b(c'est|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|très|même|être|faire|comme|peut|donc|alors|cette|aussi|encore|entre|après|avant|rien|toujours|jamais|quelque|chaque|depuis|pendant|sans|vers|ici|ailleurs)\b/gi;
+const FOREIGN_IT_WORDS = /\b(questa|quello|perché|anche|ancora|sempre|quando|dove|come|cosa|ogni|tutto|niente|qualcosa|qualcuno|nessuno|troppo|abbastanza|già|adesso|prima|dopo|insieme|senza|contro|circa)\b/gi;
+const FOREIGN_DE_WORDS = /\b(dieser|diese|dieses|nicht|aber|auch|noch|oder|wenn|dass|weil|schon|immer|wieder|vielleicht|zwischen|gegen|unter|über|jetzt|heute|morgen|gestern|zusammen)\b/gi;
+const BR_POSITIVE_WORDS = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|eita|uai|oxe|vish|krl|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
+const BR_POSITIVE_CHARS = /[ãáàâéêíóôõúüç]/;
+
+function isForeignContent(v: TikTokVideo): boolean {
+  const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
+  // If has Portuguese signal, not foreign
+  if (BR_POSITIVE_WORDS.test(text) || BR_POSITIVE_CHARS.test(text)) return false;
+  // Count foreign language matches
+  const enCount = (text.match(FOREIGN_EN_WORDS) || []).length;
+  const esCount = (text.match(FOREIGN_ES_WORDS) || []).length;
+  const frCount = (text.match(FOREIGN_FR_WORDS) || []).length;
+  const itCount = (text.match(FOREIGN_IT_WORDS) || []).length;
+  const deCount = (text.match(FOREIGN_DE_WORDS) || []).length;
+  // Foreign if 2+ words in any single language
+  return enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2;
 }
 
 // Hoisted regex patterns for isBrazilianContent (avoid re-creation per call)
@@ -892,6 +913,7 @@ const Index = () => {
         // I: show approved videos immediately after each round
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
+          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
@@ -949,6 +971,7 @@ const Index = () => {
         addLog(`🎯 Extra ${extra + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
+          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
@@ -1195,6 +1218,8 @@ const Index = () => {
       const remaining = totalTarget - progressiveShownCount;
       const trimmed = batch.slice(0, remaining);
       progressiveShownCount += trimmed.length;
+      // Mark as seen immediately when shown
+      tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
       if (firstProgressiveInsertAt === -1) {
         firstProgressiveInsertAt = videosRef.current.length;
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
