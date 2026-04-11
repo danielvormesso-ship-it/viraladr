@@ -58,11 +58,17 @@ REGRAS ABSOLUTAS - LEIA COM ATENÇÃO:
    nostalgia, status, statusvideo, reflexão, motivação, frases, pensamentos,
    sheesh, fancam, kpop, stan, idol, anime, edit, tutorial, photoshop
 
-4. GERE 10-15 hashtags que descrevam a AÇÃO VISUAL, não o gênero musical:
-   BONS exemplos para "mulher dançando": dancinha, mulherdançando, dancafeminina, garotadançando, 
-   novinhadançando, morenalinda, tiktokmulher, corporeal, dançarina, 
-   lindadançando, mulherbonita, gatadançando, corpofeminino
-   
+4. GERE 30-40 hashtags que descrevam a AÇÃO VISUAL, não o gênero musical:
+   - 10-15 com relevância "alta" (hashtags mais populares e diretas)
+   - 10-15 com relevância "media" (variações e sinônimos)
+   - 5-10 com relevância "baixa" (nichos específicos e variações criativas)
+   BONS exemplos para "mulher dançando": dancinha, mulherdançando, dancafeminina, garotadançando,
+   novinhadançando, morenalinda, tiktokmulher, corporeal, dançarina,
+   lindadançando, mulherbonita, gatadançando, corpofeminino, rebolando,
+   dancatiktok, passinho, coreografia, dancetrend, tiktokviral, gostosa,
+   funkeira, dançando, dancarinas, corpobonito, mulherlinda, tiktoker,
+   mina, novinha, morena, loira, fitness, shape, corposarado
+
    MAUS exemplos (NUNCA use): bregafunk, funk, nostalgia, statusvideo, musica, audio
 
 5. FILTRO DE GÊNERO:
