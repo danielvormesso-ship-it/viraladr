@@ -1483,6 +1483,33 @@ const Index = () => {
       }
     }
 
+    // Last resort: if only 1-5 videos short, accept any BR video without AI filter
+    if (approvedVideos.length < totalTarget && totalTarget - approvedVideos.length <= 5) {
+      const deficit = totalTarget - approvedVideos.length;
+      addLog(`🇧🇷 Faltam apenas ${deficit} — buscando vídeos BR sem filtro de nicho...`);
+      const lastRaw = await fetchCandidates(deficit * 10, true);
+      const lastCandidates = lastRaw.filter((video) => {
+        const key = getVideoKey(video);
+        if (seenCandidateKeys.has(key)) return false;
+        if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+        if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
+        seenCandidateKeys.add(key);
+        if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
+        return true;
+      });
+      if (lastCandidates.length > 0) {
+        // Accept directly without AI niche/thumbnail filter — just dedup
+        const before = approvedVideos.length;
+        approvedVideos = dedupeVideos([...approvedVideos, ...lastCandidates]);
+        if (approvedVideos.length > totalTarget) approvedVideos = approvedVideos.slice(0, totalTarget);
+        const added = approvedVideos.length - before;
+        if (added > 0) {
+          addLog(`✅ +${added} vídeos BR aceitos diretamente (${approvedVideos.length}/${totalTarget})`);
+          showProgressively(approvedVideos.slice(before));
+        }
+      }
+    }
+
     // approvedVideos is already capped — slice is a safety net
     const unique = approvedVideos.slice(0, totalTarget);
 
