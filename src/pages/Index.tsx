@@ -1682,113 +1682,131 @@ const Index = () => {
     const BATCH_SIZE = 50; // matches edge function limit
     const batchStartTime = performance.now();
 
-    // Step 1: Resolve all download URLs in sequential batches (avoid tikwm rate-limit)
+    // Step 1: Resolve all download URLs — use CDN URLs directly, only call edge function for page URLs
     const urlMap = new Map<number, string>(); // index -> download_url
+    const isCdnUrl = (url: string) => /tiktokcdn|tiktokcdn-eu|v\d+-webapp|tikwm\.com\/video|muscdn\.com/i.test(url);
 
     {
-      const batchPayloads: { videos: any[]; batchIndex: number }[] = [];
-      for (let start = 0; start < videosToDownload.length; start += BATCH_SIZE) {
-        const chunk = videosToDownload.slice(start, start + BATCH_SIZE);
-        batchPayloads.push({
-          batchIndex: start,
-          videos: chunk.map((video, i) => ({
-            video_url: video.video_url || video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : ''),
-            tiktok_id: video.tiktok_id || undefined,
-            index: start + i,
-          })),
-        });
+      // Separate videos with direct CDN URLs from those needing resolution
+      const needsResolution: { video: typeof videosToDownload[0]; index: number }[] = [];
+      for (let i = 0; i < videosToDownload.length; i++) {
+        const video = videosToDownload[i];
+        const directUrl = video.video_url;
+        if (directUrl && isCdnUrl(directUrl)) {
+          urlMap.set(i, directUrl);
+          directUrlCount++;
+        } else {
+          needsResolution.push({ video, index: i });
+        }
       }
+      console.log(`[Batch] ${directUrlCount} CDN URLs diretas, ${needsResolution.length} precisam resolução via edge function`);
 
-      // Process batches sequentially to avoid tikwm rate-limiting
-      for (let b = 0; b < batchPayloads.length; b++) {
-        const payload = batchPayloads[b];
-        console.log(`[Batch] Resolving batch ${b + 1}/${batchPayloads.length} (${payload.videos.length} videos)`);
-        
-        try {
-          const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
-            body: { videos: payload.videos },
+      // Only call edge function for videos that need resolution
+      if (needsResolution.length > 0) {
+        const batchPayloads: { videos: any[]; batchIndex: number }[] = [];
+        for (let start = 0; start < needsResolution.length; start += BATCH_SIZE) {
+          const chunk = needsResolution.slice(start, start + BATCH_SIZE);
+          batchPayloads.push({
+            batchIndex: start,
+            videos: chunk.map((item) => ({
+              video_url: item.video.source_url || (item.video.tiktok_id ? `https://www.tiktok.com/@user/video/${item.video.tiktok_id}` : ''),
+              tiktok_id: item.video.tiktok_id || undefined,
+              index: item.index,
+            })),
           });
-          if (error) {
-            console.error(`[Batch] Batch ${b + 1} edge function error:`, error);
-          }
-          if (!error && data?.results) {
-            let batchOk = 0;
-            let batchFail = 0;
-            for (const r of data.results) {
-              if (r.success && r.download_url) {
-                urlMap.set(r.index, r.download_url);
-                batchOk++;
-              } else {
-                batchFail++;
-                const vid = payload.videos.find((v: any) => v.index === r.index);
-                console.warn(`[Batch] URL falhou idx=${r.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${r.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
-              }
-            }
-            console.log(`[Batch] Batch ${b + 1}: ${batchOk} OK, ${batchFail} falhas`);
-          }
-        } catch (err) {
-          console.error(`[Batch] Batch ${b + 1} failed:`, err);
         }
 
-        setBatchProgress({
-          current: Math.floor(((b + 1) / batchPayloads.length) * batchCount * 0.3),
-          total: batchCount,
-          active: true,
-        });
-
-        // Small delay between batches to avoid rate-limiting
-        if (b < batchPayloads.length - 1) {
-          await new Promise(r => setTimeout(r, 500));
-        }
-      }
-
-      // Retry pass: re-resolve failed URLs in smaller batches
-      const failedIndices = videosToDownload
-        .map((_, i) => i)
-        .filter(i => !urlMap.has(i));
-
-      if (failedIndices.length > 0 && failedIndices.length < videosToDownload.length) {
-        console.log(`[Batch] Retrying ${failedIndices.length} failed URLs`);
-        const RETRY_BATCH = 20;
-        for (let r = 0; r < failedIndices.length; r += RETRY_BATCH) {
-          const retryChunk = failedIndices.slice(r, r + RETRY_BATCH);
-          const retryVideos = retryChunk.map(idx => ({
-            video_url: videosToDownload[idx].video_url || videosToDownload[idx].source_url || (videosToDownload[idx].tiktok_id ? `https://www.tiktok.com/@user/video/${videosToDownload[idx].tiktok_id}` : ''),
-            tiktok_id: videosToDownload[idx].tiktok_id || undefined,
-            index: idx,
-          }));
+        for (let b = 0; b < batchPayloads.length; b++) {
+          const payload = batchPayloads[b];
+          console.log(`[Batch] Resolving batch ${b + 1}/${batchPayloads.length} (${payload.videos.length} videos)`);
 
           try {
             const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
-              body: { videos: retryVideos },
+              body: { videos: payload.videos },
             });
             if (error) {
-              console.error(`[Batch] Retry edge function error:`, error);
+              console.error(`[Batch] Batch ${b + 1} edge function error:`, error);
             }
             if (!error && data?.results) {
-              let retryOk = 0;
-              let retryFail = 0;
-              for (const res of data.results) {
-                if (res.success && res.download_url) {
-                  urlMap.set(res.index, res.download_url);
-                  retryOk++;
+              let batchOk = 0;
+              let batchFail = 0;
+              for (const r of data.results) {
+                if (r.success && r.download_url) {
+                  urlMap.set(r.index, r.download_url);
+                  batchOk++;
+                  edgeFnCount++;
                 } else {
-                  retryFail++;
-                  const vid = retryVideos.find((v: any) => v.index === res.index);
-                  console.warn(`[Batch] Retry falhou idx=${res.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${res.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
+                  batchFail++;
+                  const vid = payload.videos.find((v: any) => v.index === r.index);
+                  console.warn(`[Batch] URL falhou idx=${r.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${r.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
                 }
               }
-              console.log(`[Batch] Retry: ${retryOk} recuperados, ${retryFail} permaneceram com falha`);
+              console.log(`[Batch] Batch ${b + 1}: ${batchOk} OK, ${batchFail} falhas`);
             }
-          } catch (retryErr) {
-            console.error(`[Batch] Retry chunk failed:`, retryErr);
+          } catch (err) {
+            console.error(`[Batch] Batch ${b + 1} failed:`, err);
           }
 
-          if (r + RETRY_BATCH < failedIndices.length) {
-            await new Promise(resolve => setTimeout(resolve, 800));
+          setBatchProgress({
+            current: Math.floor(((b + 1) / batchPayloads.length) * batchCount * 0.3),
+            total: batchCount,
+            active: true,
+          });
+
+          if (b < batchPayloads.length - 1) {
+            await new Promise(r => setTimeout(r, 500));
           }
         }
-        console.log(`[Batch] After retry: ${urlMap.size}/${videosToDownload.length} resolved`);
+
+        // Retry pass: re-resolve failed URLs in smaller batches
+        const failedIndices = needsResolution
+          .map(item => item.index)
+          .filter(i => !urlMap.has(i));
+
+        if (failedIndices.length > 0 && failedIndices.length < needsResolution.length) {
+          console.log(`[Batch] Retrying ${failedIndices.length} failed URLs`);
+          const RETRY_BATCH = 20;
+          for (let r = 0; r < failedIndices.length; r += RETRY_BATCH) {
+            const retryChunk = failedIndices.slice(r, r + RETRY_BATCH);
+            const retryVideos = retryChunk.map(idx => ({
+              video_url: videosToDownload[idx].source_url || (videosToDownload[idx].tiktok_id ? `https://www.tiktok.com/@user/video/${videosToDownload[idx].tiktok_id}` : ''),
+              tiktok_id: videosToDownload[idx].tiktok_id || undefined,
+              index: idx,
+            }));
+
+            try {
+              const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
+                body: { videos: retryVideos },
+              });
+              if (error) {
+                console.error(`[Batch] Retry edge function error:`, error);
+              }
+              if (!error && data?.results) {
+                let retryOk = 0;
+                let retryFail = 0;
+                for (const res of data.results) {
+                  if (res.success && res.download_url) {
+                    urlMap.set(res.index, res.download_url);
+                    retryOk++;
+                    edgeFnCount++;
+                  } else {
+                    retryFail++;
+                    const vid = retryVideos.find((v: any) => v.index === res.index);
+                    console.warn(`[Batch] Retry falhou idx=${res.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${res.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
+                  }
+                }
+                console.log(`[Batch] Retry: ${retryOk} recuperados, ${retryFail} permaneceram com falha`);
+              }
+            } catch (retryErr) {
+              console.error(`[Batch] Retry chunk failed:`, retryErr);
+            }
+
+            if (r + RETRY_BATCH < failedIndices.length) {
+              await new Promise(resolve => setTimeout(resolve, 800));
+            }
+          }
+          console.log(`[Batch] After retry: ${urlMap.size}/${videosToDownload.length} resolved`);
+        }
       }
     }
 

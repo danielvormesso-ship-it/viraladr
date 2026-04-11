@@ -841,7 +841,18 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           videosToProcess.map(async (video) => {
             await acquireUrlSlot();
             try {
-              const videoUrl = video.video_url || video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
+              const directUrl = video.video_url;
+              const isCdn = directUrl && /tiktokcdn|tiktokcdn-eu|v\d+-webapp|tikwm\.com\/video|muscdn\.com/i.test(directUrl);
+
+              // If we already have a CDN URL, use it directly — no edge function needed
+              if (isCdn) {
+                urlCount++;
+                setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
+                return { id: video.id, title: video.title || 'video', downloadUrl: directUrl, sourceUrl: video.source_url || directUrl };
+              }
+
+              // Otherwise resolve via edge function
+              const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
               if (!videoUrl) {
                 addLog(`⚠ ${(video.title || video.id).slice(0, 40)} — sem URL de origem, pulando`, 'warn');
                 return null;
