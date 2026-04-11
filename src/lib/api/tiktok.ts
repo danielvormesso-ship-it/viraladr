@@ -210,13 +210,16 @@ export const tiktokApi = {
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
     if (tiktokIds.length === 0) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const userId = await getCurrentUserId();
+      console.log(`[markVideosSeen] userId=${userId}, session=${session ? 'active' : 'null'}, token=${session?.access_token?.slice(0, 20) || 'none'}..., ids=${tiktokIds.length}`);
       const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
       for (let i = 0; i < rows.length; i += 50) {
         const batch = rows.slice(i, i + 50);
-        await supabase
+        const { error } = await supabase
           .from('seen_videos')
           .upsert(batch, { onConflict: 'user_id,tiktok_id' });
+        if (error) console.error(`[markVideosSeen] upsert error batch ${i / 50 + 1}:`, error);
       }
     } catch (err) {
       console.warn('Erro ao salvar seen_videos:', err);
