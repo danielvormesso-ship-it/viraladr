@@ -804,6 +804,10 @@ const Index = () => {
       const allTags = [...newTags, ...retryTagPool];
       const exhaustedTags = new Set<string>();
 
+      addLog(`🏷️ Principais (${newTags.length}): ${newTags.map(t => '#' + t).join(', ')}`);
+      if (retryTagPool.length > 0) addLog(`🔀 Retry pool (${retryTagPool.length}): ${retryTagPool.map(t => '#' + t).join(', ')}`);
+      addLog(`📋 Total: ${allTags.length} hashtags`);
+
       // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
       const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
         const freshVideos: TikTokVideo[] = [];
