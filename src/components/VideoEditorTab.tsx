@@ -1186,7 +1186,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
                 successCount++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                zip.file(getZipFileName(successCount, editorTag), result);
+                // Copy into Uint8Array so the fetch ArrayBuffer can be GC'd safely
+                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result), { compression: 'STORE' });
                 successfulVideoIds.add(video.id);
                 // U3: persist batch progress
                 if (!isPreview) {
@@ -1379,7 +1380,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                 failCount--;
                 retrySuccess++;
                 const safeName = video.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 40);
-                zip.file(getZipFileName(successCount, editorTag), result);
+                zip.file(getZipFileName(successCount, editorTag), new Uint8Array(result), { compression: 'STORE' });
                 successfulVideoIds.add(video.id);
                 addLog(`✓ Retry OK: ${safeName} — ${(result.byteLength / 1024 / 1024).toFixed(1)}MB`, 'success');
               } else {
@@ -1400,11 +1401,15 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         // === ALWAYS deliver ZIP if we have any successes ===
         if (successCount > 0) {
-          addLog(`Compactando ${successCount} vídeos em ZIP...`, 'info');
+          const zipFileCount = Object.keys(zip.files).length;
+          if (zipFileCount !== successCount) {
+            addLog(`⚠ ZIP contém ${zipFileCount} arquivos mas ${successCount} vídeos foram processados — possível perda de dados`, 'error');
+          }
+          addLog(`Compactando ${zipFileCount} vídeos em ZIP...`, 'info');
           setProcessingStatus('Compactando ZIP...');
-          const zipBlob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          const zipName = `editados_${successCount}videos_${timestamp}.zip`;
+          const zipName = `editados_${zipFileCount}videos_${timestamp}.zip`;
           saveAs(zipBlob, zipName);
           addLog(`ZIP baixado: ${zipName} (${(zipBlob.size / 1024 / 1024).toFixed(1)}MB)`, 'success');
           
