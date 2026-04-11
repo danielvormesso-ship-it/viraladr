@@ -159,9 +159,10 @@ function isBrazilianContent(item: any): boolean {
   return matchCount >= 1;
 }
 
-async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false, maxPages = 5, requireBrazilian = true, maxDuration = 120): Promise<VideoData[]> {
+async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false, maxPages = 5, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null }> {
   const videos: VideoData[] = [];
   const seenIds = new Set<string>();
+  let lastCursor: string | null = null;
 
   const addVideo = (item: any) => {
     const dur = item?.duration || 0;
@@ -208,9 +209,12 @@ async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false,
   };
 
   try {
-    const seedCursors = randomOffset
-      ? [0, 20, 60, 120, 240, Math.floor(Math.random() * 400)]
-      : [0, 20, 60, 120];
+    // If a startCursor is provided, resume from there instead of using seed cursors
+    const seedCursors = startCursor !== undefined && startCursor !== null
+      ? [startCursor]
+      : randomOffset
+        ? [0, 20, 60, 120, 240, Math.floor(Math.random() * 400)]
+        : [0, 20, 60, 120];
 
     for (const seedCursor of seedCursors) {
       if (videos.length >= limit) break;
@@ -233,17 +237,18 @@ async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false,
           const returnedCursor = pageData?.data?.cursor;
           if (!returnedCursor || returnedCursor === nextCursor) break;
           nextCursor = returnedCursor;
+          lastCursor = String(returnedCursor);
         } catch {
           break;
         }
       }
     }
 
-    console.log(`[Strategy 2] TikWM total: ${videos.length} videos (maxPages=${maxPages}, requireBrazilian=${requireBrazilian})`);
+    console.log(`[Strategy 2] TikWM total: ${videos.length} videos (maxPages=${maxPages}, startCursor=${startCursor ?? 'none'}, lastCursor=${lastCursor})`);
   } catch (err) {
     console.log('[Strategy 2] TikWM error:', err);
   }
-  return videos;
+  return { videos, nextCursor: lastCursor };
 }
 
 async function scrapeEnsave(hashtag: string, limit: number, maxDuration = 40, requireBrazilian = true): Promise<VideoData[]> {
@@ -334,25 +339,25 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag = 'viral', limit = 50, keyword, force = false, light = false } = await req.json().catch(() => ({}));
+    const { hashtag = 'viral', limit = 50, keyword, force = false, light = false, cursor: inputCursor } = await req.json().catch(() => ({}));
     const searchTerm = (keyword || hashtag).replace('#', '').trim().toLowerCase();
     const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 500));
 
     // ── LIGHT MODE: skip ALL DB operations, just scrape and return ──
     if (light) {
-      console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}`);
-      
+      console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}`);
+
       // Run strategies in parallel with deeper TikWM pagination for higher volume
-      const [htmlVideos, tikwmVideos, ensaveVideos] = await Promise.all([
+      const [htmlVideos, tikwmResult, ensaveVideos] = await Promise.all([
         scrapeDirectHTML(searchTerm, Math.min(requestedLimit * 2, 1000), 120, false),
-        scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), true, 6, false, 120),
+        scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), true, 6, false, 120, inputCursor),
         scrapeEnsave(searchTerm, Math.min(requestedLimit * 2, 200), 120, false),
       ]);
 
       // Merge and dedupe
       const seenIds = new Set<string>();
       const videos: VideoData[] = [];
-      for (const v of [...htmlVideos, ...tikwmVideos, ...ensaveVideos]) {
+      for (const v of [...htmlVideos, ...tikwmResult.videos, ...ensaveVideos]) {
         if (!seenIds.has(v.tiktok_id)) {
           seenIds.add(v.tiktok_id);
           videos.push(v);
@@ -366,7 +371,7 @@ Deno.serve(async (req) => {
       }
 
       const result = uniqueByVideoKey(videos).slice(0, requestedLimit);
-      console.log(`[LIGHT] #${searchTerm}: ${result.length} videos (html=${htmlVideos.length}, tikwm=${tikwmVideos.length}, ensave=${ensaveVideos.length})`);
+      console.log(`[LIGHT] #${searchTerm}: ${result.length} videos (html=${htmlVideos.length}, tikwm=${tikwmResult.videos.length}, ensave=${ensaveVideos.length}, nextCursor=${tikwmResult.nextCursor})`);
 
       return new Response(
         JSON.stringify({
@@ -376,6 +381,7 @@ Deno.serve(async (req) => {
           from_cache: false,
           strategy: 'light',
           videos: result,
+          next_cursor: tikwmResult.nextCursor,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -430,20 +436,20 @@ Deno.serve(async (req) => {
 
       let videos: VideoData[] = [];
 
-      const [htmlVideos, tikwmVideos, ensaveVideos] = await Promise.all([
+      const [htmlVideos, tikwmResult, ensaveVideos] = await Promise.all([
         scrapeDirectHTML(searchTerm, limit * 2, 40, true),
-        scrapeTikWM(searchTerm, limit * 2, true, 5, true, 120),
+        scrapeTikWM(searchTerm, limit * 2, true, 5, true, 120, inputCursor),
         scrapeEnsave(searchTerm, limit, 40, true),
       ]);
 
       const strategies: string[] = [];
       if (htmlVideos.length > 0) strategies.push('direct_html');
-      if (tikwmVideos.length > 0) strategies.push('tikwm');
+      if (tikwmResult.videos.length > 0) strategies.push('tikwm');
       if (ensaveVideos.length > 0) strategies.push('ensave');
       strategyUsed = strategies.join('+') || 'none';
 
       const seenIds = new Set<string>();
-      for (const v of [...htmlVideos, ...tikwmVideos, ...ensaveVideos]) {
+      for (const v of [...htmlVideos, ...tikwmResult.videos, ...ensaveVideos]) {
         if (!seenIds.has(v.tiktok_id)) {
           seenIds.add(v.tiktok_id);
           videos.push(v);

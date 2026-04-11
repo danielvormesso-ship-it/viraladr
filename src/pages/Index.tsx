@@ -759,6 +759,8 @@ const Index = () => {
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
+      // Track TikWM cursor per hashtag so each round fetches new pages
+      const cursorMap = new Map<string, string>();
 
       const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
         if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
@@ -803,7 +805,7 @@ const Index = () => {
         for (let i = 0; i < tagsToFetch.length; i += PARALLEL) {
           const batch = tagsToFetch.slice(i, i + PARALLEL);
           const batchResults = await Promise.allSettled(
-            batch.map(tag => tiktokApi.scrapeByHashtag(tag, Math.min(requestedPerTag, 500), undefined, forceRefresh, true))
+            batch.map(tag => tiktokApi.scrapeByHashtag(tag, Math.min(requestedPerTag, 500), undefined, forceRefresh, true, cursorMap.get(tag)))
           );
 
           batchResults.forEach((r, idx) => {
@@ -812,6 +814,7 @@ const Index = () => {
               const filtered = applyFilters(r.value.videos);
               freshVideos.push(...filtered);
               totalNew += r.value.new_scraped || 0;
+              if (r.value.next_cursor) cursorMap.set(tag, r.value.next_cursor);
               addLog(`  ✅ #${tag}: ${filtered.length} válidos (${r.value.videos.length} brutos)`);
             } else {
               addLog(`  ❌ #${tag}: falhou`);
@@ -1149,6 +1152,8 @@ const Index = () => {
 
     // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
     const sessionSeenIds = new Set<string>();
+    // Track TikWM cursor per hashtag so each round fetches new pages
+    const cursorMap = new Map<string, string>();
 
     // F: parallel fetching — tagsOverride for D (retry pool tags)
     const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean, tagsOverride?: string[]) => {
@@ -1162,7 +1167,7 @@ const Index = () => {
             const requestAmount = tagsOverride
               ? Math.min(Math.ceil(requestedMultiplier / tagsToFetch.length), 500)
               : Math.min(Math.ceil(requestedMultiplier * ((expandedQty[tag] || 50) / totalExpandedQty)), 500);
-            return tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true);
+            return tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
           })
         );
 
@@ -1173,6 +1178,7 @@ const Index = () => {
             const filtered = applyFilters(raw);
             freshVideos.push(...filtered);
             totalNew += r.value.new_scraped || 0;
+            if (r.value.next_cursor) cursorMap.set(tag, r.value.next_cursor);
             addLog(`  ✅ #${tag}: ${filtered.length}/${raw.length} válidos`);
           } else if (r.status === 'rejected') {
             addLog(`  ❌ #${tag}: erro - ${(r as any).reason?.message || 'desconhecido'}`);

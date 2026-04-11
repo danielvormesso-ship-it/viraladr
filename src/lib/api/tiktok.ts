@@ -106,10 +106,11 @@ export const tiktokApi = {
     limit = 50,
     editor?: string,
     forceRefresh = false,
-    lightMode = false
-  ): Promise<{ success: boolean; videos_found: number; new_scraped: number; from_cache: boolean; videos: TikTokVideo[] }> {
+    lightMode = false,
+    cursor?: string | null
+  ): Promise<{ success: boolean; videos_found: number; new_scraped: number; from_cache: boolean; videos: TikTokVideo[]; next_cursor?: string | null }> {
     const { data, error } = await supabase.functions.invoke('scrape-tiktok-apify', {
-      body: { hashtag, limit, editor, force: forceRefresh, light: lightMode },
+      body: { hashtag, limit, editor, force: forceRefresh, light: lightMode, cursor },
     });
     if (error) throw error;
 
@@ -118,6 +119,7 @@ export const tiktokApi = {
       ...data,
       videos,
       videos_found: videos.length,
+      next_cursor: data?.next_cursor || null,
     };
   },
 
