@@ -842,15 +842,25 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             await acquireUrlSlot();
             try {
               const videoUrl = video.source_url || (video.tiktok_id ? `https://www.tiktok.com/@user/video/${video.tiktok_id}` : null);
-              if (!videoUrl) return null;
+              if (!videoUrl) {
+                addLog(`⚠ ${(video.title || video.id).slice(0, 40)} — sem URL de origem, pulando`, 'warn');
+                return null;
+              }
               const { data, error } = await supabase.functions.invoke('download-tiktok', {
                 body: { video_url: videoUrl, tiktok_id: video.tiktok_id, mode: 'url' },
               });
-              if (error || !data?.success || !data?.download_url) return null;
+              if (error || !data?.success || !data?.download_url) {
+                const reason = error?.message || data?.error || 'resposta inválida da edge function';
+                addLog(`⚠ ${(video.title || video.id).slice(0, 40)} — falha ao obter URL: ${reason}`, 'warn');
+                return null;
+              }
               urlCount++;
               setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
               return { id: video.id, title: video.title || 'video', downloadUrl: data.download_url, sourceUrl: videoUrl };
-            } catch { return null; }
+            } catch (urlErr: any) {
+              addLog(`⚠ ${(video.title || video.id).slice(0, 40)} — erro ao obter URL: ${String(urlErr?.message || urlErr).slice(0, 120)}`, 'warn');
+              return null;
+            }
             finally { releaseUrlSlot(); }
           })
         )).filter((r): r is { id: string; title: string; downloadUrl: string; sourceUrl: string } => r !== null);
@@ -975,7 +985,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         const processQueue: typeof finalTargets = [];
         const MIN_SAMPLES_FOR_BREAKER = 20;
-        const MAX_FAILURE_RATE = 0.6;
+        const MAX_FAILURE_RATE = 0.8;
         const MAX_JOB_RETRIES = 2;
         let stoppedByBreaker = false;
         const statusLabels: Record<string, string> = {
@@ -1264,7 +1274,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                 wdStuck++;
                 addLog(`⚠ Watchdog [${wdStuck}]: sem progresso no último 1 min (${completedCount}/${finalTargets.length}). Jobs protegidos por timeout de 3 min.`, 'warn');
                 if (wdStuck >= 2 && processQueue.length > 0) {
-                  addLog(`⚠ Watchdog: drenando fila (${processQueue.length} pendentes) — workers serão interrompidos pelo timeout.`, 'error');
+                  const lostCount = processQueue.length;
+                  addLog(`⚠ Watchdog: drenando fila — ${lostCount} vídeo(s) não serão processados (sem progresso por 2 min).`, 'error');
                   processQueue.length = 0;
                 }
               } else {
