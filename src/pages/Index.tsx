@@ -777,8 +777,6 @@ const Index = () => {
         return true;
       });
 
-      const PARALLEL = 20;
-      const safeTagCount = Math.max(1, newTags.length);
       let totalNew = 0;
 
       // H: preload thumbnails in the background as soon as videos are fetched
@@ -797,29 +795,45 @@ const Index = () => {
         next();
       };
 
-      // F: fetchCandidates uses Promise.allSettled (parallel) — tagsOverride for D (retry pool)
-      const fetchCandidates = async (requestedPerTag: number, forceRefresh: boolean, tagsOverride?: string[]) => {
+      // D: retry pool — AI tags excluded from initial distribution (low-priority ones)
+      const retryTagPool: string[] = hashtags
+        .map((h: any) => h.tag)
+        .filter((tag: string) => !newTags.includes(tag));
+
+      // All hashtags in order: primary tags first, then retry pool
+      const allTags = [...newTags, ...retryTagPool];
+      const exhaustedTags = new Set<string>();
+
+      // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
+      const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
         const freshVideos: TikTokVideo[] = [];
-        const tagsToFetch = tagsOverride || newTags;
 
-        for (let i = 0; i < tagsToFetch.length; i += PARALLEL) {
-          const batch = tagsToFetch.slice(i, i + PARALLEL);
-          const batchResults = await Promise.allSettled(
-            batch.map(tag => tiktokApi.scrapeByHashtag(tag, Math.min(requestedPerTag, 500), undefined, forceRefresh, true, cursorMap.get(tag)))
-          );
+        for (const tag of allTags) {
+          if (freshVideos.length >= targetCount) break;
+          if (exhaustedTags.has(tag)) continue;
 
-          batchResults.forEach((r, idx) => {
-            const tag = batch[idx];
-            if (r.status === 'fulfilled' && r.value?.videos) {
-              const filtered = applyFilters(r.value.videos);
+          const remaining = targetCount - freshVideos.length;
+          const requestAmount = Math.min(remaining * 3, 500);
+
+          try {
+            const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
+            if (result?.videos) {
+              const filtered = applyFilters(result.videos);
               freshVideos.push(...filtered);
-              totalNew += r.value.new_scraped || 0;
-              if (r.value.next_cursor) cursorMap.set(tag, r.value.next_cursor);
-              addLog(`  ✅ #${tag}: ${filtered.length} válidos (${r.value.videos.length} brutos)`);
+              totalNew += result.new_scraped || 0;
+              if (result.next_cursor) {
+                cursorMap.set(tag, result.next_cursor);
+              } else {
+                exhaustedTags.add(tag);
+              }
+              addLog(`  ✅ #${tag}: ${filtered.length} válidos (${result.videos.length} brutos)${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
             } else {
-              addLog(`  ❌ #${tag}: falhou`);
+              exhaustedTags.add(tag);
             }
-          });
+          } catch {
+            addLog(`  ❌ #${tag}: falhou`);
+            exhaustedTags.add(tag);
+          }
         }
 
         const result = dedupeVideos(freshVideos);
@@ -827,21 +841,15 @@ const Index = () => {
         return result;
       };
 
-      // D: retry pool — AI tags excluded from initial distribution (low-priority ones)
-      const retryTagPool: string[] = hashtags
-        .map((h: any) => h.tag)
-        .filter((tag: string) => !newTags.includes(tag));
-
       // E: fetch more candidates when target is large
       const OVERFETCH_MULTIPLIER = totalTarget > 50 ? 8 : 5;
       const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
       addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
-      setScrapeProgress(`Buscando ${newTags.length} hashtags em paralelo...`);
+      setScrapeProgress(`Buscando ${newTags.length} hashtags sequencialmente...`);
 
       const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
       const seenCandidateKeys = new Set(existingVideoKeys);
-      const initialPerTag = Math.min(Math.ceil(fetchTarget / safeTagCount), 500);
-      const initialRaw = await fetchCandidates(initialPerTag, videosRef.current.length > 0);
+      const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
       const initialCandidates = initialRaw.filter((video) => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
@@ -874,11 +882,7 @@ const Index = () => {
         } else {
           addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
           setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
-          const retryPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
-          // D: use pool tags on retries to diversify sources
-          const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
-          if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas: ${poolBatch.map(t => '#' + t).join(', ')}`);
-          const retryRaw = await fetchCandidates(retryPerTag, true, poolBatch);
+          const retryRaw = await fetchCandidates(deficit * 5, true);
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
@@ -940,11 +944,7 @@ const Index = () => {
         const deficit = totalTarget - approvedVideos.length;
         addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
         setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
-        const extraPerTag = Math.min(Math.ceil(deficit * 5 / safeTagCount), 500);
-        // Always try alternative tags in extra rounds to diversify sources
-        const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
-        if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
-        const extraRaw = await fetchCandidates(extraPerTag, true, poolBatch);
+        const extraRaw = await fetchCandidates(deficit * 5, true);
         const extraCandidates = extraRaw.filter((video) => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
@@ -1130,8 +1130,6 @@ const Index = () => {
     const tagQtyStr = expandedTags.map(t => `#${t}(${expandedQty[t]})`).join(', ');
     addLog(`🎯 Meta: ${totalTarget} vídeos — ${tagQtyStr}`);
 
-    const PARALLEL = 20;
-    const totalExpandedQty = Object.values(expandedQty).reduce((s, q) => s + q, 0) || 1;
     let totalNew = 0;
 
     // H: preload thumbnails in the background as soon as each batch arrives
@@ -1155,44 +1153,6 @@ const Index = () => {
     // Track TikWM cursor per hashtag so each round fetches new pages
     const cursorMap = new Map<string, string>();
 
-    // F: parallel fetching — tagsOverride for D (retry pool tags)
-    const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean, tagsOverride?: string[]) => {
-      const freshVideos: TikTokVideo[] = [];
-      const tagsToFetch = tagsOverride || expandedTags;
-
-      for (let i = 0; i < tagsToFetch.length; i += PARALLEL) {
-        const batch = tagsToFetch.slice(i, i + PARALLEL);
-        const batchResults = await Promise.allSettled(
-          batch.map(tag => {
-            const requestAmount = tagsOverride
-              ? Math.min(Math.ceil(requestedMultiplier / tagsToFetch.length), 500)
-              : Math.min(Math.ceil(requestedMultiplier * ((expandedQty[tag] || 50) / totalExpandedQty)), 500);
-            return tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
-          })
-        );
-
-        batchResults.forEach((r, idx) => {
-          const tag = batch[idx];
-          if (r.status === 'fulfilled' && r.value?.videos) {
-            const raw = r.value.videos;
-            const filtered = applyFilters(raw);
-            freshVideos.push(...filtered);
-            totalNew += r.value.new_scraped || 0;
-            if (r.value.next_cursor) cursorMap.set(tag, r.value.next_cursor);
-            addLog(`  ✅ #${tag}: ${filtered.length}/${raw.length} válidos`);
-          } else if (r.status === 'rejected') {
-            addLog(`  ❌ #${tag}: erro - ${(r as any).reason?.message || 'desconhecido'}`);
-          } else {
-            addLog(`  ⚠️ #${tag}: sem vídeos`);
-          }
-        });
-      }
-
-      const result = dedupeVideos(freshVideos);
-      preloadThumbnails(result); // H
-      return result;
-    };
-
     // D: retry pool — sub-tags from selected presets not used in the initial expanded set
     const retryTagPool: string[] = [];
     for (const tagStr of selectedTags) {
@@ -1203,11 +1163,52 @@ const Index = () => {
       }
     }
 
+    // All hashtags in order: expanded tags first, then retry pool
+    const allTags = [...expandedTags, ...retryTagPool];
+    const exhaustedTags = new Set<string>();
+
+    // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
+    const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
+      const freshVideos: TikTokVideo[] = [];
+
+      for (const tag of allTags) {
+        if (freshVideos.length >= targetCount) break;
+        if (exhaustedTags.has(tag)) continue;
+
+        const remaining = targetCount - freshVideos.length;
+        const requestAmount = Math.min(remaining * 3, 500);
+
+        try {
+          const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
+          if (result?.videos) {
+            const filtered = applyFilters(result.videos);
+            freshVideos.push(...filtered);
+            totalNew += result.new_scraped || 0;
+            if (result.next_cursor) {
+              cursorMap.set(tag, result.next_cursor);
+            } else {
+              exhaustedTags.add(tag);
+            }
+            addLog(`  ✅ #${tag}: ${filtered.length}/${result.videos.length} válidos${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
+          } else {
+            exhaustedTags.add(tag);
+          }
+        } catch {
+          addLog(`  ❌ #${tag}: falhou`);
+          exhaustedTags.add(tag);
+        }
+      }
+
+      const result = dedupeVideos(freshVideos);
+      preloadThumbnails(result); // H
+      return result;
+    };
+
     // E: fetch more candidates when target is large
     const OVERFETCH_MULTIPLIER = totalTarget > 50 ? 8 : 5;
     const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
-    setScrapeProgress(`Buscando ${expandedTags.length} hashtags em paralelo...`);
+    setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
 
     const seenIds = await tiktokApi.getSeenVideoIds();
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
@@ -1259,11 +1260,7 @@ const Index = () => {
         const deficit = totalTarget - approvedVideos.length;
         addLog(`🔁 Retry genérico ${round}: faltam ${deficit}, buscando mais...`);
         setScrapeProgress(`Buscando +${deficit} vídeos genéricos...`);
-        const retryTarget = deficit * 5;
-        // D: use pool tags to diversify sources
-        const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
-        if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
-        const retryRaw = await fetchCandidates(retryTarget, true, poolBatch);
+        const retryRaw = await fetchCandidates(deficit * 5, true);
         const retryCandidates = retryRaw.filter((video) => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
@@ -1308,11 +1305,7 @@ const Index = () => {
         } else {
           addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
           setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
-          const retryTarget = deficit * 5;
-          // D: use pool tags to diversify retry sources
-          const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
-          if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
-          const retryRaw = await fetchCandidates(retryTarget, true, poolBatch);
+          const retryRaw = await fetchCandidates(deficit * 5, true);
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
@@ -1363,10 +1356,7 @@ const Index = () => {
       const deficit = totalTarget - approvedVideos.length;
       addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
       setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
-      const extraTarget = deficit * 5;
-      const poolBatch = retryTagPool.length > 0 ? retryTagPool.splice(0, Math.min(PARALLEL, retryTagPool.length)) : undefined;
-      if (poolBatch) addLog(`  🔀 Usando ${poolBatch.length} hashtags alternativas`);
-      const extraRaw = await fetchCandidates(extraTarget, true, poolBatch);
+      const extraRaw = await fetchCandidates(deficit * 5, true);
       const extraCandidates = extraRaw.filter((video) => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
