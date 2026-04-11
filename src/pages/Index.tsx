@@ -760,6 +760,7 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
+      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
@@ -1067,6 +1068,7 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
+      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -1581,6 +1583,7 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
+      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
       const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
       tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
