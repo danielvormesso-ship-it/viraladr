@@ -757,6 +757,9 @@ const Index = () => {
 
       const seenIds = await tiktokApi.getSeenVideoIds();
 
+      // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
+      const sessionSeenIds = new Set<string>();
+
       const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
         if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
         if (v.shares < filters.minShares || v.comments < filters.minComments) return false;
@@ -816,7 +819,14 @@ const Index = () => {
           });
         }
 
-        const result = dedupeVideos(freshVideos);
+        // Dedupe within this batch AND against all previously seen IDs in this session
+        const result = dedupeVideos(freshVideos).filter(v => {
+          if (v.tiktok_id) {
+            if (sessionSeenIds.has(v.tiktok_id)) return false;
+            sessionSeenIds.add(v.tiktok_id);
+          }
+          return true;
+        });
         preloadThumbnails(result); // H
         return result;
       };
@@ -840,7 +850,9 @@ const Index = () => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
         if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+        if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
         seenCandidateKeys.add(key);
+        if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
         return true;
       });
 
@@ -875,7 +887,9 @@ const Index = () => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
             if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+            if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
             seenCandidateKeys.add(key);
+            if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
             return true;
           });
           addLog(`📊 Retry ${round}: ${roundCandidates.length} candidatos novos`);
@@ -939,7 +953,9 @@ const Index = () => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
           if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+          if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
           seenCandidateKeys.add(key);
+          if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
           return true;
         });
         if (extraCandidates.length === 0) {
@@ -1138,6 +1154,9 @@ const Index = () => {
       next();
     };
 
+    // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
+    const sessionSeenIds = new Set<string>();
+
     // F: parallel fetching — tagsOverride for D (retry pool tags)
     const fetchCandidates = async (requestedMultiplier: number, forceRefresh: boolean, tagsOverride?: string[]) => {
       const freshVideos: TikTokVideo[] = [];
@@ -1170,7 +1189,14 @@ const Index = () => {
         });
       }
 
-      const result = dedupeVideos(freshVideos);
+      // Dedupe within this batch AND against all previously seen IDs in this session
+      const result = dedupeVideos(freshVideos).filter(v => {
+        if (v.tiktok_id) {
+          if (sessionSeenIds.has(v.tiktok_id)) return false;
+          sessionSeenIds.add(v.tiktok_id);
+        }
+        return true;
+      });
       preloadThumbnails(result); // H
       return result;
     };
@@ -1199,7 +1225,9 @@ const Index = () => {
       const key = getVideoKey(video);
       if (seenCandidateKeys.has(key)) return false;
       if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+      if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
       seenCandidateKeys.add(key);
+      if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
       return true;
     });
 
@@ -1248,7 +1276,9 @@ const Index = () => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
           if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+          if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
           seenCandidateKeys.add(key);
+          if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
           return true;
         });
         addLog(`📊 Retry genérico ${round}: ${retryCandidates.length} candidatos novos`);
@@ -1295,7 +1325,9 @@ const Index = () => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
             if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+            if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
             seenCandidateKeys.add(key);
+            if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
             return true;
           });
           addLog(`📊 Retry ${round}: ${roundCandidates.length} candidatos novos`);
@@ -1347,7 +1379,9 @@ const Index = () => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
         if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+        if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
         seenCandidateKeys.add(key);
+        if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
         return true;
       });
       if (extraCandidates.length === 0) {
