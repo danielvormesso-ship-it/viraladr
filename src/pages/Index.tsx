@@ -27,7 +27,7 @@ const GENERIC_GROUPS = new Set(["viral"]);
 
 const PRESET_HASHTAGS = [
   // Humor & Entretenimento
-  { tag: "pegadinha,pegadinhas,pegadinhaviral,pegadinhadetiktok,pegadinhaengraçada,trollagempesada,pegadinhacaseira,pegadinhanorua,peganinguem", emoji: "😂", label: "Pegadinha", group: "humor" },
+  { tag: "pegadinha,pegadinhas,pegadinhaviral,pegadinhadetiktok,pegadinhaengraçada,trollagempesada,pegadinhacaseira,pegadinhanorua,peganinguem,pegadinhasbrasileiras,pegadinhareal,camerascondida,camaraescondida,armadilha,trote,trolei,trolagem,zuei,zoei,flagrante", emoji: "😂", label: "Pegadinha", group: "humor" },
   { tag: "humor,humorbrasil,humorbr,engraçado,piada,piadas,coisasengraçadas,videoengraçado,humornegro,rir", emoji: "🤣", label: "Humor", group: "humor" },
   { tag: "comedia,comediante,standupbr,comediabrasil,esquete,standup,comediabrasileira,humorista,parodiabr,imitacao", emoji: "😆", label: "Comédia", group: "humor" },
   { tag: "memes,memesbr,memesbrasil,memestiktok,memeviral,meme,memesengracados,memebrasileiro,memezeiro,shitpost", emoji: "🐸", label: "Memes", group: "humor" },
