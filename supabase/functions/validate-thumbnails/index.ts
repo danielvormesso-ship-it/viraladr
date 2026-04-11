@@ -48,14 +48,14 @@ Thumbnails:`
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash-lite",
         messages: [{ role: "user", content }],
       }),
     });
@@ -111,8 +111,8 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     // Larger batches (15 thumbnails each) + run ALL in parallel
     const BATCH_SIZE = 25;
@@ -122,7 +122,7 @@ serve(async (req) => {
     }
 
     const results = await Promise.all(
-      batches.map(batch => validateBatch(batch, description, LOVABLE_API_KEY))
+      batches.map(batch => validateBatch(batch, description, GEMINI_API_KEY))
     );
 
     const approvedIds = new Set<string>();

@@ -40,14 +40,14 @@ Vídeos:
 ${videoList}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash-lite",
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -91,8 +91,8 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     const BATCH_SIZE = 60;
     const batches: VideoToFilter[][] = [];
@@ -102,7 +102,7 @@ serve(async (req) => {
 
     // Run ALL batches in PARALLEL for maximum speed
     const results = await Promise.all(
-      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, LOVABLE_API_KEY))
+      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY))
     );
 
     const approvedIds = new Set<string>();
