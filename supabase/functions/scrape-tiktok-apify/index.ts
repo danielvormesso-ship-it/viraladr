@@ -30,93 +30,6 @@ interface VideoData {
   hashtag: string;
 }
 
-function parseVideoItem(v: any, hashtag: string, maxDuration = 40, requireBrazilian = true): VideoData | null {
-  const w = v?.video?.width || v?.videoMeta?.width || 0;
-  const h = v?.video?.height || v?.videoMeta?.height || 0;
-  if (w > 0 && h > 0 && h < w * 1.5) return null;
-
-  const dur = v?.video?.duration || v?.videoMeta?.duration || 0;
-  if (dur <= 0 || dur > maxDuration) return null;
-
-  if (requireBrazilian) {
-    const text = `${v?.desc || ''} ${v?.text || ''} ${v?.description || ''} ${v?.caption || ''}`.toLowerCase();
-    const ptChars = /[ãõáéíóúâêôçà]/.test(text);
-    const ptWords = ['kkk','vc','pra','mano','gente','muito','quando','porque','voce','você','não','nao','brasil','dancinha','novelinha','pegadinha','zoeira','humor','parati','olha','então','entao','também','né','tá'];
-    const ptCount = ptWords.filter(w => new RegExp(`\\b${w}`, 'i').test(text)).length;
-    const enWords = ['the','this','that','with','have','from','they','been','would','could','about','their','which','when','your','what'];
-    const enCount = enWords.filter(w => new RegExp(`\\b${w}\\b`, 'i').test(text)).length;
-    const authorRegion = v?.author?.region || v?.authorMeta?.region || '';
-    const isBR = authorRegion.toUpperCase() === 'BR';
-
-    if (!isBR && !ptChars && ptCount === 0 && enCount >= 3) return null;
-    if (!isBR && !ptChars && ptCount === 0 && text.trim().length > 20) return null;
-  }
-
-  return {
-    tiktok_id: String(v?.id || v?.video?.id || crypto.randomUUID()),
-    title: v?.desc || v?.text || v?.description || v?.caption || 'Vídeo sem título',
-    thumbnail: v?.video?.cover || v?.video?.originCover || v?.covers?.default || v?.cover || null,
-    views: parseInt(v?.stats?.playCount || v?.statsV2?.playCount || v?.playCount || v?.plays || 0),
-    likes: parseInt(v?.stats?.diggCount || v?.statsV2?.diggCount || v?.diggCount || v?.likes || 0),
-    comments: parseInt(v?.stats?.commentCount || v?.statsV2?.commentCount || v?.commentCount || 0),
-    shares: parseInt(v?.stats?.shareCount || v?.statsV2?.shareCount || v?.shareCount || 0),
-    duration: `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, '0')}`,
-    author: v?.author?.uniqueId || v?.author?.nickname || v?.authorMeta?.name || v?.authorMeta?.nickName || 'desconhecido',
-    video_url: v?.video?.playAddr || v?.video?.downloadAddr || v?.videoUrl || null,
-    source_url: v?.webVideoUrl || v?.url || `https://www.tiktok.com/@${v?.author?.uniqueId || v?.authorMeta?.name || 'unknown'}/video/${v?.id || ''}`,
-    status: 'pending',
-    hashtag,
-  };
-}
-
-async function scrapeDirectHTML(hashtag: string, limit: number, maxDuration = 40, requireBrazilian = true): Promise<VideoData[]> {
-  const videos: VideoData[] = [];
-  try {
-    const res = await fetch(`https://www.tiktok.com/tag/${hashtag}`, {
-      headers: {
-        'User-Agent': randomUA(),
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.7',
-        'Accept-Encoding': 'identity',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-      },
-      redirect: 'follow',
-    });
-    if (!res.ok) return videos;
-    const html = await res.text();
-
-    const patterns = [
-      /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/,
-      /<script id="SIGI_STATE"[^>]*>([\s\S]*?)<\/script>/,
-    ];
-
-    let jsonData: any = null;
-    for (const p of patterns) {
-      const m = html.match(p);
-      if (m?.[1]) { try { jsonData = JSON.parse(m[1]); break; } catch { continue; } }
-    }
-    if (!jsonData) return videos;
-
-    const items: any[] = [];
-    const ds = jsonData?.['__DEFAULT_SCOPE__'];
-    if (ds?.['webapp.challenge-detail']?.itemList) items.push(...ds['webapp.challenge-detail'].itemList);
-    if (ds?.['webapp.search']?.itemList) items.push(...ds['webapp.search'].itemList);
-    const im = jsonData?.ItemModule;
-    if (im && typeof im === 'object') items.push(...Object.values(im));
-
-    for (const item of items) {
-      if (videos.length >= limit) break;
-      const v = parseVideoItem(item, hashtag, maxDuration, requireBrazilian);
-      if (v && !videos.some(e => e.tiktok_id === v.tiktok_id)) videos.push(v);
-    }
-    console.log(`[Strategy 1] Direct HTML: ${videos.length} videos`);
-  } catch (err) {
-    console.log('[Strategy 1] Direct HTML error:', err);
-  }
-  return videos;
-}
-
 // ---- Brazilian content detection ----
 function isBrazilianContent(item: any): boolean {
   const text = `${item?.title || ''} ${item?.desc || ''} ${item?.text || ''}`.toLowerCase();
@@ -159,7 +72,7 @@ function isBrazilianContent(item: any): boolean {
   return matchCount >= 1;
 }
 
-async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false, maxPages = 5, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null }> {
+async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false, maxPages = 10, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null }> {
   const videos: VideoData[] = [];
   const seenIds = new Set<string>();
   let lastCursor: string | null = null;
@@ -244,32 +157,11 @@ async function scrapeTikWM(hashtag: string, limit: number, randomOffset = false,
       }
     }
 
-    console.log(`[Strategy 2] TikWM total: ${videos.length} videos (maxPages=${maxPages}, startCursor=${startCursor ?? 'none'}, lastCursor=${lastCursor})`);
+    console.log(`[TikWM] #${hashtag}: ${videos.length} videos (maxPages=${maxPages}, startCursor=${startCursor ?? 'none'}, lastCursor=${lastCursor})`);
   } catch (err) {
-    console.log('[Strategy 2] TikWM error:', err);
+    console.log('[TikWM] error:', err);
   }
   return { videos, nextCursor: lastCursor };
-}
-
-async function scrapeEnsave(hashtag: string, limit: number, maxDuration = 40, requireBrazilian = true): Promise<VideoData[]> {
-  const videos: VideoData[] = [];
-  try {
-    const res = await fetch(`https://ensave.io/api/tiktok/hashtag/${encodeURIComponent(hashtag)}?count=${Math.min(limit, 50)}`, {
-      headers: { 'User-Agent': randomUA() },
-    });
-    if (!res.ok) return videos;
-    const data = await res.json();
-    const items = data?.data || data?.items || data?.videos || [];
-
-    for (const item of items) {
-      if (videos.length >= limit) break;
-      const v = parseVideoItem(item, hashtag, maxDuration, requireBrazilian);
-      if (v && !videos.some(e => e.tiktok_id === v.tiktok_id)) videos.push(v);
-    }
-  } catch (err) {
-    console.log('[Strategy 3] Ensave error:', err);
-  }
-  return videos;
 }
 
 // Helper for Supabase REST calls
@@ -347,31 +239,17 @@ Deno.serve(async (req) => {
     if (light) {
       console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}`);
 
-      // Run strategies in parallel with deeper TikWM pagination for higher volume
-      const [htmlVideos, tikwmResult, ensaveVideos] = await Promise.all([
-        scrapeDirectHTML(searchTerm, Math.min(requestedLimit * 2, 1000), 120, false),
-        scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), true, 6, false, 120, inputCursor),
-        scrapeEnsave(searchTerm, Math.min(requestedLimit * 2, 200), 120, false),
-      ]);
-
-      // Merge and dedupe
-      const seenIds = new Set<string>();
-      const videos: VideoData[] = [];
-      for (const v of [...htmlVideos, ...tikwmResult.videos, ...ensaveVideos]) {
-        if (!seenIds.has(v.tiktok_id)) {
-          seenIds.add(v.tiktok_id);
-          videos.push(v);
-        }
-      }
+      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), true, 10, false, 120, inputCursor);
 
       // Shuffle for variety
+      const videos = tikwmResult.videos;
       for (let i = videos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [videos[i], videos[j]] = [videos[j], videos[i]];
       }
 
       const result = uniqueByVideoKey(videos).slice(0, requestedLimit);
-      console.log(`[LIGHT] #${searchTerm}: ${result.length} videos (html=${htmlVideos.length}, tikwm=${tikwmResult.videos.length}, ensave=${ensaveVideos.length}, nextCursor=${tikwmResult.nextCursor})`);
+      console.log(`[LIGHT] #${searchTerm}: ${result.length} videos, nextCursor=${tikwmResult.nextCursor}`);
 
       return new Response(
         JSON.stringify({
@@ -379,7 +257,7 @@ Deno.serve(async (req) => {
           videos_found: result.length,
           new_scraped: result.length,
           from_cache: false,
-          strategy: 'light',
+          strategy: 'tikwm',
           videos: result,
           next_cursor: tikwmResult.nextCursor,
         }),
@@ -436,25 +314,9 @@ Deno.serve(async (req) => {
 
       let videos: VideoData[] = [];
 
-      const [htmlVideos, tikwmResult, ensaveVideos] = await Promise.all([
-        scrapeDirectHTML(searchTerm, limit * 2, 40, true),
-        scrapeTikWM(searchTerm, limit * 2, true, 5, true, 120, inputCursor),
-        scrapeEnsave(searchTerm, limit, 40, true),
-      ]);
-
-      const strategies: string[] = [];
-      if (htmlVideos.length > 0) strategies.push('direct_html');
-      if (tikwmResult.videos.length > 0) strategies.push('tikwm');
-      if (ensaveVideos.length > 0) strategies.push('ensave');
-      strategyUsed = strategies.join('+') || 'none';
-
-      const seenIds = new Set<string>();
-      for (const v of [...htmlVideos, ...tikwmResult.videos, ...ensaveVideos]) {
-        if (!seenIds.has(v.tiktok_id)) {
-          seenIds.add(v.tiktok_id);
-          videos.push(v);
-        }
-      }
+      const tikwmResult = await scrapeTikWM(searchTerm, limit * 3, true, 10, true, 120, inputCursor);
+      strategyUsed = tikwmResult.videos.length > 0 ? 'tikwm' : 'none';
+      videos = tikwmResult.videos;
 
       const userExistingRes = await fetch(
         sbUrl(`tiktok_videos?owner_user_id=eq.${userId}&hashtag=eq.${encodeURIComponent(searchTerm)}&select=tiktok_id&limit=5000`),
@@ -466,7 +328,7 @@ Deno.serve(async (req) => {
       let newVideos = videos.filter(v => !globalExistingIds.has(String(v.tiktok_id)));
 
       if (newVideos.length < requestedLimit) {
-        const recycled = videos.filter(v => 
+        const recycled = videos.filter(v =>
           globalExistingIds.has(String(v.tiktok_id)) && !userExistingIds.has(String(v.tiktok_id))
         );
         newVideos = [...newVideos, ...recycled];
