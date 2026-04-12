@@ -211,8 +211,9 @@ export const tiktokApi = {
     const validIds = tiktokIds.filter(id => id != null && id !== '');
     if (validIds.length === 0) return;
     try {
+      const userId = await getCurrentUserId();
       const { data, error } = await supabase.functions.invoke('save-seen-videos', {
-        body: { tiktok_ids: validIds, table: 'seen_videos' },
+        body: { tiktok_ids: validIds, table: 'seen_videos', user_id: userId },
       });
       if (error) console.error('[markVideosSeen] edge function error:', error);
     } catch (err) {
@@ -239,8 +240,9 @@ export const tiktokApi = {
     const validIds = tiktokIds.filter(id => id != null && id !== '');
     if (validIds.length === 0) return;
     try {
+      const userId = await getCurrentUserId();
       const { data, error } = await supabase.functions.invoke('save-seen-videos', {
-        body: { tiktok_ids: validIds, table: 'used_videos' },
+        body: { tiktok_ids: validIds, table: 'used_videos', user_id: userId },
       });
       if (error) console.error('[markVideosUsed] edge function error:', error);
     } catch (err) {

@@ -11,31 +11,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Get user from JWT
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    const { tiktok_ids, table = 'seen_videos', user_id } = await req.json();
+
+    if (!user_id || typeof user_id !== 'string') {
       return new Response(
-        JSON.stringify({ error: 'Missing authorization' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        JSON.stringify({ error: 'user_id required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-    // Verify user identity from their JWT
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    const { tiktok_ids, table = 'seen_videos' } = await req.json();
 
     if (!tiktok_ids || !Array.isArray(tiktok_ids) || tiktok_ids.length === 0) {
       return new Response(
@@ -54,12 +37,13 @@ Deno.serve(async (req) => {
     }
 
     // Use service_role to bypass RLS
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     const rows = tiktok_ids
       .filter((id: any) => id != null && id !== '')
-      .map((id: string) => ({ user_id: user.id, tiktok_id: id }));
+      .map((id: string) => ({ user_id, tiktok_id: id }));
 
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 50) {
