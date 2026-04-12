@@ -211,15 +211,20 @@ export const tiktokApi = {
     if (tiktokIds.length === 0) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const userId = await getCurrentUserId();
-      console.log(`[markVideosSeen] userId=${userId}, session=${session ? 'active' : 'null'}, token=${session?.access_token?.slice(0, 20) || 'none'}..., ids=${tiktokIds.length}`);
+      if (!session) {
+        console.warn('[markVideosSeen] Sem sessão ativa, abortando');
+        return;
+      }
+      const userId = session.user.id;
+      const tokenExpiry = session.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'unknown';
+      console.log(`[markVideosSeen] userId=${userId}, token=${session.access_token.slice(0, 20)}..., expires=${tokenExpiry}, role=${(session as any).user?.role || '?'}, ids=${tiktokIds.length}`);
       const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
       for (let i = 0; i < rows.length; i += 50) {
         const batch = rows.slice(i, i + 50);
-        const { error } = await supabase
+        const { error, status } = await supabase
           .from('seen_videos')
           .upsert(batch, { onConflict: 'user_id,tiktok_id' });
-        if (error) console.error(`[markVideosSeen] upsert error batch ${i / 50 + 1}:`, error);
+        if (error) console.error(`[markVideosSeen] upsert error batch ${i / 50 + 1}: status=${status}`, error);
       }
     } catch (err) {
       console.warn('Erro ao salvar seen_videos:', err);
