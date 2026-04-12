@@ -208,24 +208,13 @@ export const tiktokApi = {
   },
 
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
-    if (tiktokIds.length === 0) return;
+    const validIds = tiktokIds.filter(id => id != null && id !== '');
+    if (validIds.length === 0) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn('[markVideosSeen] Sem sessão ativa, abortando');
-        return;
-      }
-      const userId = session.user.id;
-      const tokenExpiry = session.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'unknown';
-      console.log(`[markVideosSeen] userId=${userId}, token=${session.access_token.slice(0, 20)}..., expires=${tokenExpiry}, role=${(session as any).user?.role || '?'}, ids=${tiktokIds.length}`);
-      const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
-      for (let i = 0; i < rows.length; i += 50) {
-        const batch = rows.slice(i, i + 50);
-        const { error, status } = await supabase
-          .from('seen_videos')
-          .upsert(batch, { onConflict: 'user_id,tiktok_id' });
-        if (error) console.error(`[markVideosSeen] upsert error batch ${i / 50 + 1}: status=${status}`, error);
-      }
+      const { data, error } = await supabase.functions.invoke('save-seen-videos', {
+        body: { tiktok_ids: validIds, table: 'seen_videos' },
+      });
+      if (error) console.error('[markVideosSeen] edge function error:', error);
     } catch (err) {
       console.warn('Erro ao salvar seen_videos:', err);
     }
@@ -247,16 +236,13 @@ export const tiktokApi = {
   },
 
   async markVideosUsed(tiktokIds: string[]): Promise<void> {
-    if (tiktokIds.length === 0) return;
+    const validIds = tiktokIds.filter(id => id != null && id !== '');
+    if (validIds.length === 0) return;
     try {
-      const userId = await getCurrentUserId();
-      const rows = tiktokIds.map(id => ({ user_id: userId, tiktok_id: id }));
-      for (let i = 0; i < rows.length; i += 50) {
-        const batch = rows.slice(i, i + 50);
-        await supabase
-          .from('used_videos')
-          .upsert(batch, { onConflict: 'user_id,tiktok_id' });
-      }
+      const { data, error } = await supabase.functions.invoke('save-seen-videos', {
+        body: { tiktok_ids: validIds, table: 'used_videos' },
+      });
+      if (error) console.error('[markVideosUsed] edge function error:', error);
     } catch (err) {
       console.warn('Erro ao salvar used_videos:', err);
     }

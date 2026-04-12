@@ -1204,7 +1204,7 @@ const Index = () => {
         let tagLimit: number;
         if (tagQuotas && tagQuotas[tag] !== undefined) {
           const already = tagFetchedCount[tag] || 0;
-          const remaining = tagQuotas[tag] * 8 - already;
+          const remaining = tagQuotas[tag] * 3 - already;
           if (remaining <= 0) continue;
           tagLimit = remaining;
         } else {
@@ -1219,7 +1219,7 @@ const Index = () => {
           if (result?.videos) {
             const filtered = applyFilters(result.videos);
             const limited = tagQuotas && tagQuotas[tag] !== undefined
-              ? filtered.slice(0, tagQuotas[tag] * 8 - (tagFetchedCount[tag] || 0))
+              ? filtered.slice(0, tagQuotas[tag] * 3 - (tagFetchedCount[tag] || 0))
               : filtered;
             freshVideos.push(...limited);
             tagFetchedCount[tag] = (tagFetchedCount[tag] || 0) + limited.length;
@@ -1245,8 +1245,8 @@ const Index = () => {
       return result;
     };
 
-    // E: fetch more candidates when target is large
-    const OVERFETCH_MULTIPLIER = totalTarget > 50 ? 8 : 5;
+    // E: fetch more candidates when target is large (3x with quotas, no double multiply)
+    const OVERFETCH_MULTIPLIER = 3;
     const fetchTarget = totalTarget * OVERFETCH_MULTIPLIER;
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
@@ -1309,7 +1309,7 @@ const Index = () => {
         const deficit = totalTarget - approvedVideos.length;
         addLog(`🔁 Retry genérico ${round}: faltam ${deficit}, buscando mais...`);
         setScrapeProgress(`Buscando +${deficit} vídeos genéricos...`);
-        const retryRaw = await fetchCandidates(deficit * 5, true);
+        const retryRaw = await fetchCandidates(deficit * 3, true, expandedQty);
         const retryCandidates = retryRaw.filter((video) => {
           const key = getVideoKey(video);
           if (seenCandidateKeys.has(key)) return false;
@@ -1358,7 +1358,7 @@ const Index = () => {
         } else {
           addLog(`🔁 Retry ${round}: faltam ${deficit}, buscando mais...`);
           setScrapeProgress(`Buscando +${deficit} vídeos (retry ${round})...`);
-          const retryRaw = await fetchCandidates(deficit * 5, true);
+          const retryRaw = await fetchCandidates(deficit * 3, true, expandedQty);
           roundCandidates = retryRaw.filter((video) => {
             const key = getVideoKey(video);
             if (seenCandidateKeys.has(key)) return false;
@@ -1415,7 +1415,7 @@ const Index = () => {
       const deficit = totalTarget - approvedVideos.length;
       addLog(`🔄 Rodada extra ${extra + 1}: faltam ${deficit} vídeos, buscando mais...`);
       setScrapeProgress(`Buscando +${deficit} vídeos (extra ${extra + 1}/${MAX_EXTRA_ROUNDS})...`);
-      const extraRaw = await fetchCandidates(deficit * 5, true);
+      const extraRaw = await fetchCandidates(deficit * 3, true, expandedQty);
       const extraCandidates = extraRaw.filter((video) => {
         const key = getVideoKey(video);
         if (seenCandidateKeys.has(key)) return false;
@@ -1499,7 +1499,7 @@ const Index = () => {
               const aiDeficit = totalTarget - approvedVideos.length;
               addLog(`🔄 Rodada IA ${aiRound + 1}: faltam ${aiDeficit}, buscando novas hashtags...`);
               setScrapeProgress(`Buscando +${aiDeficit} vídeos (IA ${aiRound + 1}/${AI_EXTRA_ROUNDS})...`);
-              const aiRaw = await fetchCandidates(aiDeficit * 5, true);
+              const aiRaw = await fetchCandidates(aiDeficit * 3, true, expandedQty);
               const aiCandidates = aiRaw.filter((video) => {
                 const key = getVideoKey(video);
                 if (seenCandidateKeys.has(key)) return false;
