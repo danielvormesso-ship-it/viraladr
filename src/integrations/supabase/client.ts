@@ -15,3 +15,14 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     autoRefreshToken: true,
   }
 });
+
+// Verify stored session is still valid on the server — clear if rejected
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (!session) return;
+  supabase.auth.getUser().then(({ error }) => {
+    if (error) {
+      console.warn('[Auth] Sessão local inválida no servidor, forçando logout:', error.message);
+      supabase.auth.signOut();
+    }
+  });
+});
