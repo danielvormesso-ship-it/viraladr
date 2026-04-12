@@ -1152,6 +1152,7 @@ const Index = () => {
 
     const tagQtyStr = expandedTags.map(t => `#${t}(${expandedQty[t]})`).join(', ');
     addLog(`🎯 Meta: ${totalTarget} vídeos — ${tagQtyStr}`);
+    console.log(`[Merge] expandedQty:`, expandedQty);
 
     let totalNew = 0;
 
@@ -1193,6 +1194,7 @@ const Index = () => {
     // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
     // When tagQuotas is provided, respect per-hashtag limits for balanced distribution
     const fetchCandidates = async (targetCount: number, forceRefresh: boolean, tagQuotas?: Record<string, number>) => {
+      console.log(`[Merge] fetchCandidates called: targetCount=${targetCount}, tagQuotas=${tagQuotas ? JSON.stringify(tagQuotas) : 'none'}`);
       const freshVideos: TikTokVideo[] = [];
       const tagFetchedCount: Record<string, number> = {};
 
@@ -1238,6 +1240,7 @@ const Index = () => {
       }
 
       const result = dedupeVideos(freshVideos);
+      console.log(`[Merge] fetchCandidates result: total=${result.length}, perTag=`, tagFetchedCount);
       preloadThumbnails(result); // H
       return result;
     };
