@@ -1191,28 +1191,43 @@ const Index = () => {
     const exhaustedTags = new Set<string>();
 
     // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
-    const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
+    // When tagQuotas is provided, respect per-hashtag limits for balanced distribution
+    const fetchCandidates = async (targetCount: number, forceRefresh: boolean, tagQuotas?: Record<string, number>) => {
       const freshVideos: TikTokVideo[] = [];
+      const tagFetchedCount: Record<string, number> = {};
 
       for (const tag of allTags) {
-        if (freshVideos.length >= targetCount) break;
         if (exhaustedTags.has(tag)) continue;
 
-        const remaining = targetCount - freshVideos.length;
-        const requestAmount = Math.min(remaining * 3, 1000);
+        let tagLimit: number;
+        if (tagQuotas && tagQuotas[tag] !== undefined) {
+          const already = tagFetchedCount[tag] || 0;
+          const remaining = tagQuotas[tag] * 8 - already;
+          if (remaining <= 0) continue;
+          tagLimit = remaining;
+        } else {
+          if (freshVideos.length >= targetCount) break;
+          tagLimit = targetCount - freshVideos.length;
+        }
+
+        const requestAmount = Math.min(tagLimit * 3, 1000);
 
         try {
           const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
           if (result?.videos) {
             const filtered = applyFilters(result.videos);
-            freshVideos.push(...filtered);
+            const limited = tagQuotas && tagQuotas[tag] !== undefined
+              ? filtered.slice(0, tagQuotas[tag] * 8 - (tagFetchedCount[tag] || 0))
+              : filtered;
+            freshVideos.push(...limited);
+            tagFetchedCount[tag] = (tagFetchedCount[tag] || 0) + limited.length;
             totalNew += result.new_scraped || 0;
             if (result.next_cursor) {
               cursorMap.set(tag, result.next_cursor);
             } else {
               exhaustedTags.add(tag);
             }
-            addLog(`  ✅ #${tag}: ${filtered.length}/${result.videos.length} válidos${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
+            addLog(`  ✅ #${tag}: ${limited.length}/${result.videos.length} válidos${tagQuotas?.[tag] ? ` (quota: ${tagQuotas[tag]})` : ''}${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
           } else {
             exhaustedTags.add(tag);
           }
@@ -1240,7 +1255,7 @@ const Index = () => {
     for (const id of usedIds) seenIds.add(id);
     const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
     const seenCandidateKeys = new Set(existingVideoKeys);
-    const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
+    const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0, expandedQty);
     const initialCandidates = initialRaw.filter((video) => {
       const key = getVideoKey(video);
       if (seenCandidateKeys.has(key)) return false;
