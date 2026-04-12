@@ -16,10 +16,13 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   }
 });
 
-// Clear stale ES256 sessions from old Lovable project — new Supabase uses HS256
-supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session?.access_token?.startsWith('eyJhbGciOiJFUzI1NiIs')) {
-    console.warn('[Auth] Sessão ES256 detectada (Lovable antigo), forçando logout');
-    supabase.auth.signOut();
-  }
-});
+// Clear stale ES256 sessions from old Lovable project — new Supabase uses HS256 (once only)
+if (localStorage.getItem('es256_cleared') !== 'true') {
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session?.access_token?.startsWith('eyJhbGciOiJFUzI1NiIs')) {
+      console.warn('[Auth] Sessão ES256 detectada (Lovable antigo), forçando logout');
+      localStorage.setItem('es256_cleared', 'true');
+      supabase.auth.signOut();
+    }
+  });
+}
