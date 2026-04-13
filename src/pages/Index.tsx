@@ -1106,12 +1106,13 @@ const Index = () => {
     setCacheStatus(null);
     activityTracker.logSearch(tag);
     try {
+      const mainTag = tag.includes(',') ? tag.split(',')[0].trim() : tag;
       // Reset cursor if switching to a different hashtag
-      if (singleScrapeCursorRef.current.tag !== tag) {
-        singleScrapeCursorRef.current = { tag, cursor: null };
+      if (singleScrapeCursorRef.current.tag !== mainTag) {
+        singleScrapeCursorRef.current = { tag: mainTag, cursor: null };
       }
       const [result, seenIds, usedIds] = await Promise.all([
-        tiktokApi.scrapeByHashtag(tag, targetCount * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
+        tiktokApi.scrapeByHashtag(mainTag, targetCount * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
         tiktokApi.getSeenVideoIds(),
         tiktokApi.getUsedVideoIds(),
       ]);
@@ -1122,7 +1123,7 @@ const Index = () => {
       }
 
       if (result.from_cache) {
-        setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
+        setCacheStatus(`Cache ativo — #${mainTag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
       } else {
         setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
       }
@@ -1147,9 +1148,9 @@ const Index = () => {
       }
 
       // Apply niche filter based on hashtag label
-      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === tag) || p.tag === tag);
-      const nicheLabel = preset?.label || tag;
-      const nicheDesc = `Vídeos do TikTok brasileiro sobre: ${nicheLabel}. Hashtag: #${tag}`;
+      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === mainTag) || p.tag === tag);
+      const nicheLabel = preset?.label || mainTag;
+      const nicheDesc = `Vídeos do TikTok brasileiro sobre: ${nicheLabel}. Hashtag: #${mainTag}`;
       const nicheKeywords = (preset?.tag || tag).split(',').slice(0, 5);
       const nicheFiltered = await applyNicheTitleFilter(unseenVideos, nicheDesc, nicheKeywords);
       let approved = nicheFiltered.filter(v => !isForeignContent(v));
@@ -1158,7 +1159,7 @@ const Index = () => {
       const singleTarget = targetCount;
       let retryCursor = result.next_cursor;
       for (let retry = 0; retry < 3 && approved.length < singleTarget && retryCursor; retry++) {
-        const retryResult = await tiktokApi.scrapeByHashtag(tag, 200, undefined, true, true, retryCursor);
+        const retryResult = await tiktokApi.scrapeByHashtag(mainTag, 200, undefined, true, true, retryCursor);
         retryCursor = retryResult.next_cursor || null;
         if (retryCursor) singleScrapeCursorRef.current.cursor = retryCursor;
         const retryUnseen = (retryResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
@@ -1183,10 +1184,10 @@ const Index = () => {
       }
 
       toast({
-        title: forceRefresh ? `#${tag} — Novos vídeos! 🔄` : (result.from_cache ? `#${tag} — Do cache ✨` : `#${tag} — Busca concluída!`),
-        description: result.from_cache
-          ? `${result.videos_found} vídeos disponíveis (sem custo, usando cache).`
-          : `${result.new_scraped} novos + ${approved.length} aprovados.`,
+        title: forceRefresh ? `#${mainTag} — Novos vídeos! 🔄` : (result.from_cache ? `#${mainTag} — Do cache ✨` : `#${mainTag} — Busca concluída!`),
+        description: approved.length < targetCount
+          ? `${approved.length} de ${targetCount} vídeos encontrados — use Mesclar Hashtags para resultados completos.`
+          : `${approved.length} vídeos aprovados.`,
       });
     } catch (err) {
       console.error('Scrape error:', err);
