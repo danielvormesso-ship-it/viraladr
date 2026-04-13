@@ -189,7 +189,8 @@ export const tiktokApi = {
   },
 
   async deleteVideos(ids: string[]): Promise<void> {
-    const validIds = ids.filter(id => id != null && typeof id === 'string' && id !== '' && id !== 'undefined');
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validIds = ids.filter(id => id != null && typeof id === 'string' && UUID_RE.test(id));
     if (validIds.length === 0) return;
     const userId = await getCurrentUserId();
 
