@@ -760,10 +760,11 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
-      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
       // Session-wide dedup set: guarantees no tiktok_id appears twice within this search
       const sessionSeenIds = new Set<string>();
+      // Track keys already inserted into UI state (survives React batching)
+      const insertedKeys = new Set<string>();
       // Track TikWM cursor per hashtag so each round fetches new pages
       const cursorMap = new Map<string, string>();
 
@@ -813,35 +814,48 @@ const Index = () => {
       if (retryTagPool.length > 0) addLog(`🔀 Retry pool (${retryTagPool.length}): ${retryTagPool.map(t => '#' + t).join(', ')}`);
       addLog(`📋 Total: ${allTags.length} hashtags`);
 
-      // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
+      // F: fetchCandidates — parallel batches of 5 hashtags at a time
+      const PARALLEL_BATCH_SIZE = 5;
       const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
         const freshVideos: TikTokVideo[] = [];
+        const pendingTags = allTags.filter(tag => !exhaustedTags.has(tag));
 
-        for (const tag of allTags) {
+        for (let i = 0; i < pendingTags.length; i += PARALLEL_BATCH_SIZE) {
           if (freshVideos.length >= targetCount) break;
-          if (exhaustedTags.has(tag)) continue;
 
+          const batch = pendingTags.slice(i, i + PARALLEL_BATCH_SIZE);
           const remaining = targetCount - freshVideos.length;
-          const requestAmount = Math.min(remaining * 3, 1000);
+          const perTagRequest = Math.min(Math.ceil(remaining / batch.length) * 3, 1000);
 
-          try {
-            const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
-            if (result?.videos) {
-              const filtered = applyFilters(result.videos);
-              freshVideos.push(...filtered);
-              totalNew += result.new_scraped || 0;
-              if (result.next_cursor) {
-                cursorMap.set(tag, result.next_cursor);
-              } else {
+          const results = await Promise.all(
+            batch.map(async (tag) => {
+              try {
+                const result = await tiktokApi.scrapeByHashtag(tag, perTagRequest, undefined, forceRefresh, true, cursorMap.get(tag));
+                if (result?.videos) {
+                  const filtered = applyFilters(result.videos);
+                  const _dbgForeign = result.videos.filter(v => isForeignContent(v)).length;
+                  totalNew += result.new_scraped || 0;
+                  if (result.next_cursor) {
+                    cursorMap.set(tag, result.next_cursor);
+                  } else {
+                    exhaustedTags.add(tag);
+                  }
+                  addLog(`  ✅ #${tag}: ${filtered.length} válidos (${result.videos.length} brutos, ${result.videos.length - filtered.length} filtrados-applyFilters, ${_dbgForeign} foreign)${exhaustedTags.has(tag) ? ' [esgotada]' : ''} cursor=${result.next_cursor ? 'sim' : 'NÃO'}`);
+                  return filtered;
+                } else {
+                  exhaustedTags.add(tag);
+                  return [];
+                }
+              } catch {
+                addLog(`  ❌ #${tag}: falhou`);
                 exhaustedTags.add(tag);
+                return [];
               }
-              addLog(`  ✅ #${tag}: ${filtered.length} válidos (${result.videos.length} brutos)${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
-            } else {
-              exhaustedTags.add(tag);
-            }
-          } catch {
-            addLog(`  ❌ #${tag}: falhou`);
-            exhaustedTags.add(tag);
+            })
+          );
+
+          for (const filtered of results) {
+            freshVideos.push(...filtered);
           }
         }
 
@@ -859,11 +873,12 @@ const Index = () => {
       const existingVideoKeys = new Set(videosRef.current.map(getVideoKey));
       const seenCandidateKeys = new Set(existingVideoKeys);
       const initialRaw = await fetchCandidates(fetchTarget, videosRef.current.length > 0);
+      let _dbgDupKey = 0, _dbgSeenDb = 0, _dbgSeenSession = 0;
       const initialCandidates = initialRaw.filter((video) => {
         const key = getVideoKey(video);
-        if (seenCandidateKeys.has(key)) return false;
-        if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
-        if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
+        if (seenCandidateKeys.has(key)) { _dbgDupKey++; return false; }
+        if (video.tiktok_id && seenIds.has(video.tiktok_id)) { _dbgSeenDb++; return false; }
+        if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) { _dbgSeenSession++; return false; }
         seenCandidateKeys.add(key);
         if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
         return true;
@@ -871,6 +886,8 @@ const Index = () => {
 
       const phase1Time = ((performance.now() - startTime) / 1000).toFixed(1);
       addLog(`📊 Coletados: ${initialCandidates.length} vídeos novos únicos em ${phase1Time}s${existingVideoKeys.size > 0 ? ` (${existingVideoKeys.size} já carregados)` : ''}`);
+      addLog(`🔍 [DEBUG] fetchCandidates retornou ${initialRaw.length} brutos → ${_dbgDupKey} dup-key, ${_dbgSeenDb} seen-db, ${_dbgSeenSession} seen-session → ${initialCandidates.length} passaram`);
+      addLog(`🔍 [DEBUG] exhaustedTags após fetch inicial: ${exhaustedTags.size}/${allTags.length} — [${[...exhaustedTags].join(', ')}]`);
 
       let approvedVideos: TikTokVideo[] = [];
       const MAX_FILTER_ROUNDS = 6;
@@ -925,6 +942,8 @@ const Index = () => {
               return nicheKeys.has(key) || thumbKeys.has(key);
             })
           : roundCandidates;
+        const _dbgNicheRejected = roundCandidates.length - roundApproved.length;
+        addLog(`🔍 [DEBUG] Rodada ${round + 1}: ${roundCandidates.length} candidatos → IA aprovou ${roundApproved.length} (rejeitou ${_dbgNicheRejected}) | nicho=${nicheFiltered.length} thumb=${thumbFiltered.length} hadSignal=${hadSignal}`);
 
         // Remove foreign content before counting as approved so deficit compensates automatically
         const beforeForeignFilter = roundApproved.length;
@@ -942,13 +961,19 @@ const Index = () => {
         // I: show approved videos immediately after each round
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
-          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
           }
           setResultFilterMode("ai");
-          setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(batchToShow)]));
+          const newBatch = rankByBrazilianContent(batchToShow).filter(v => {
+            const key = getVideoKey(v);
+            if (insertedKeys.has(key)) return false;
+            insertedKeys.add(key);
+            return true;
+          });
+          if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
         }
       }
 
@@ -1003,13 +1028,19 @@ const Index = () => {
         addLog(`🎯 Extra ${extra + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
-          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
           }
           setResultFilterMode("ai");
-          setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(batchToShow)]));
+          const newBatch = rankByBrazilianContent(batchToShow).filter(v => {
+            const key = getVideoKey(v);
+            if (insertedKeys.has(key)) return false;
+            insertedKeys.add(key);
+            return true;
+          });
+          if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
         }
       }
 
@@ -1018,18 +1049,25 @@ const Index = () => {
 
       // Mark seen so this user won't get the same videos again
       const seenIdsToMark = unique.map(v => v.tiktok_id).filter(Boolean) as string[];
-      tiktokApi.markVideosSeen(seenIdsToMark).catch(() => {});
+      await tiktokApi.markVideosSeen(seenIdsToMark).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
       if (unique.length > 0) {
         setResultFilterMode("ai");
-        setVideos(prev => {
-          const merged = dedupeVideos([...prev, ...rankByBrazilianContent(unique)]);
-          // Only update index if nothing was shown progressively
-          if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
-          return merged;
+        const finalBatch = rankByBrazilianContent(unique).filter(v => {
+          const key = getVideoKey(v);
+          if (insertedKeys.has(key)) return false;
+          insertedKeys.add(key);
+          return true;
         });
+        if (finalBatch.length > 0 || firstProgressiveInsertAt === -1) {
+          setVideos(prev => {
+            const merged = [...prev, ...finalBatch];
+            if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+            return merged;
+          });
+        }
         detectOffTopicVideos(unique, newTags);
         addLog(`✅ ${unique.length} vídeos${genderFilter !== "none" ? ` (${genderFilter === "female" ? "femininos" : "masculinos"})` : ""} prontos!`);
       } else if (firstProgressiveInsertAt === -1) {
@@ -1068,7 +1106,6 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
-      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -1076,8 +1113,8 @@ const Index = () => {
         setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
       }
 
-      const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
-      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+      const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
@@ -1152,7 +1189,6 @@ const Index = () => {
 
     const tagQtyStr = expandedTags.map(t => `#${t}(${expandedQty[t]})`).join(', ');
     addLog(`🎯 Meta: ${totalTarget} vídeos — ${tagQtyStr}`);
-    console.log(`[Merge] expandedQty:`, expandedQty);
 
     let totalNew = 0;
 
@@ -1191,56 +1227,75 @@ const Index = () => {
     const allTags = [...expandedTags, ...retryTagPool];
     const exhaustedTags = new Set<string>();
 
-    // F: fetchCandidates — exhaust each hashtag sequentially (max 500 per call, use cursor to paginate)
+    // F: fetchCandidates — parallel batches of 5 hashtags at a time
     // When tagQuotas is provided, respect per-hashtag limits for balanced distribution
+    const PARALLEL_BATCH_SIZE = 5;
     const fetchCandidates = async (targetCount: number, forceRefresh: boolean, tagQuotas?: Record<string, number>) => {
-      console.log(`[Merge] fetchCandidates called: targetCount=${targetCount}, tagQuotas=${tagQuotas ? JSON.stringify(tagQuotas) : 'none'}`);
       const freshVideos: TikTokVideo[] = [];
       const tagFetchedCount: Record<string, number> = {};
 
-      for (const tag of allTags) {
-        if (exhaustedTags.has(tag)) continue;
-
-        let tagLimit: number;
+      const pendingTags = allTags.filter(tag => {
+        if (exhaustedTags.has(tag)) return false;
         if (tagQuotas && tagQuotas[tag] !== undefined) {
           const already = tagFetchedCount[tag] || 0;
-          const remaining = Math.ceil(tagQuotas[tag] * 1.5) - already;
-          if (remaining <= 0) continue;
-          tagLimit = remaining;
-        } else {
-          if (freshVideos.length >= targetCount) break;
-          tagLimit = targetCount - freshVideos.length;
+          return Math.ceil(tagQuotas[tag] * 1.5) - already > 0;
         }
+        return true;
+      });
 
-        const requestAmount = Math.min(tagLimit * 3, 1000);
+      for (let i = 0; i < pendingTags.length; i += PARALLEL_BATCH_SIZE) {
+        if (!tagQuotas && freshVideos.length >= targetCount) break;
 
-        try {
-          const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
-          if (result?.videos) {
-            const filtered = applyFilters(result.videos);
-            const limited = tagQuotas && tagQuotas[tag] !== undefined
-              ? filtered.slice(0, Math.ceil(tagQuotas[tag] * 1.5) - (tagFetchedCount[tag] || 0))
-              : filtered;
-            freshVideos.push(...limited);
-            tagFetchedCount[tag] = (tagFetchedCount[tag] || 0) + limited.length;
-            totalNew += result.new_scraped || 0;
-            if (result.next_cursor) {
-              cursorMap.set(tag, result.next_cursor);
+        const batch = pendingTags.slice(i, i + PARALLEL_BATCH_SIZE);
+
+        const results = await Promise.all(
+          batch.map(async (tag) => {
+            let tagLimit: number;
+            if (tagQuotas && tagQuotas[tag] !== undefined) {
+              const already = tagFetchedCount[tag] || 0;
+              const remaining = Math.ceil(tagQuotas[tag] * 1.5) - already;
+              if (remaining <= 0) return { tag, filtered: [] as TikTokVideo[] };
+              tagLimit = remaining;
             } else {
-              exhaustedTags.add(tag);
+              tagLimit = targetCount - freshVideos.length;
             }
-            addLog(`  ✅ #${tag}: ${limited.length}/${result.videos.length} válidos${tagQuotas?.[tag] ? ` (quota: ${tagQuotas[tag]})` : ''}${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
-          } else {
-            exhaustedTags.add(tag);
-          }
-        } catch {
-          addLog(`  ❌ #${tag}: falhou`);
-          exhaustedTags.add(tag);
+
+            const requestAmount = Math.min(tagLimit * 3, 1000);
+
+            try {
+              const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
+              if (result?.videos) {
+                const filtered = applyFilters(result.videos);
+                const limited = tagQuotas && tagQuotas[tag] !== undefined
+                  ? filtered.slice(0, Math.ceil(tagQuotas[tag] * 1.5) - (tagFetchedCount[tag] || 0))
+                  : filtered;
+                totalNew += result.new_scraped || 0;
+                if (result.next_cursor) {
+                  cursorMap.set(tag, result.next_cursor);
+                } else {
+                  exhaustedTags.add(tag);
+                }
+                addLog(`  ✅ #${tag}: ${limited.length}/${result.videos.length} válidos${tagQuotas?.[tag] ? ` (quota: ${tagQuotas[tag]})` : ''}${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
+                return { tag, filtered: limited };
+              } else {
+                exhaustedTags.add(tag);
+                return { tag, filtered: [] as TikTokVideo[] };
+              }
+            } catch {
+              addLog(`  ❌ #${tag}: falhou`);
+              exhaustedTags.add(tag);
+              return { tag, filtered: [] as TikTokVideo[] };
+            }
+          })
+        );
+
+        for (const { tag, filtered } of results) {
+          freshVideos.push(...filtered);
+          tagFetchedCount[tag] = (tagFetchedCount[tag] || 0) + filtered.length;
         }
       }
 
       const result = dedupeVideos(freshVideos);
-      console.log(`[Merge] fetchCandidates result: total=${result.length}, perTag=`, tagFetchedCount);
       preloadThumbnails(result); // H
       return result;
     };
@@ -1277,6 +1332,8 @@ const Index = () => {
     let firstProgressiveInsertAt = -1; // I: track position for first index jump
 
     let progressiveShownCount = 0; // tracks new videos shown from this search
+    // Track keys already inserted into UI state (survives React batching)
+    const insertedKeys = new Set<string>();
 
     const showProgressively = (batch: TikTokVideo[]) => {
       if (batch.length === 0 || progressiveShownCount >= totalTarget) return;
@@ -1285,13 +1342,19 @@ const Index = () => {
       const trimmed = batch.slice(0, remaining);
       progressiveShownCount += trimmed.length;
       // Mark as seen immediately when shown
-      tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+      tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
       if (firstProgressiveInsertAt === -1) {
         firstProgressiveInsertAt = videosRef.current.length;
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
       }
       setResultFilterMode("ai");
-      setVideos(prev => dedupeVideos([...prev, ...rankByBrazilianContent(trimmed)]));
+      const newBatch = rankByBrazilianContent(trimmed).filter(v => {
+        const key = getVideoKey(v);
+        if (insertedKeys.has(key)) return false;
+        insertedKeys.add(key);
+        return true;
+      });
+      if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
     };
 
     if (allGeneric) {
@@ -1562,18 +1625,26 @@ const Index = () => {
     const unique = approvedVideos.slice(0, totalTarget);
 
     // Mark seen so this user won't get the same videos again
-    tiktokApi.markVideosSeen(unique.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+    await tiktokApi.markVideosSeen(unique.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     addLog(`🏁 Concluído: ${unique.length}/${totalTarget} vídeos em ${elapsed}s`);
 
     setResultFilterMode("ai");
     if (unique.length > 0) {
-      setVideos(prev => {
-        const merged = dedupeVideos([...prev, ...rankByBrazilianContent(unique)]);
-        if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
-        return merged;
+      const finalBatch = rankByBrazilianContent(unique).filter(v => {
+        const key = getVideoKey(v);
+        if (insertedKeys.has(key)) return false;
+        insertedKeys.add(key);
+        return true;
       });
+      if (finalBatch.length > 0 || firstProgressiveInsertAt === -1) {
+        setVideos(prev => {
+          const merged = [...prev, ...finalBatch];
+          if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
+          return merged;
+        });
+      }
       detectOffTopicVideos(unique, expandedTags);
     }
     setScrapeProgress("");
@@ -1601,10 +1672,9 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
-      console.log(`[Filter] seenIds=${seenIds.size} (seen=${seenIds.size - usedIds.size}, used=${usedIds.size})`);
 
-      const unseenVideos = (result.videos || []).filter(v => !v.tiktok_id || !seenIds.has(v.tiktok_id));
-      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+      const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
@@ -1649,7 +1719,7 @@ const Index = () => {
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
-        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([currentVideo.tiktok_id]).catch(() => {});
+        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([currentVideo.tiktok_id]).catch(err => console.error('[markVideosUsed] erro:', err));
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
         // Remove downloaded video from preview and DB
@@ -1732,7 +1802,6 @@ const Index = () => {
           needsResolution.push({ video, index: i });
         }
       }
-      console.log(`[Batch] ${directUrlCount} CDN URLs diretas, ${needsResolution.length} precisam resolução via edge function`);
 
       // Only call edge function for videos that need resolution
       if (needsResolution.length > 0) {
@@ -1751,7 +1820,6 @@ const Index = () => {
 
         for (let b = 0; b < batchPayloads.length; b++) {
           const payload = batchPayloads[b];
-          console.log(`[Batch] Resolving batch ${b + 1}/${batchPayloads.length} (${payload.videos.length} videos)`);
 
           try {
             const { data, error } = await supabase.functions.invoke('download-tiktok-batch', {
@@ -1774,7 +1842,6 @@ const Index = () => {
                   console.warn(`[Batch] URL falhou idx=${r.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${r.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
                 }
               }
-              console.log(`[Batch] Batch ${b + 1}: ${batchOk} OK, ${batchFail} falhas`);
             }
           } catch (err) {
             console.error(`[Batch] Batch ${b + 1} failed:`, err);
@@ -1797,7 +1864,6 @@ const Index = () => {
           .filter(i => !urlMap.has(i));
 
         if (failedIndices.length > 0 && failedIndices.length < needsResolution.length) {
-          console.log(`[Batch] Retrying ${failedIndices.length} failed URLs`);
           const RETRY_BATCH = 20;
           for (let r = 0; r < failedIndices.length; r += RETRY_BATCH) {
             const retryChunk = failedIndices.slice(r, r + RETRY_BATCH);
@@ -1828,7 +1894,6 @@ const Index = () => {
                     console.warn(`[Batch] Retry falhou idx=${res.index} tiktok_id=${vid?.tiktok_id || '?'} erro="${res.error || 'sem erro retornado'}" url=${vid?.video_url?.slice(0, 80) || '?'}`);
                   }
                 }
-                console.log(`[Batch] Retry: ${retryOk} recuperados, ${retryFail} permaneceram com falha`);
               }
             } catch (retryErr) {
               console.error(`[Batch] Retry chunk failed:`, retryErr);
@@ -1838,14 +1903,11 @@ const Index = () => {
               await new Promise(resolve => setTimeout(resolve, 800));
             }
           }
-          console.log(`[Batch] After retry: ${urlMap.size}/${videosToDownload.length} resolved`);
         }
       }
     }
 
     setBatchProgress({ current: Math.floor(batchCount * 0.4), total: batchCount, active: true });
-
-    console.log(`[Batch] Resolved ${urlMap.size}/${videosToDownload.length} URLs in ${((performance.now() - batchStartTime) / 1000).toFixed(1)}s`);
 
     // Step 2: Download actual video files in parallel using resolved URLs
     const CONCURRENCY = 30;
@@ -1937,7 +1999,7 @@ const Index = () => {
 
     // Mark downloaded videos as used (persisted in Supabase)
     const usedTiktokIds = videosToDownload.map(v => v.tiktok_id).filter(Boolean) as string[];
-    tiktokApi.markVideosUsed(usedTiktokIds).catch(() => {});
+    await tiktokApi.markVideosUsed(usedTiktokIds).catch(err => console.error('[markVideosUsed] erro:', err));
 
     // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));

@@ -114,7 +114,12 @@ export const tiktokApi = {
     });
     if (error) throw error;
 
-    const videos = shuffleArray(dedupeVideos((data?.videos || []) as TikTokVideo[]));
+    const videos = shuffleArray(dedupeVideos((data?.videos || [])
+      .filter((v: any) => v.tiktok_id)
+      .map((v: any) => ({
+        ...v,
+        id: v.id || v.tiktok_id,
+      })) as TikTokVideo[]));
     return {
       ...data,
       videos,
@@ -145,7 +150,12 @@ export const tiktokApi = {
       },
     });
     if (error) throw error;
-    const videos = dedupeVideos((data?.videos || []) as TikTokVideo[]);
+    const videos = dedupeVideos((data?.videos || [])
+      .filter((v: any) => v.tiktok_id)
+      .map((v: any) => ({
+        ...v,
+        id: v.id || v.tiktok_id,
+      })) as TikTokVideo[]);
     return { ...data, videos };
   },
 
@@ -179,7 +189,7 @@ export const tiktokApi = {
   },
 
   async deleteVideos(ids: string[]): Promise<void> {
-    const validIds = ids.filter(id => id != null && id !== 'undefined' && id !== '');
+    const validIds = ids.filter(id => id != null && typeof id === 'string' && id !== '' && id !== 'undefined');
     if (validIds.length === 0) return;
     const userId = await getCurrentUserId();
 
@@ -198,7 +208,8 @@ export const tiktokApi = {
       const { data, error } = await supabase
         .from('seen_videos')
         .select('tiktok_id')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .gte('seen_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
       if (error) throw error;
       return new Set<string>((data || []).map((r: any) => r.tiktok_id));
     } catch (err) {
@@ -227,7 +238,8 @@ export const tiktokApi = {
       const { data, error } = await supabase
         .from('used_videos')
         .select('tiktok_id')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .gte('used_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
       if (error) throw error;
       return new Set<string>((data || []).map((r: any) => r.tiktok_id));
     } catch (err) {

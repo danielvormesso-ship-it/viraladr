@@ -15,7 +15,7 @@ function randomUA() {
 }
 
 interface VideoData {
-  tiktok_id: string;
+  tiktok_id: string | null;
   title: string;
   thumbnail: string | null;
   views: number;
@@ -95,7 +95,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
     }
 
     const vid: VideoData = {
-      tiktok_id: String(item?.video_id || item?.id || crypto.randomUUID()),
+      tiktok_id: item?.video_id ? String(item.video_id) : item?.id ? String(item.id) : null,
       title: item?.title || 'Vídeo sem título',
       thumbnail: item?.cover || item?.origin_cover || null,
       views: parseInt(item?.play_count || 0),
@@ -109,6 +109,11 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
       status: 'pending',
       hashtag,
     };
+
+    if (!vid.tiktok_id) {
+      skippedNoUrl++;
+      return;
+    }
 
     if (!seenIds.has(vid.tiktok_id)) {
       seenIds.add(vid.tiktok_id);

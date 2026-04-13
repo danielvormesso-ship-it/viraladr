@@ -41,6 +41,17 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
+    // Cleanup: delete rows older than 3 days for this user
+    const TTL_MS = 3 * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - TTL_MS).toISOString();
+    const dateCol = table === 'seen_videos' ? 'seen_at' : 'used_at';
+    const { error: cleanupErr } = await adminClient
+      .from(table)
+      .delete()
+      .eq('user_id', user_id)
+      .lt(dateCol, cutoff);
+    if (cleanupErr) console.error(`[save-seen-videos] cleanup error:`, cleanupErr);
+
     const rows = tiktok_ids
       .filter((id: any) => id != null && id !== '')
       .map((id: string) => ({ user_id, tiktok_id: id }));
