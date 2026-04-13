@@ -283,6 +283,32 @@ export const tiktokApi = {
     }
   },
 
+  async serveFromPool(
+    hashtagGroup: string,
+    userId: string,
+    limit = 50
+  ): Promise<{ videos: TikTokVideo[]; served: number; pool_available: number; hit_rate: number }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('pool-serve', {
+        body: { hashtag_group: hashtagGroup, user_id: userId, limit },
+      });
+      if (error) throw error;
+      const videos = ((data?.videos || []) as TikTokVideo[]).map(v => ({
+        ...v,
+        id: v.id || v.tiktok_id || '',
+      }));
+      return {
+        videos,
+        served: data?.served || 0,
+        pool_available: data?.pool_available || 0,
+        hit_rate: data?.hit_rate || 0,
+      };
+    } catch (err) {
+      console.warn('[serveFromPool] error, falling back to live:', err);
+      return { videos: [], served: 0, pool_available: 0, hit_rate: 0 };
+    }
+  },
+
   async getVideoCount(minViews = 0): Promise<number> {
     const userId = await getCurrentUserId();
 

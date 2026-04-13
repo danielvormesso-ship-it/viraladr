@@ -1123,14 +1123,56 @@ const Index = () => {
     setActiveTag(tag);
     setCacheStatus(null);
     activityTracker.logSearch(tag);
+
+    let liveTarget = targetCount;
+    let poolServedCount = 0;
+
     try {
       const mainTag = tag.includes(',') ? tag.split(',')[0].trim() : tag;
+
+      // ── Pool: try serving from pre-built pool first ──
+      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === mainTag) || p.tag === tag);
+      const poolGroupKey = preset?.label?.toLowerCase() || null;
+
+      if (poolGroupKey && !forceRefresh) {
+        try {
+          const userId = (await supabase.auth.getUser()).data.user?.id;
+          if (userId) {
+            const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, targetCount);
+            if (poolResult.served >= targetCount) {
+              // Pool satisfied 100% — instant results
+              const poolApproved = poolResult.videos.slice(0, targetCount);
+              tiktokApi.markVideosSeen(poolApproved.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+              setResultFilterMode("strict");
+              addVideosToUI(rankByBrazilianContent(poolApproved), true);
+              setCurrentIndex(0);
+              setCacheStatus(`Pool: ${poolApproved.length} vídeos prontos instantaneamente.`);
+              toast({ title: `#${mainTag} — Do pool!`, description: `${poolApproved.length} vídeos prontos.` });
+              return;
+            } else if (poolResult.served > 0) {
+              // Pool partial — show what we have, continue with live for deficit
+              const poolApproved = poolResult.videos;
+              tiktokApi.markVideosSeen(poolApproved.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+              setResultFilterMode("strict");
+              addVideosToUI(rankByBrazilianContent(poolApproved), true);
+              setCurrentIndex(0);
+              poolServedCount = poolApproved.length;
+              liveTarget = targetCount - poolServedCount;
+              setCacheStatus(`Pool: ${poolApproved.length} prontos + buscando ${liveTarget} ao vivo...`);
+            }
+          }
+        } catch (err) {
+          console.warn('[pool] error, continuing with live scrape:', err);
+        }
+      }
+
+      // ── Live scrape (full or deficit) ──
       // Load cursor: ref (same session) or localStorage (cross-session)
       if (singleScrapeCursorRef.current.tag !== mainTag) {
         singleScrapeCursorRef.current = { tag: mainTag, cursor: loadCursor(mainTag) };
       }
       const [result, seenIds, usedIds] = await Promise.all([
-        tiktokApi.scrapeByHashtag(mainTag, targetCount * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
+        tiktokApi.scrapeByHashtag(mainTag, liveTarget * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
         tiktokApi.getSeenVideoIds(),
         tiktokApi.getUsedVideoIds(),
       ]);
@@ -1141,33 +1183,17 @@ const Index = () => {
         saveCursor(mainTag, result.next_cursor);
       }
 
-      if (result.from_cache) {
-        setCacheStatus(`Cache ativo — #${mainTag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
-      } else {
-        setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
-      }
-
-      // [TRACK] Log suspicious videos in raw results
-      const TRACK_TITLE = 'loro';
-      for (const v of (result.videos || [])) {
-        if (v.title?.toLowerCase().includes(TRACK_TITLE)) {
-          const inSeen = v.tiktok_id ? seenIds.has(v.tiktok_id) : false;
-          console.warn(`[TRACK] RAW: "${v.title}" tiktok_id=${v.tiktok_id} author=${v.author} inSeenIds=${inSeen}`);
+      if (poolServedCount === 0) {
+        if (result.from_cache) {
+          setCacheStatus(`Cache ativo — #${mainTag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
+        } else {
+          setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
         }
       }
-      console.warn(`[TRACK] seenIds.size=${seenIds.size}, brutos=${(result.videos || []).length}`);
 
       const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
 
-      // [TRACK] Log if tracked video passed seen filter
-      for (const v of unseenVideos) {
-        if (v.title?.toLowerCase().includes(TRACK_TITLE)) {
-          console.warn(`[TRACK] PASSED SEEN FILTER: "${v.title}" tiktok_id=${v.tiktok_id}`);
-        }
-      }
-
       // Apply niche filter based on hashtag label
-      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === mainTag) || p.tag === tag);
       const nicheLabel = preset?.label || mainTag;
       const nicheDesc = `Vídeos do TikTok brasileiro sobre: ${nicheLabel}. Hashtag: #${mainTag}`;
       const nicheKeywords = (preset?.tag || tag).split(',').slice(0, 5);
@@ -1175,9 +1201,8 @@ const Index = () => {
       let approved = nicheFiltered.filter(v => !isForeignContent(v));
 
       // Retry: fetch up to 3 extra pages to reach target
-      const singleTarget = targetCount;
       let retryCursor = result.next_cursor;
-      for (let retry = 0; retry < 3 && approved.length < singleTarget && retryCursor; retry++) {
+      for (let retry = 0; retry < 3 && approved.length < liveTarget && retryCursor; retry++) {
         const retryResult = await tiktokApi.scrapeByHashtag(mainTag, 200, undefined, true, true, retryCursor);
         retryCursor = retryResult.next_cursor || null;
         if (retryCursor) { singleScrapeCursorRef.current.cursor = retryCursor; saveCursor(mainTag, retryCursor); }
@@ -1187,15 +1212,17 @@ const Index = () => {
         const retryApproved = retryNiche.filter(v => !isForeignContent(v));
         approved = dedupeVideos([...approved, ...retryApproved]);
       }
-      if (approved.length > targetCount) approved = approved.slice(0, targetCount);
+      if (approved.length > liveTarget) approved = approved.slice(0, liveTarget);
 
       tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
+      const totalApproved = poolServedCount + approved.length;
+
       if (approved.length > 0) {
         setResultFilterMode("strict");
-        addVideosToUI(rankByBrazilianContent(approved), true);
-        setCurrentIndex(0);
-      } else {
+        addVideosToUI(rankByBrazilianContent(approved), poolServedCount === 0);
+        if (poolServedCount === 0) setCurrentIndex(0);
+      } else if (poolServedCount === 0) {
         setResultFilterMode("strict");
         setVideos([]);
         videosInUIRef.current = { keys: new Set(), metas: new Set() };
@@ -1203,10 +1230,12 @@ const Index = () => {
       }
 
       toast({
-        title: forceRefresh ? `#${mainTag} — Novos vídeos! 🔄` : (result.from_cache ? `#${mainTag} — Do cache ✨` : `#${mainTag} — Busca concluída!`),
-        description: approved.length < targetCount
-          ? `${approved.length} de ${targetCount} vídeos encontrados — use Mesclar Hashtags para resultados completos.`
-          : `${approved.length} vídeos aprovados.`,
+        title: poolServedCount > 0
+          ? `#${mainTag} — Pool + live!`
+          : (forceRefresh ? `#${mainTag} — Novos vídeos!` : (result.from_cache ? `#${mainTag} — Do cache` : `#${mainTag} — Busca concluída!`)),
+        description: totalApproved < targetCount
+          ? `${totalApproved} de ${targetCount} vídeos encontrados${poolServedCount > 0 ? ` (${poolServedCount} do pool)` : ''} — use Mesclar Hashtags para resultados completos.`
+          : `${totalApproved} vídeos aprovados${poolServedCount > 0 ? ` (${poolServedCount} do pool)` : ''}.`,
       });
     } catch (err) {
       console.error('Scrape error:', err);
