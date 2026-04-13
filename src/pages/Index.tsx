@@ -990,7 +990,6 @@ const Index = () => {
         // I: show approved videos immediately after each round
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
-          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
@@ -1051,7 +1050,6 @@ const Index = () => {
         addLog(`🎯 Extra ${extra + 1}: +${newlyAdded} aprovados (${approvedVideos.length}/${totalTarget})`);
         if (newlyAdded > 0) {
           const batchToShow = approvedVideos.slice(beforeApproved);
-          tiktokApi.markVideosSeen(batchToShow.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
           if (firstProgressiveInsertAt === -1) {
             firstProgressiveInsertAt = videosRef.current.length;
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
@@ -1399,8 +1397,6 @@ const Index = () => {
       const remaining = totalTarget - progressiveShownCount;
       const trimmed = batch.slice(0, remaining);
       progressiveShownCount += trimmed.length;
-      // Mark as seen immediately when shown
-      tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
       if (firstProgressiveInsertAt === -1) {
         firstProgressiveInsertAt = videosRef.current.length;
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);

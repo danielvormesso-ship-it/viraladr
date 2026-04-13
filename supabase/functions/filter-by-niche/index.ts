@@ -17,21 +17,21 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
     `${idx + 1}. [${v.id}] "${v.title}" (autor: ${v.author || 'desconhecido'})`
   ).join('\n');
 
-  const prompt = `Você é um filtro de relevância de nicho para vídeos do TikTok. Seja FLEXÍVEL e PERMISSIVO.
+  const prompt = `Você é um filtro de relevância de nicho para vídeos do TikTok brasileiro.
 
 O usuário busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
 
-Analise CADA vídeo abaixo e responda se o TÍTULO tem ALGUMA relação com o nicho pedido.
+Analise CADA vídeo e decida se pertence ao nicho pedido.
 
-CRITÉRIOS — SEJA PERMISSIVO (na dúvida, APROVE):
-- APROVAR se o título tem QUALQUER relação com o nicho, mesmo que indireta
-- APROVAR títulos genéricos ou ambíguos (podem ser do nicho)
-- APROVAR títulos curtos ou com emojis (não temos como saber se são irrelevantes)
-- APROVAR unboxing, haul, recebidos, comprinhas — são relevantes para qualquer nicho de produtos
-- REJEITAR APENAS se o título é CLARAMENTE de outro nicho completamente diferente (ex: gameplay, futebol, política quando o nicho é organização)
-- REJEITAR títulos em idiomas estrangeiros (não-português)
-- Na dúvida entre SIM e NÃO → APROVAR
+REGRAS:
+- APROVAR títulos em português que tenham relação com o nicho (direta ou indireta)
+- APROVAR títulos curtos ou genéricos em português (ex: "kkk", "olha isso", "que situação", "mds") — são BR legítimos
+- APROVAR títulos sem texto útil ou "Vídeo sem título" — dar benefício da dúvida
+- REJEITAR títulos em inglês ou outros idiomas estrangeiros
+- REJEITAR títulos que são CLARAMENTE de outro nicho (ex: kpop, mewing, makeup tutorial, gameplay, futebol quando o nicho é pegadinha)
+- REJEITAR filtros/trends que não têm relação com o nicho (ex: "mewing filter", "AI filter", "manga filter")
+- Na dúvida entre APROVAR e REJEITAR → APROVAR se o título é em português, REJEITAR se é em inglês
 
 Responda APENAS com JSON puro:
 {"approved": ["id1", "id2", ...], "rejected": ["id3", ...]}
@@ -94,10 +94,22 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
+    // Auto-approve videos with empty/generic titles (no useful signal for AI)
+    const NO_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
+    const autoApproved: string[] = [];
+    const needsAI: VideoToFilter[] = [];
+    for (const v of videos) {
+      if (NO_TITLE_RE.test(v.title.trim())) {
+        autoApproved.push(v.id);
+      } else {
+        needsAI.push(v);
+      }
+    }
+
     const BATCH_SIZE = 60;
     const batches: VideoToFilter[][] = [];
-    for (let i = 0; i < videos.length; i += BATCH_SIZE) {
-      batches.push(videos.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < needsAI.length; i += BATCH_SIZE) {
+      batches.push(needsAI.slice(i, i + BATCH_SIZE));
     }
 
     // Run ALL batches in PARALLEL for maximum speed
@@ -105,8 +117,9 @@ serve(async (req) => {
       batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY))
     );
 
-    const approvedIds = new Set<string>();
+    const approvedIds = new Set<string>(autoApproved);
     results.forEach(ids => ids.forEach(id => approvedIds.add(id)));
+    if (autoApproved.length > 0) console.log(`Niche filter: ${autoApproved.length} auto-approved (no title)`);
 
     console.log(`Niche filter: ${approvedIds.size}/${videos.length} approved for "${nicheDescription}"`);
 
