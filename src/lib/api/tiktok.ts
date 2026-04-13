@@ -240,12 +240,14 @@ export const tiktokApi = {
   async markVideosSeen(tiktokIds: string[]): Promise<void> {
     const validIds = tiktokIds.filter(id => id != null && id !== '');
     if (validIds.length === 0) return;
+    console.warn(`[TRACK] markVideosSeen: saving ${validIds.length} ids`);
     try {
       const userId = await getCurrentUserId();
       const { data, error } = await supabase.functions.invoke('save-seen-videos', {
         body: { tiktok_ids: validIds, table: 'seen_videos', user_id: userId },
       });
       if (error) console.error('[markVideosSeen] edge function error:', error);
+      else console.warn(`[TRACK] markVideosSeen: SUCCESS, response:`, data);
     } catch (err) {
       console.warn('Erro ao salvar seen_videos:', err);
     }

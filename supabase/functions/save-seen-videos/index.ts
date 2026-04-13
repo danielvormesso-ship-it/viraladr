@@ -56,6 +56,8 @@ Deno.serve(async (req) => {
       .filter((id: any) => id != null && id !== '')
       .map((id: string) => ({ user_id, tiktok_id: id }));
 
+    console.log(`[save-seen-videos] user=${user_id} table=${table} ids=${rows.length} first5=${rows.slice(0, 5).map(r => r.tiktok_id).join(',')}`);
+
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 50) {
       const batch = rows.slice(i, i + 50);

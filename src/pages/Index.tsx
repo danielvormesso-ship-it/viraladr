@@ -1129,7 +1129,24 @@ const Index = () => {
         setCacheStatus(`${result.new_scraped} novos vídeos coletados. ${result.videos_found} disponíveis.`);
       }
 
+      // [TRACK] Log suspicious videos in raw results
+      const TRACK_TITLE = 'loro';
+      for (const v of (result.videos || [])) {
+        if (v.title?.toLowerCase().includes(TRACK_TITLE)) {
+          const inSeen = v.tiktok_id ? seenIds.has(v.tiktok_id) : false;
+          console.warn(`[TRACK] RAW: "${v.title}" tiktok_id=${v.tiktok_id} author=${v.author} inSeenIds=${inSeen}`);
+        }
+      }
+      console.warn(`[TRACK] seenIds.size=${seenIds.size}, brutos=${(result.videos || []).length}`);
+
       const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+
+      // [TRACK] Log if tracked video passed seen filter
+      for (const v of unseenVideos) {
+        if (v.title?.toLowerCase().includes(TRACK_TITLE)) {
+          console.warn(`[TRACK] PASSED SEEN FILTER: "${v.title}" tiktok_id=${v.tiktok_id}`);
+        }
+      }
 
       // Apply niche filter based on hashtag label
       const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === tag) || p.tag === tag);
