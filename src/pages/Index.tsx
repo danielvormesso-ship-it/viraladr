@@ -114,7 +114,7 @@ function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
 }
 
 // Foreign content detection — REMOVE (not rank) videos that are clearly non-Portuguese
-const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live)\b/gi;
+const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live|scary|elevator|prank|challenge|funny|amazing|awesome|incredible|watch|check|guys|hey|omg|wtf|lol|bro|dude|girl|how|why|really|actually|literally|basically|people|money|world|gone|wrong|wait|part|real|best|worst|ever|must|much|most|didn|wasn|won|isn|don|can)\b/gi;
 const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier)\b/gi;
 const FOREIGN_FR_WORDS = /\b(c'est|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|très|même|être|faire|comme|peut|donc|alors|cette|aussi|encore|entre|après|avant|rien|toujours|jamais|quelque|chaque|depuis|pendant|sans|vers|ici|ailleurs)\b/gi;
 const FOREIGN_IT_WORDS = /\b(questa|quello|perché|anche|ancora|sempre|quando|dove|come|cosa|ogni|tutto|niente|qualcosa|qualcuno|nessuno|troppo|abbastanza|già|adesso|prima|dopo|insieme|senza|contro|circa)\b/gi;
@@ -157,6 +157,8 @@ const Index = () => {
   useEffect(() => { videosRef.current = videos; }, [videos]);
   // Backstop dedup: tracks all keys+metas currently in the UI
   const videosInUIRef = useRef<{ keys: Set<string>; metas: Set<string> }>({ keys: new Set(), metas: new Set() });
+  // Cursor for single hashtag scrape — persists between searches of same tag
+  const singleScrapeCursorRef = useRef<{ tag: string; cursor: string | null }>({ tag: '', cursor: null });
 
   const addVideosToUI = useCallback((newVideos: TikTokVideo[], replace = false) => {
     if (replace) {
@@ -1106,12 +1108,20 @@ const Index = () => {
     setCacheStatus(null);
     activityTracker.logSearch(tag);
     try {
+      // Reset cursor if switching to a different hashtag
+      if (singleScrapeCursorRef.current.tag !== tag) {
+        singleScrapeCursorRef.current = { tag, cursor: null };
+      }
       const [result, seenIds, usedIds] = await Promise.all([
-        tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh),
+        tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
         tiktokApi.getSeenVideoIds(),
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
+      // Save cursor for next search of same tag
+      if (result.next_cursor) {
+        singleScrapeCursorRef.current.cursor = result.next_cursor;
+      }
 
       if (result.from_cache) {
         setCacheStatus(`Cache ativo — #${tag} já foi buscada recentemente. ${result.videos_found} vídeos disponíveis.`);
@@ -1120,11 +1130,20 @@ const Index = () => {
       }
 
       const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
-      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
-      if (unseenVideos.length > 0) {
+      // Apply niche filter based on hashtag label
+      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === tag) || p.tag === tag);
+      const nicheLabel = preset?.label || tag;
+      const nicheDesc = `Vídeos do TikTok brasileiro sobre: ${nicheLabel}. Hashtag: #${tag}`;
+      const nicheKeywords = (preset?.tag || tag).split(',').slice(0, 5);
+      const nicheFiltered = await applyNicheTitleFilter(unseenVideos, nicheDesc, nicheKeywords);
+      const approved = nicheFiltered.filter(v => !isForeignContent(v));
+
+      tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
+
+      if (approved.length > 0) {
         setResultFilterMode("strict");
-        addVideosToUI(rankByBrazilianContent(unseenVideos), true);
+        addVideosToUI(rankByBrazilianContent(approved), true);
         setCurrentIndex(0);
       } else {
         setResultFilterMode("strict");
@@ -1137,7 +1156,7 @@ const Index = () => {
         title: forceRefresh ? `#${tag} — Novos vídeos! 🔄` : (result.from_cache ? `#${tag} — Do cache ✨` : `#${tag} — Busca concluída!`),
         description: result.from_cache
           ? `${result.videos_found} vídeos disponíveis (sem custo, usando cache).`
-          : `${result.new_scraped} novos + ${result.videos_found} disponíveis.`,
+          : `${result.new_scraped} novos + ${approved.length} aprovados.`,
       });
     } catch (err) {
       console.error('Scrape error:', err);
