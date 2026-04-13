@@ -1102,7 +1102,7 @@ const Index = () => {
   // Keep ref updated so handleNext can trigger re-search
   reSearchRef.current = aiSearchDescription.trim() ? handleAiSearch : null;
 
-  const executeSingleScrape = async (tag: string, forceRefresh = false) => {
+  const executeSingleScrape = async (tag: string, forceRefresh = false, targetCount = 50) => {
     setIsScraping(true);
     setActiveTag(tag);
     setCacheStatus(null);
@@ -1113,7 +1113,7 @@ const Index = () => {
         singleScrapeCursorRef.current = { tag, cursor: null };
       }
       const [result, seenIds, usedIds] = await Promise.all([
-        tiktokApi.scrapeByHashtag(tag, 200, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
+        tiktokApi.scrapeByHashtag(tag, targetCount * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
         tiktokApi.getSeenVideoIds(),
         tiktokApi.getUsedVideoIds(),
       ]);
@@ -1140,7 +1140,7 @@ const Index = () => {
       let approved = nicheFiltered.filter(v => !isForeignContent(v));
 
       // Retry: fetch up to 3 extra pages to reach target
-      const singleTarget = 50;
+      const singleTarget = targetCount;
       let retryCursor = result.next_cursor;
       for (let retry = 0; retry < 3 && approved.length < singleTarget && retryCursor; retry++) {
         const retryResult = await tiktokApi.scrapeByHashtag(tag, 200, undefined, true, true, retryCursor);
@@ -1152,6 +1152,7 @@ const Index = () => {
         const retryApproved = retryNiche.filter(v => !isForeignContent(v));
         approved = dedupeVideos([...approved, ...retryApproved]);
       }
+      if (approved.length > targetCount) approved = approved.slice(0, targetCount);
 
       tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
@@ -1724,7 +1725,7 @@ const Index = () => {
   const handleConfirmAction = () => {
     setConfirmDialog({ open: false, type: "single" });
     if (confirmDialog.type === "single" && confirmDialog.tag) {
-      executeSingleScrape(confirmDialog.tag);
+      executeSingleScrape(confirmDialog.tag, false, tagQuantities[confirmDialog.tag] || 50);
     } else if (confirmDialog.type === "merge") {
       executeMergeScrape();
     } else if (confirmDialog.type === "foryou") {
@@ -2105,7 +2106,7 @@ const Index = () => {
             <AlertDialogDescription className="space-y-2">
               {confirmDialog.type === "single" ? (
                 <>
-                  <p>Buscar <strong>50 vídeos</strong> de <strong>#{confirmDialog.tag}</strong>?</p>
+                  <p>Buscar <strong>{tagQuantities[confirmDialog.tag!] || 50} vídeos</strong> de <strong>#{confirmDialog.tag}</strong>?</p>
                   <p className="text-xs text-muted-foreground">
                     Se os vídeos já estiverem no cache (últimas 6h), não haverá custo.
                     Caso contrário, usará Apify como fallback (~$0.12).
@@ -2525,7 +2526,7 @@ const Index = () => {
                   <>
                     <span>💾 {cacheStatus}</span>
                     {activeTag && activeTag !== "mesclar" && activeTag !== "foryou" && activeTag !== "ia" && (
-                      <button onClick={() => executeSingleScrape(activeTag, true)} className="ml-auto flex items-center gap-1 text-primary hover:text-primary/80 font-medium transition-colors hover:scale-105 active:scale-95">
+                      <button onClick={() => executeSingleScrape(activeTag, true, tagQuantities[activeTag] || 50)} className="ml-auto flex items-center gap-1 text-primary hover:text-primary/80 font-medium transition-colors hover:scale-105 active:scale-95">
                         <RefreshCw className="h-2.5 w-2.5" />
                         Atualizar
                       </button>
