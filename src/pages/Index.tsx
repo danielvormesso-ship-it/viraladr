@@ -114,7 +114,7 @@ function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
 }
 
 // Foreign content detection — REMOVE (not rank) videos that are clearly non-Portuguese
-const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live|scary|elevator|prank|challenge|funny|amazing|awesome|incredible|watch|check|guys|hey|omg|wtf|lol|bro|dude|girl|how|why|really|actually|literally|basically|people|money|world|gone|wrong|wait|part|real|best|worst|ever|must|much|most|didn|wasn|won|isn|don|can)\b/gi;
+const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live|scary|elevator|prank|challenge|funny|amazing|awesome|incredible|watch|check|guys|hey|omg|wtf|lol|bro|dude|girl|how|why|really|actually|literally|basically|people|money|world|gone|wrong|wait|part|real|best|worst|ever|must|much|most|didn|wasn|won|isn|don|can|fun|try|home|love|princess|dance|dancing|music|song|cute|sweet|hot|cool|old|new|big|little|small|long|short|high|low|fast|slow|happy|sad|mad|bad|let|get|put|set|run|sit|stand|move|play|hit|cut|buy|sell|kill|win|lose|eat|drink|sleep)\b/gi;
 const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier)\b/gi;
 const FOREIGN_FR_WORDS = /\b(c'est|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|très|même|être|faire|comme|peut|donc|alors|cette|aussi|encore|entre|après|avant|rien|toujours|jamais|quelque|chaque|depuis|pendant|sans|vers|ici|ailleurs)\b/gi;
 const FOREIGN_IT_WORDS = /\b(questa|quello|perché|anche|ancora|sempre|quando|dove|come|cosa|ogni|tutto|niente|qualcosa|qualcuno|nessuno|troppo|abbastanza|già|adesso|prima|dopo|insieme|senza|contro|circa)\b/gi;
@@ -1137,7 +1137,17 @@ const Index = () => {
       const nicheDesc = `Vídeos do TikTok brasileiro sobre: ${nicheLabel}. Hashtag: #${tag}`;
       const nicheKeywords = (preset?.tag || tag).split(',').slice(0, 5);
       const nicheFiltered = await applyNicheTitleFilter(unseenVideos, nicheDesc, nicheKeywords);
-      const approved = nicheFiltered.filter(v => !isForeignContent(v));
+      let approved = nicheFiltered.filter(v => !isForeignContent(v));
+
+      // Retry: if too many filtered out and cursor available, fetch one more page
+      if (approved.length < unseenVideos.length * 0.5 && result.next_cursor) {
+        const result2 = await tiktokApi.scrapeByHashtag(tag, 200, undefined, true, true, result.next_cursor);
+        if (result2.next_cursor) singleScrapeCursorRef.current.cursor = result2.next_cursor;
+        const unseen2 = (result2.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+        const niche2 = await applyNicheTitleFilter(unseen2, nicheDesc, nicheKeywords);
+        const approved2 = niche2.filter(v => !isForeignContent(v));
+        approved = dedupeVideos([...approved, ...approved2]);
+      }
 
       tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 

@@ -84,7 +84,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
     const dur = item?.duration || 0;
     const w = item?.width || 0;
     const h = item?.height || 0;
-    if (w > 0 && h > 0 && h < w * 1.5) return;
+    if (w > 0 && h > 0 && h < w * 1.2) return;
     if (dur <= 0 || dur > maxDuration) return;
     if (requireBrazilian && !isBrazilianContent(item)) return;
 
