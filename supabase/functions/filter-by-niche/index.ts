@@ -17,24 +17,26 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
     `${idx + 1}. [${v.id}] "${v.title}" (autor: ${v.author || 'desconhecido'})`
   ).join('\n');
 
-  const prompt = `Você é um filtro de relevância de nicho para vídeos do TikTok brasileiro.
+  const prompt = `Você é um filtro RIGOROSO de nicho para vídeos do TikTok brasileiro.
 
-O usuário busca: "${nicheDescription}"
+O editor busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
 
-Analise CADA vídeo e decida se pertence ao nicho pedido.
+APROVAR apenas:
+- Títulos claramente relacionados ao nicho pedido
+- Títulos curtos/genéricos em PT sem sinal de outro nicho ("kkk", "olha", "que situação", "mds", "kkkk")
+- Títulos em PT ambíguos que PODERIAM ser do nicho
 
-REGRAS:
-- APROVAR títulos em português que tenham relação com o nicho (direta ou indireta)
-- APROVAR títulos curtos ou genéricos em português (ex: "kkk", "olha isso", "que situação", "mds") — são BR legítimos
-- APROVAR títulos sem texto útil ou "Vídeo sem título" — dar benefício da dúvida
-- REJEITAR títulos em inglês ou outros idiomas estrangeiros
-- REJEITAR títulos que são CLARAMENTE de outro nicho (ex: kpop, mewing, makeup tutorial, gameplay, futebol quando o nicho é pegadinha)
-- REJEITAR filtros/trends que não têm relação com o nicho (ex: "mewing filter", "AI filter", "manga filter")
-- Na dúvida entre APROVAR e REJEITAR → APROVAR se o título é em português, REJEITAR se é em inglês
+REJEITAR obrigatoriamente:
+- Títulos em inglês, espanhol, alemão ou qualquer idioma estrangeiro
+- Títulos com nomes de artistas, cantores ou bandas (ex: Gustavo Lima, MC, DJ, K-pop)
+- Títulos claramente de outro nicho: música, show, receita, maquiagem, fitness, futebol, gameplay, notícia, política, romance, viagem, motivação
+- Títulos de trends/filtros: mewing, AI filter, manga filter, rate me
 
-Responda APENAS com JSON puro:
-{"approved": ["id1", "id2", ...], "rejected": ["id3", ...]}
+REGRA FINAL: título claramente de outro nicho → REJEITAR. Ambíguo ou genérico em PT → APROVAR.
+
+Responda APENAS com JSON puro sem markdown:
+{"approved": ["id1", "id2"], "rejected": ["id3"]}
 
 Vídeos:
 ${videoList}`;
