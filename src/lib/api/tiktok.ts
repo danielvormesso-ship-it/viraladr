@@ -228,7 +228,7 @@ export const tiktokApi = {
         .from('seen_videos')
         .select('tiktok_id')
         .eq('user_id', userId)
-        .gte('seen_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+        .gte('seen_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
       if (error) throw error;
       return new Set<string>((data || []).map((r: any) => r.tiktok_id));
     } catch (err) {
@@ -260,7 +260,7 @@ export const tiktokApi = {
         .from('used_videos')
         .select('tiktok_id')
         .eq('user_id', userId)
-        .gte('used_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+        .gte('used_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
       if (error) throw error;
       return new Set<string>((data || []).map((r: any) => r.tiktok_id));
     } catch (err) {

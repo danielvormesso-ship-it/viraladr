@@ -160,6 +160,21 @@ const Index = () => {
   // Cursor for single hashtag scrape — persists between searches of same tag
   const singleScrapeCursorRef = useRef<{ tag: string; cursor: string | null }>({ tag: '', cursor: null });
 
+  // Persist cursors in localStorage (survives F5/browser close, TTL 24h)
+  const CURSOR_TTL = 24 * 60 * 60 * 1000;
+  const saveCursor = useCallback((tag: string, cursor: string) => {
+    try { localStorage.setItem(`cursor_${tag}`, JSON.stringify({ cursor, updatedAt: Date.now() })); } catch {}
+  }, []);
+  const loadCursor = useCallback((tag: string): string | null => {
+    try {
+      const raw = localStorage.getItem(`cursor_${tag}`);
+      if (!raw) return null;
+      const { cursor, updatedAt } = JSON.parse(raw);
+      if (Date.now() - updatedAt > CURSOR_TTL) { localStorage.removeItem(`cursor_${tag}`); return null; }
+      return cursor || null;
+    } catch { return null; }
+  }, []);
+
   const addVideosToUI = useCallback((newVideos: TikTokVideo[], replace = false) => {
     if (replace) {
       videosInUIRef.current = { keys: new Set(), metas: new Set() };
@@ -796,6 +811,8 @@ const Index = () => {
       const insertedKeys = new Set<string>();
       // Track TikWM cursor per hashtag so each round fetches new pages
       const cursorMap = new Map<string, string>();
+      // Seed cursorMap from localStorage (cross-session persistence)
+      for (const t of newTags) { const c = loadCursor(t); if (c) cursorMap.set(t, c); }
 
       const applyFilters = (vids: TikTokVideo[]) => vids.filter(v => {
         if (v.views < filters.minViews || v.likes < filters.minLikes) return false;
@@ -866,6 +883,7 @@ const Index = () => {
                   totalNew += result.new_scraped || 0;
                   if (result.next_cursor) {
                     cursorMap.set(tag, result.next_cursor);
+                    saveCursor(tag, result.next_cursor);
                   } else {
                     exhaustedTags.add(tag);
                   }
@@ -1107,9 +1125,9 @@ const Index = () => {
     activityTracker.logSearch(tag);
     try {
       const mainTag = tag.includes(',') ? tag.split(',')[0].trim() : tag;
-      // Reset cursor if switching to a different hashtag
+      // Load cursor: ref (same session) or localStorage (cross-session)
       if (singleScrapeCursorRef.current.tag !== mainTag) {
-        singleScrapeCursorRef.current = { tag: mainTag, cursor: null };
+        singleScrapeCursorRef.current = { tag: mainTag, cursor: loadCursor(mainTag) };
       }
       const [result, seenIds, usedIds] = await Promise.all([
         tiktokApi.scrapeByHashtag(mainTag, targetCount * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
@@ -1117,9 +1135,10 @@ const Index = () => {
         tiktokApi.getUsedVideoIds(),
       ]);
       for (const id of usedIds) seenIds.add(id);
-      // Save cursor for next search of same tag
+      // Save cursor for next search of same tag (ref + localStorage)
       if (result.next_cursor) {
         singleScrapeCursorRef.current.cursor = result.next_cursor;
+        saveCursor(mainTag, result.next_cursor);
       }
 
       if (result.from_cache) {
@@ -1161,7 +1180,7 @@ const Index = () => {
       for (let retry = 0; retry < 3 && approved.length < singleTarget && retryCursor; retry++) {
         const retryResult = await tiktokApi.scrapeByHashtag(mainTag, 200, undefined, true, true, retryCursor);
         retryCursor = retryResult.next_cursor || null;
-        if (retryCursor) singleScrapeCursorRef.current.cursor = retryCursor;
+        if (retryCursor) { singleScrapeCursorRef.current.cursor = retryCursor; saveCursor(mainTag, retryCursor); }
         const retryUnseen = (retryResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
         if (retryUnseen.length === 0) break;
         const retryNiche = await applyNicheTitleFilter(retryUnseen, nicheDesc, nicheKeywords);
@@ -1269,6 +1288,8 @@ const Index = () => {
     const sessionSeenIds = new Set<string>();
     // Track TikWM cursor per hashtag so each round fetches new pages
     const cursorMap = new Map<string, string>();
+    // Seed cursorMap from localStorage (cross-session persistence)
+    for (const t of expandedTags) { const c = loadCursor(t); if (c) cursorMap.set(t, c); }
 
     // D: retry pool — sub-tags from selected presets not used in the initial expanded set
     const retryTagPool: string[] = [];
@@ -1329,6 +1350,7 @@ const Index = () => {
                 totalNew += result.new_scraped || 0;
                 if (result.next_cursor) {
                   cursorMap.set(tag, result.next_cursor);
+                  saveCursor(tag, result.next_cursor);
                 } else {
                   exhaustedTags.add(tag);
                 }

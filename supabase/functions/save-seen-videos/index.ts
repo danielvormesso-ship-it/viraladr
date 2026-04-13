@@ -41,8 +41,8 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    // Cleanup: delete rows older than 3 days for this user
-    const TTL_MS = 3 * 24 * 60 * 60 * 1000;
+    // Cleanup: delete rows older than 7 days for this user
+    const TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const cutoff = new Date(Date.now() - TTL_MS).toISOString();
     const dateCol = table === 'seen_videos' ? 'seen_at' : 'used_at';
     const { error: cleanupErr } = await adminClient
