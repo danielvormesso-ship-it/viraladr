@@ -8,7 +8,7 @@ import { activityTracker } from "@/lib/activityTracker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { tiktokApi, TikTokVideo, getVideoKey, dedupeVideos } from "@/lib/api/tiktok";
+import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -155,6 +155,32 @@ const Index = () => {
   const videosRef = useRef<TikTokVideo[]>([]);
   // Keep ref in sync with state so async closures always read latest
   useEffect(() => { videosRef.current = videos; }, [videos]);
+  // Backstop dedup: tracks all keys+metas currently in the UI
+  const videosInUIRef = useRef<{ keys: Set<string>; metas: Set<string> }>({ keys: new Set(), metas: new Set() });
+
+  const addVideosToUI = useCallback((newVideos: TikTokVideo[], replace = false) => {
+    if (replace) {
+      videosInUIRef.current = { keys: new Set(), metas: new Set() };
+      const deduped = dedupeVideos(newVideos);
+      for (const v of deduped) {
+        videosInUIRef.current.keys.add(getVideoKey(v));
+        const m = getVideoMeta(v);
+        if (m !== '||') videosInUIRef.current.metas.add(m);
+      }
+      setVideos(deduped);
+      return;
+    }
+    const filtered = newVideos.filter(v => {
+      const key = getVideoKey(v);
+      if (videosInUIRef.current.keys.has(key)) return false;
+      const meta = getVideoMeta(v);
+      if (meta !== '||' && videosInUIRef.current.metas.has(meta)) return false;
+      videosInUIRef.current.keys.add(key);
+      if (meta !== '||') videosInUIRef.current.metas.add(meta);
+      return true;
+    });
+    if (filtered.length > 0) setVideos(prev => [...prev, ...filtered]);
+  }, []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [downloadedCount, setDownloadedCount] = useState(0);
@@ -267,6 +293,7 @@ const Index = () => {
   useEffect(() => {
     // Não carregar vídeos persistidos ao dar F5: sessão sempre começa limpa
     setVideos([]);
+    videosInUIRef.current = { keys: new Set(), metas: new Set() };
     setCurrentIndex(0);
     setIsLoading(false);
   }, []);
@@ -967,13 +994,7 @@ const Index = () => {
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
           }
           setResultFilterMode("ai");
-          const newBatch = rankByBrazilianContent(batchToShow).filter(v => {
-            const key = getVideoKey(v);
-            if (insertedKeys.has(key)) return false;
-            insertedKeys.add(key);
-            return true;
-          });
-          if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
+          addVideosToUI(rankByBrazilianContent(batchToShow));
         }
       }
 
@@ -1034,13 +1055,7 @@ const Index = () => {
             setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
           }
           setResultFilterMode("ai");
-          const newBatch = rankByBrazilianContent(batchToShow).filter(v => {
-            const key = getVideoKey(v);
-            if (insertedKeys.has(key)) return false;
-            insertedKeys.add(key);
-            return true;
-          });
-          if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
+          addVideosToUI(rankByBrazilianContent(batchToShow));
         }
       }
 
@@ -1055,19 +1070,10 @@ const Index = () => {
 
       if (unique.length > 0) {
         setResultFilterMode("ai");
-        const finalBatch = rankByBrazilianContent(unique).filter(v => {
-          const key = getVideoKey(v);
-          if (insertedKeys.has(key)) return false;
-          insertedKeys.add(key);
-          return true;
-        });
-        if (finalBatch.length > 0 || firstProgressiveInsertAt === -1) {
-          setVideos(prev => {
-            const merged = [...prev, ...finalBatch];
-            if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
-            return merged;
-          });
+        if (firstProgressiveInsertAt === -1) {
+          setCurrentIndex(videosRef.current.length === 0 ? 0 : videosRef.current.length);
         }
+        addVideosToUI(rankByBrazilianContent(unique));
         detectOffTopicVideos(unique, newTags);
         addLog(`✅ ${unique.length} vídeos${genderFilter !== "none" ? ` (${genderFilter === "female" ? "femininos" : "masculinos"})` : ""} prontos!`);
       } else if (firstProgressiveInsertAt === -1) {
@@ -1118,11 +1124,12 @@ const Index = () => {
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(rankByBrazilianContent(dedupeVideos(unseenVideos)));
+        addVideosToUI(rankByBrazilianContent(unseenVideos), true);
         setCurrentIndex(0);
       } else {
         setResultFilterMode("strict");
         setVideos([]);
+        videosInUIRef.current = { keys: new Set(), metas: new Set() };
         setCurrentIndex(0);
       }
 
@@ -1348,13 +1355,7 @@ const Index = () => {
         setCurrentIndex(firstProgressiveInsertAt === 0 ? 0 : firstProgressiveInsertAt);
       }
       setResultFilterMode("ai");
-      const newBatch = rankByBrazilianContent(trimmed).filter(v => {
-        const key = getVideoKey(v);
-        if (insertedKeys.has(key)) return false;
-        insertedKeys.add(key);
-        return true;
-      });
-      if (newBatch.length > 0) setVideos(prev => [...prev, ...newBatch]);
+      addVideosToUI(rankByBrazilianContent(trimmed));
     };
 
     if (allGeneric) {
@@ -1632,19 +1633,10 @@ const Index = () => {
 
     setResultFilterMode("ai");
     if (unique.length > 0) {
-      const finalBatch = rankByBrazilianContent(unique).filter(v => {
-        const key = getVideoKey(v);
-        if (insertedKeys.has(key)) return false;
-        insertedKeys.add(key);
-        return true;
-      });
-      if (finalBatch.length > 0 || firstProgressiveInsertAt === -1) {
-        setVideos(prev => {
-          const merged = [...prev, ...finalBatch];
-          if (firstProgressiveInsertAt === -1) setCurrentIndex(prev.length === 0 ? 0 : prev.length);
-          return merged;
-        });
+      if (firstProgressiveInsertAt === -1) {
+        setCurrentIndex(videosRef.current.length === 0 ? 0 : videosRef.current.length);
       }
+      addVideosToUI(rankByBrazilianContent(unique));
       detectOffTopicVideos(unique, expandedTags);
     }
     setScrapeProgress("");
@@ -1678,7 +1670,7 @@ const Index = () => {
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
-        setVideos(rankByBrazilianContent(dedupeVideos(unseenVideos)));
+        addVideosToUI(rankByBrazilianContent(unseenVideos), true);
         setCurrentIndex(0);
       }
 
@@ -2450,6 +2442,7 @@ const Index = () => {
                   className="h-9 w-9 text-muted-foreground hover:text-destructive rounded-xl hover:scale-[1.06] active:scale-[0.94] hover:bg-destructive/5 transition-all duration-200"
                   onClick={() => {
                     setVideos([]);
+                    videosInUIRef.current = { keys: new Set(), metas: new Set() };
                     setCurrentIndex(0);
                     setDownloadedCount(0);
                     setCacheStatus(null);

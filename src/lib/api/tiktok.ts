@@ -38,6 +38,19 @@ function normalizeUrl(url: string | null | undefined): string {
   return url.trim().toLowerCase().split('#')[0].split('?')[0].replace(/\/+$/, '');
 }
 
+// Normalized content signature for secondary dedup (strips emojis, punctuation, truncates)
+export function getVideoMeta(video: TikTokVideo): string {
+  const author = (video.author || '').toLowerCase().trim();
+  const rawTitle = (video.title || '').toLowerCase()
+    .replace(/[\u{1F600}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{1F000}-\u{1FAFF}]/gu, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30);
+  const dur = video.duration || '';
+  return `${author}|${rawTitle}|${dur}`;
+}
+
 export function getVideoKey(video: TikTokVideo): string {
   if (video.tiktok_id) return `id:${video.tiktok_id}`;
   const source = normalizeUrl(video.source_url);
@@ -54,7 +67,7 @@ export function dedupeVideos(videos: TikTokVideo[]): TikTokVideo[] {
     const key = getVideoKey(video);
     if (seenKeys.has(key)) return false;
     // Secondary dedup by content signature (catches reposts with different tiktok_ids)
-    const meta = `${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}|${video.duration || ''}`;
+    const meta = getVideoMeta(video);
     if (meta !== '||' && seenMeta.has(meta)) return false;
     seenKeys.add(key);
     seenMeta.add(meta);
