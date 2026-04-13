@@ -1139,14 +1139,18 @@ const Index = () => {
       const nicheFiltered = await applyNicheTitleFilter(unseenVideos, nicheDesc, nicheKeywords);
       let approved = nicheFiltered.filter(v => !isForeignContent(v));
 
-      // Retry: if too many filtered out and cursor available, fetch one more page
-      if (approved.length < unseenVideos.length * 0.5 && result.next_cursor) {
-        const result2 = await tiktokApi.scrapeByHashtag(tag, 200, undefined, true, true, result.next_cursor);
-        if (result2.next_cursor) singleScrapeCursorRef.current.cursor = result2.next_cursor;
-        const unseen2 = (result2.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
-        const niche2 = await applyNicheTitleFilter(unseen2, nicheDesc, nicheKeywords);
-        const approved2 = niche2.filter(v => !isForeignContent(v));
-        approved = dedupeVideos([...approved, ...approved2]);
+      // Retry: fetch up to 3 extra pages to reach target
+      const singleTarget = 50;
+      let retryCursor = result.next_cursor;
+      for (let retry = 0; retry < 3 && approved.length < singleTarget && retryCursor; retry++) {
+        const retryResult = await tiktokApi.scrapeByHashtag(tag, 200, undefined, true, true, retryCursor);
+        retryCursor = retryResult.next_cursor || null;
+        if (retryCursor) singleScrapeCursorRef.current.cursor = retryCursor;
+        const retryUnseen = (retryResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+        if (retryUnseen.length === 0) break;
+        const retryNiche = await applyNicheTitleFilter(retryUnseen, nicheDesc, nicheKeywords);
+        const retryApproved = retryNiche.filter(v => !isForeignContent(v));
+        approved = dedupeVideos([...approved, ...retryApproved]);
       }
 
       tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
