@@ -22,18 +22,17 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
 O editor busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
 
-APROVAR apenas:
+APROVAR:
 - Títulos claramente relacionados ao nicho pedido
-- Títulos curtos/genéricos em PT sem sinal de outro nicho ("kkk", "olha", "que situação", "mds", "kkkk")
-- Títulos em PT ambíguos que PODERIAM ser do nicho
+- Títulos curtos/genéricos em PT sem sinal de outro nicho ("kkk", "olha", "kkkk", "mds")
+- Títulos ambíguos em PT que PODERIAM ser do nicho
 
-REJEITAR obrigatoriamente:
-- Títulos em inglês, espanhol, alemão ou qualquer idioma estrangeiro
-- Títulos com nomes de artistas, cantores ou bandas (ex: Gustavo Lima, MC, DJ, K-pop)
-- Títulos claramente de outro nicho: música, show, receita, maquiagem, fitness, futebol, gameplay, notícia, política, romance, viagem, motivação
-- Títulos de trends/filtros: mewing, AI filter, manga filter, rate me
+REJEITAR:
+- Títulos em inglês, espanhol, alemão ou outro idioma estrangeiro
+- Títulos claramente de um nicho DIFERENTE do pedido
+- Títulos de trends/filtros sem relação com o nicho (mewing, AI filter, manga filter)
 
-REGRA FINAL: título claramente de outro nicho → REJEITAR. Ambíguo ou genérico em PT → APROVAR.
+REGRA FINAL: Se claramente é outro nicho → REJEITAR. Se ambíguo ou genérico em PT → APROVAR.
 
 Responda APENAS com JSON puro sem markdown:
 {"approved": ["id1", "id2"], "rejected": ["id3"]}
