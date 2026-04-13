@@ -48,11 +48,16 @@ export function getVideoKey(video: TikTokVideo): string {
 }
 
 export function dedupeVideos(videos: TikTokVideo[]): TikTokVideo[] {
-  const seen = new Set<string>();
+  const seenKeys = new Set<string>();
+  const seenMeta = new Set<string>();
   return videos.filter((video) => {
     const key = getVideoKey(video);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seenKeys.has(key)) return false;
+    // Secondary dedup by content signature (catches reposts with different tiktok_ids)
+    const meta = `${(video.author || '').toLowerCase()}|${(video.title || '').toLowerCase().replace(/\s+/g, ' ').trim()}|${video.duration || ''}`;
+    if (meta !== '||' && seenMeta.has(meta)) return false;
+    seenKeys.add(key);
+    seenMeta.add(meta);
     return true;
   });
 }
