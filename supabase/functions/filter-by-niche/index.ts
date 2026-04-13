@@ -12,7 +12,31 @@ interface VideoToFilter {
   author: string | null;
 }
 
-async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nicheKeywords: string[] | undefined, apiKey: string): Promise<string[]> {
+const NICHE_REJECT_MAP: Record<string, string> = {
+  humor: "receita, culinária, fitness, academia, treino, saúde, nutrição, kpop, gameplay, jogo, notícia, política, viagem, turismo, maquiagem, skincare, tutorial técnico, decoração, organização, ASMR, meditação, motivação, empreendedorismo",
+  viral: "receita, culinária, gameplay, jogo, kpop, política, tutorial técnico longo, fitness, maquiagem",
+  lifestyle: "pegadinha, trolagem, trollagem, gameplay, jogo, política, kpop",
+  ia_novela: "pegadinha, trolagem, receita, culinária, fitness, academia, kpop, gameplay, jogo, política",
+  casa: "pegadinha, trolagem, kpop, gameplay, jogo, política, fitness, romance",
+  dicas: "pegadinha, trolagem, kpop, gameplay, jogo, romance, entretenimento vazio",
+  hook: "receita, culinária, tutorial técnico, fitness detalhado, ASMR, meditação, kpop",
+  satisfying: "pegadinha, trolagem, gameplay, jogo, notícia, política, kpop, música agitada, funk",
+};
+
+function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescription: string): string {
+  const text = [...(nicheKeywords || []), nicheDescription].join(' ').toLowerCase();
+  if (/pegadinha|humor|comedia|memes|zoeira|risada|fail|troll/.test(text)) return 'humor';
+  if (/viral|fyp|trending|storytime|parati|viraltiktok/.test(text)) return 'viral';
+  if (/dancinha|novelinha|satisfying|asmr|rotina|viagem|musica/.test(text)) return 'lifestyle';
+  if (/iatransforma|filtrodeia|noveladeia|animaliaia|novelaantiga|cenasiconica|frutasia/.test(text)) return 'ia_novela';
+  if (/organizacao|unboxing/.test(text)) return 'casa';
+  if (/motivacao|receita|dica|curiosidade|fitness|saude|hack|tutorial/.test(text)) return 'dicas';
+  if (/react|desafio|antesedepois|transformacao|chocante|exposed|polemico|ninguemesperava/.test(text)) return 'hook';
+  if (/oddlysatisfying|relaxante|vocesabia|fatocurioso/.test(text)) return 'satisfying';
+  return 'viral';
+}
+
+async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nicheKeywords: string[] | undefined, apiKey: string, rejectList: string): Promise<string[]> {
   const videoList = batch.map((v, idx) =>
     `${idx + 1}. [${v.id}] "${v.title}" (autor: ${v.author || 'desconhecido'})`
   ).join('\n');
@@ -31,6 +55,7 @@ REJEITAR:
 - Títulos em inglês, espanhol, alemão ou outro idioma estrangeiro
 - Títulos claramente de um nicho DIFERENTE do pedido
 - Títulos de trends/filtros sem relação com o nicho (mewing, AI filter, manga filter)
+- REJEITAR obrigatoriamente conteúdo destes nichos: ${rejectList}
 
 REGRA FINAL: Se claramente é outro nicho → REJEITAR. Se ambíguo ou genérico em PT → APROVAR.
 
@@ -114,8 +139,11 @@ serve(async (req) => {
     }
 
     // Run ALL batches in PARALLEL for maximum speed
+    const group = getGroupFromKeywords(nicheKeywords, nicheDescription);
+    const rejectList = NICHE_REJECT_MAP[group] || NICHE_REJECT_MAP.viral;
+    console.log(`Niche filter: group=${group}, rejectList=${rejectList.slice(0, 60)}...`);
     const results = await Promise.all(
-      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY))
+      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY, rejectList))
     );
 
     const approvedIds = new Set<string>(autoApproved);
