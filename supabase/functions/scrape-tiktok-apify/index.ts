@@ -81,6 +81,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
   let skippedNoUrl = 0;
 
   const addVideo = (item: any) => {
+    if (item?.images && Array.isArray(item.images) && item.images.length > 0) return;
     const dur = item?.duration || 0;
     const w = item?.width || 0;
     const h = item?.height || 0;
