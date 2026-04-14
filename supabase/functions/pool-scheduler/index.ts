@@ -10,6 +10,7 @@ const DEFAULT_PRESETS: Record<string, string[]> = {
   viral:      ['viral', 'fyp', 'trending', 'viraltiktok'],
   lifestyle:  ['dancinha', 'novelinha', 'satisfying', 'rotina'],
   ia_novela:  ['ia transforma', 'novela antiga', 'cenas icônicas'],
+  novelas:    ['frutinovela', 'mininovela', 'cortesdenovela', 'novelaglobo', 'dramabr', 'frutasia', 'novelinha'],
   casa:       ['organização', 'unboxing', 'decoração', 'reforma', 'faxina', 'diarista'],
   dicas:      ['receita', 'dica', 'curiosidade', 'motivação', 'fitness'],
   hook:       ['react', 'desafio', 'chocante', 'exposed', 'transformação'],

@@ -29,6 +29,9 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   casa_organizacao: "pegadinha, trolagem, humor, comédia, dancinha, gameplay, jogo, gamer, política, eleição, notícia, tragédia, romance, casal, kpop, k-pop, viagem, turismo, fitness, academia, música",
   casa_decoracao: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness",
   casa_faxina: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness, decoração",
+  novelas_fruta: "pegadinha, humor, dança, fitness, gameplay, política, unboxing, receita, tutorial",
+  novelas_drama: "pegadinha, fitness, gameplay, política, unboxing, receita, tutorial, kpop",
+  novelas_cortes: "pegadinha, fitness, gameplay, política, unboxing, receita, tutorial, kpop",
   // Dicas — sub-grupos
   dicas_receita: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, dancinha, humor, comédia, fitness, academia, maquiagem",
   dicas_fitness: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, receita culinária, cozinha, maquiagem, dancinha, humor",
@@ -60,11 +63,18 @@ const NICHE_INSTRUCTIONS: Record<string, string> = {
   dicas_curiosidade: "APROVAR: fatos curiosos, você sabia, ciência, descoberta, informação surpreendente, mundo curioso, história interessante. REJEITAR: vídeo sem fato curioso ou informação — puro entretenimento sem valor informativo.",
   hook: "APROVAR: desafio, react, chocante, revelação, transformação, exposed, antes e depois, polêmico, surpresa, reviravolta. REJEITAR: receita, tutorial técnico, fitness detalhado, meditação.",
   satisfying: "APROVAR: satisfatório, organizado visualmente, limpeza satisfatória, relaxante, ASMR visual, slime, corte satisfatório, oddly satisfying. REJEITAR: conteúdo agitado, pegadinha, política, humor sem elemento visual satisfatório.",
+  novelas_fruta: "APROVAR: frutas com IA, novela de frutas, frutinovela, moranguete, abacatudo, bananildo, drama com frutas animadas. REJEITAR: sem frutas animadas ou drama.",
+  novelas_drama: "APROVAR: mininovela, draminha, história dramatizada, novela curta, série curta, drama romântico, traição, romance. REJEITAR: sem contexto dramático ou narrativo.",
+  novelas_cortes: "APROVAR: cortes de novela, série ou filme, cenas icônicas, trechos famosos, melhores momentos. REJEITAR: sem corte de conteúdo audiovisual.",
 };
 
 function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescription: string): string {
   const text = [...(nicheKeywords || []), nicheDescription].join(' ').toLowerCase();
   // Sub-grupos específicos primeiro
+  if (/fruta|frutas|moranguete|abacatudo|bananildo|frutinovela/.test(text)) return 'novelas_fruta';
+  if (/mininovela|novelinha|dramabr|micronovela/.test(text)) return 'novelas_drama';
+  if (/cortesdenovela|cortesdeserie|cortesdefilme|trechos/.test(text)) return 'novelas_cortes';
+  if (/novelaglobo|novelassbt|telenovela|novelabr/.test(text)) return 'novelas_drama';
   if (/unboxing/.test(text)) return 'casa_unboxing';
   if (/decoracao|decoração|reforma|homedecor|casanova|moveis|móveis/.test(text)) return 'casa_decoracao';
   if (/faxina|diarista|limpezadacasa|casalimpa/.test(text)) return 'casa_faxina';
