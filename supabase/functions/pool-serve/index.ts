@@ -64,13 +64,31 @@ Deno.serve(async (req) => {
 
     const excludeIds = new Set<string>();
     const excludeMetas = new Set<string>();
+    const idsWithoutMeta: string[] = [];
     for (const r of seenRes.data || []) {
       excludeIds.add(r.tiktok_id);
-      if (r.video_meta) excludeMetas.add(r.video_meta);
+      if (r.video_meta) {
+        excludeMetas.add(r.video_meta);
+      } else {
+        idsWithoutMeta.push(r.tiktok_id);
+      }
     }
     for (const r of usedRes.data || []) excludeIds.add(r.tiktok_id);
 
-    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size}`);
+    // ── 1b. Fallback: for seen IDs without video_meta, lookup meta from hashtag_pool ──
+    if (idsWithoutMeta.length > 0) {
+      const lookupIds = idsWithoutMeta.slice(0, 1000);
+      const { data: fallbackRows } = await adminClient
+        .from('hashtag_pool')
+        .select('author, title, duration')
+        .in('tiktok_id', lookupIds);
+      for (const r of fallbackRows || []) {
+        const meta = getVideoMeta(r);
+        if (meta !== '||') excludeMetas.add(meta);
+      }
+    }
+
+    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size} fallback=${idsWithoutMeta.length}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
     // Only serve videos with fresh CDN URLs (fetched within last 6 hours)
@@ -121,17 +139,15 @@ Deno.serve(async (req) => {
       status: 'pool',
     }));
 
-    // ── 5. Mark served videos as seen (fire-and-forget) ──
+    // ── 5. Mark served videos as seen (await to prevent race conditions) ──
     if (videos.length > 0) {
       const seenRows = videos.map(v => ({ user_id, tiktok_id: v.tiktok_id, video_meta: getVideoMeta(v) }));
       for (let i = 0; i < seenRows.length; i += 50) {
         const batch = seenRows.slice(i, i + 50);
-        adminClient
+        const { error } = await adminClient
           .from('seen_videos')
-          .upsert(batch, { onConflict: 'user_id,tiktok_id' })
-          .then(({ error }) => {
-            if (error) console.error('[pool-serve] seen upsert error:', error);
-          });
+          .upsert(batch, { onConflict: 'user_id,tiktok_id' });
+        if (error) console.error('[pool-serve] seen upsert error:', error);
       }
     }
 
