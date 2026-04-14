@@ -94,7 +94,7 @@ const Login = () => {
               WebkitTextFillColor: 'transparent',
             }}
           >
-            Viral TikTok
+            CriativosIA
           </h1>
           <p
             className="text-[13px] text-muted-foreground/60 font-medium tracking-wide transition-all duration-300"
@@ -187,7 +187,7 @@ const Login = () => {
 
         {/* Footer subtle */}
         <p className="text-center text-[10px] text-muted-foreground/25 font-medium tracking-wide">
-          Plataforma de curadoria de conteúdo viral
+          Crie conteúdo em massa com IA
         </p>
       </div>
     </div>
