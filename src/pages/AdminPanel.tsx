@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown } from 'lucide-react';
+import { getPlanLimits, ALL_PLANS, type PlanType } from '@/lib/plans';
 
 interface EditorProfile {
   id: string;
@@ -12,6 +13,10 @@ interface EditorProfile {
   display_name: string | null;
   approved: boolean;
   created_at: string;
+  plan: string;
+  plan_expires_at: string | null;
+  credits_used: number;
+  credits_reset_at: string | null;
 }
 
 interface ActivityRow {
@@ -47,6 +52,7 @@ const AdminPanel = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'editors' | 'activity'>('editors');
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [planDropdown, setPlanDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     if (role !== 'admin') {
@@ -79,6 +85,37 @@ const AdminPanel = () => {
       toast({ title: approve ? 'Aprovado!' : 'Revogado', description: approve ? 'Editor pode acessar o sistema.' : 'Acesso revogado.' });
       setEditors(prev => prev.map(e => e.id === userId ? { ...e, approved: approve } : e));
     }
+  };
+
+  const handlePlanChange = async (userId: string, newPlan: PlanType) => {
+    const updates: any = { plan: newPlan };
+    if (newPlan === 'unlimited') {
+      updates.plan_expires_at = null;
+      updates.credits_used = 0;
+    } else if (newPlan === 'free') {
+      updates.plan_expires_at = null;
+      updates.credits_used = 0;
+      updates.credits_reset_at = null;
+    } else {
+      // Monthly plans: set expiration to 30 days from now, reset credits
+      updates.plan_expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      updates.credits_used = 0;
+      updates.credits_reset_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    } else {
+      const planInfo = getPlanLimits(newPlan);
+      toast({ title: `Plano atualizado`, description: `${planInfo.label} atribuído com sucesso.` });
+      setEditors(prev => prev.map(e => e.id === userId ? { ...e, ...updates } : e));
+    }
+    setPlanDropdown(null);
   };
 
   const formatDate = (d: string) => {
@@ -205,6 +242,14 @@ const AdminPanel = () => {
                         {editor.id === profile?.id && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-medium">Você</span>
                         )}
+                        {(() => {
+                          const plan = getPlanLimits(editor.plan || 'free');
+                          return (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${plan.color}`}>
+                              {plan.label}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <p className="text-xs text-muted-foreground">@{editor.username} · Desde {formatDate(editor.created_at)}</p>
                     </div>
@@ -227,9 +272,9 @@ const AdminPanel = () => {
                       </div>
                     </div>
 
-                    {/* Approve/Revoke */}
+                    {/* Approve/Revoke + Plan */}
                     {editor.id !== profile?.id && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 items-center">
                         {!editor.approved ? (
                           <Button size="sm" onClick={() => handleApprove(editor.id, true)} className="h-8 gap-1.5 text-xs">
                             <CheckCircle className="h-3.5 w-3.5" />
@@ -241,6 +286,38 @@ const AdminPanel = () => {
                             Revogar
                           </Button>
                         )}
+                        <div className="relative">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setPlanDropdown(planDropdown === editor.id ? null : editor.id)}
+                            className="h-8 gap-1.5 text-xs"
+                          >
+                            <Crown className="h-3.5 w-3.5" />
+                            Plano
+                          </Button>
+                          {planDropdown === editor.id && (
+                            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                              {ALL_PLANS.map(plan => {
+                                const info = getPlanLimits(plan);
+                                const isActive = (editor.plan || 'free') === plan;
+                                return (
+                                  <button
+                                    key={plan}
+                                    onClick={() => handlePlanChange(editor.id, plan)}
+                                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors flex items-center justify-between ${isActive ? 'font-bold text-primary' : 'text-foreground'}`}
+                                  >
+                                    <span>{info.label}</span>
+                                    {info.credits === Infinity
+                                      ? <span className="text-[10px] text-muted-foreground">ilimitado</span>
+                                      : <span className="text-[10px] text-muted-foreground">{info.credits}/{info.period === 'month' ? 'mês' : 'total'}</span>
+                                    }
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

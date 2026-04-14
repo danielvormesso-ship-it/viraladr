@@ -1,0 +1,5 @@
+-- Add plan system columns to profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_used INT DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMPTZ DEFAULT NULL;
