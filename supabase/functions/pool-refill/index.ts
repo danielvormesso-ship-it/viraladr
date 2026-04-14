@@ -78,7 +78,6 @@ interface PoolVideo {
   shares: number;
   duration: string | null;
   author: string | null;
-  video_url: string | null;
   source_url: string | null;
 }
 
@@ -204,7 +203,6 @@ Deno.serve(async (req) => {
                 shares: v.shares || 0,
                 duration: v.duration || null,
                 author: v.author || null,
-                video_url: v.video_url || null,
                 source_url: v.source_url || null,
               }));
 
@@ -298,7 +296,6 @@ Deno.serve(async (req) => {
       shares: v.shares,
       duration: v.duration,
       author: v.author,
-      video_url: v.video_url,
       source_url: v.source_url,
       source_hashtag: v.source_hashtag,
       br_score: v.br_score,

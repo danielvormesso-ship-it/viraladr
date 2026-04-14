@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       shares: v.shares || 0,
       duration: v.duration,
       author: v.author,
-      video_url: v.video_url,
+      video_url: null,
       source_url: v.source_url,
       status: 'pool',
     }));
