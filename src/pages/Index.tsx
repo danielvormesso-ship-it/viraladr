@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
+import { UpgradeModal } from "@/components/UpgradeModal";
+import { useCredits } from "@/hooks/useCredits";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
@@ -259,6 +261,14 @@ const Index = () => {
   const { toast } = useToast();
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
+  const credits = useCredits();
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
+  const requireCredits = async (): Promise<boolean> => {
+    const ok = await credits.canUseCredits();
+    if (!ok) setShowUpgrade(true);
+    return ok;
+  };
 
 
   const distributeExactTotal = useCallback((keys: string[], total: number) => {
@@ -767,6 +777,7 @@ const Index = () => {
       toast({ title: "Digite uma descrição", description: "Descreva o tipo de vídeo que quer encontrar.", variant: "destructive" });
       return;
     }
+    if (!(await requireCredits())) return;
 
     setIsScraping(true);
     setAiSuggestedTags([]);
@@ -1140,6 +1151,7 @@ const Index = () => {
   reSearchRef.current = aiSearchDescription.trim() ? handleAiSearch : null;
 
   const executeSingleScrape = async (tag: string, forceRefresh = false, targetCount = 50) => {
+    if (!(await requireCredits())) return;
     setIsScraping(true);
     setActiveTag(tag);
     setCacheStatus(null);
@@ -1267,6 +1279,7 @@ const Index = () => {
   };
 
   const executeMergeScrape = async () => {
+    if (!(await requireCredits())) return;
     setIsScraping(true);
     setCacheStatus(null);
     setNicheWarning(null);
@@ -1940,6 +1953,7 @@ const Index = () => {
   };
 
   const handleBatchDownload = async (overrideCount?: number) => {
+    if (!(await requireCredits())) return;
     const qty = overrideCount || batchQuantity;
     const requestedCount = Math.min(qty, totalFiltered);
     if (requestedCount <= 0) return;
@@ -2200,6 +2214,11 @@ const Index = () => {
     const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
     await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
 
+    // Deduct credits for downloaded videos
+    if (successCount > 0) {
+      await credits.deductCredits(successCount);
+    }
+
     // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));
     setVideos(prev => prev.filter(v => !downloadedIds.has(v.id)));
@@ -2268,6 +2287,9 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Upgrade Modal — blocks everything when credits exhausted */}
+      {showUpgrade && <UpgradeModal />}
+
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
         <AlertDialogContent>
@@ -2338,6 +2360,26 @@ const Index = () => {
       {/* Header */}
       <header className="border-b border-border/15 px-6 py-2.5 flex-shrink-0 glass-strong sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
+          {/* Credits badge */}
+          {credits.isUnlimited ? (
+            <span className="px-2 py-1 rounded-lg bg-accent/15 text-accent text-[11px] font-bold border border-accent/20">
+              Ilimitado
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[11px] font-bold ${credits.creditsRemaining <= 10 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  {credits.creditsRemaining}/{credits.creditsTotal}
+                </span>
+                <div className="w-16 h-1.5 rounded-full bg-secondary/50 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${credits.creditsRemaining <= 10 ? 'bg-red-500' : 'bg-primary'}`}
+                    style={{ width: `${Math.min(100, (credits.creditsUsed / credits.creditsTotal) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground leading-tight tracking-tight">{profile?.display_name || profile?.username || 'Editor'}</p>
             <div className="flex items-center justify-end gap-1.5 mt-0.5">
