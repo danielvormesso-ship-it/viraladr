@@ -752,8 +752,9 @@ const Index = () => {
     });
   };
 
+  const maxQty = credits.isUnlimited ? 500 : Math.min(500, credits.creditsRemaining);
   const setTagQty = (tag: string, qty: number) => {
-    setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(500, qty)) }));
+    setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(maxQty, qty)) }));
   };
 
   // Single hashtag scrape with confirmation
@@ -1152,6 +1153,10 @@ const Index = () => {
 
   const executeSingleScrape = async (tag: string, forceRefresh = false, targetCount = 50) => {
     if (!(await requireCredits())) return;
+    if (!credits.isUnlimited && credits.creditsRemaining < targetCount) {
+      targetCount = credits.creditsRemaining;
+      toast({ title: "Créditos limitados", description: `Busca limitada a ${targetCount} vídeos (seus créditos restantes).` });
+    }
     setIsScraping(true);
     setActiveTag(tag);
     setCacheStatus(null);
@@ -1312,7 +1317,17 @@ const Index = () => {
       }
     }
 
-    const originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    let originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    if (!credits.isUnlimited && credits.creditsRemaining < originalTarget) {
+      const capped = credits.creditsRemaining;
+      // Scale down each tag proportionally
+      const ratio = capped / originalTarget;
+      for (const key of Object.keys(expandedQty)) {
+        expandedQty[key] = Math.max(1, Math.round(expandedQty[key] * ratio));
+      }
+      originalTarget = capped;
+      toast({ title: "Créditos limitados", description: `Busca limitada a ${capped} vídeos (seus créditos restantes).` });
+    }
     let totalTarget = originalTarget;
     const startTime = performance.now();
     const logs: string[] = [];
@@ -2598,19 +2613,25 @@ const Index = () => {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground/50 font-semibold uppercase tracking-wider">Qty</span>
                 <div className="flex gap-1">
-                  {[50, 100, 200, 300, 500].map(qty => (
-                    <button
-                      key={qty}
-                      onClick={() => setForyouQuantity(qty)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200
-                        ${foryouQuantity === qty
-                          ? 'bg-gradient-to-r from-primary/90 to-primary/70 text-primary-foreground shadow-sm tag-glow'
-                          : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary/70 hover:scale-[1.06] active:scale-[0.94]'
-                        }`}
-                    >
-                      {qty}
-                    </button>
-                  ))}
+                  {[50, 100, 200, 300, 500].map(qty => {
+                    const locked = !credits.isUnlimited && qty > credits.creditsRemaining;
+                    return (
+                      <button
+                        key={qty}
+                        onClick={() => !locked && setForyouQuantity(qty)}
+                        disabled={locked}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200
+                          ${locked
+                            ? 'bg-secondary/20 text-muted-foreground/30 cursor-not-allowed'
+                            : foryouQuantity === qty
+                              ? 'bg-gradient-to-r from-primary/90 to-primary/70 text-primary-foreground shadow-sm tag-glow'
+                              : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary/70 hover:scale-[1.06] active:scale-[0.94]'
+                          }`}
+                      >
+                        {locked ? `${qty}` : qty}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
