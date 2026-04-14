@@ -54,12 +54,14 @@ Deno.serve(async (req) => {
         .from('seen_videos')
         .select('tiktok_id, video_meta')
         .eq('user_id', user_id)
-        .gte('seen_at', ttlCutoff),
+        .gte('seen_at', ttlCutoff)
+        .limit(10000),
       adminClient
         .from('used_videos')
         .select('tiktok_id')
         .eq('user_id', user_id)
-        .gte('used_at', ttlCutoff),
+        .gte('used_at', ttlCutoff)
+        .limit(10000),
     ]);
 
     const excludeIds = new Set<string>();
