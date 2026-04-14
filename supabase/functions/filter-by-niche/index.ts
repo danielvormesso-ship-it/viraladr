@@ -27,6 +27,8 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   // Casa & Organização — sub-grupos
   casa_unboxing: "pegadinha, trolagem, humor, comédia, dancinha, receita, culinária, comida, fitness, academia, treino, gameplay, jogo, gamer, romance, casal, política, eleição, notícia, tragédia, paisagem, viagem, turismo, ASMR, kpop, k-pop, música",
   casa_organizacao: "pegadinha, trolagem, humor, comédia, dancinha, gameplay, jogo, gamer, política, eleição, notícia, tragédia, romance, casal, kpop, k-pop, viagem, turismo, fitness, academia, música",
+  casa_decoracao: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness",
+  casa_faxina: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness, decoração",
   // Dicas — sub-grupos
   dicas_receita: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, dancinha, humor, comédia, fitness, academia, maquiagem",
   dicas_fitness: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, receita culinária, cozinha, maquiagem, dancinha, humor",
@@ -49,6 +51,8 @@ const NICHE_INSTRUCTIONS: Record<string, string> = {
   ia_novela: "APROVAR: filtro de IA, transformação com IA, novela, cena de novela, personagem IA, novela antiga, cenas icônicas, IA cria, IA transforma. REJEITAR: vídeo sem referência a IA ou novela/dramaturgia.",
   casa_unboxing: "APROVAR: abertura de caixa, produto novo, compras, haul, recebidos, review de produto, encomenda, unboxing. REJEITAR: saúde, esporte, comida/receita, luta, música, dança, paisagem, viagem.",
   casa_organizacao: "APROVAR: organização de casa, arrumando, limpeza, decoração, antes e depois de cômodo, faxina, armário organizado, home tour. REJEITAR: vídeo sem contexto de organização, arrumação ou decoração de ambientes.",
+  casa_decoracao: "APROVAR: decoração, reforma, antes e depois de ambiente, móveis, sofá, almofadas, painel, instalação, home decor, casa nova, transformação de cômodo. REJEITAR: sem contexto de decoração ou reforma.",
+  casa_faxina: "APROVAR: faxina, limpeza da casa, diarista, casa limpa, antes e depois de limpeza, produtos de limpeza, rotina de faxina, limpeza profunda. REJEITAR: sem contexto de limpeza ou faxina.",
   dicas_receita: "APROVAR: cozinhando, receita, prato, gastronomia, comida, ingredientes, modo de preparo, sobremesa, lanche. REJEITAR: vídeo sem contexto culinário — sem comida sendo preparada ou apresentada.",
   dicas_fitness: "APROVAR: treino, exercício, academia, musculação, cardio, shape, série de exercícios, agachamento, supino, corrida. REJEITAR: vídeo sem contexto de exercício físico ou atividade esportiva.",
   dicas_tutorial: "APROVAR: ensinando algo, passo a passo, como fazer, DIY, tutorial, dica prática, hack, truque útil. REJEITAR: vídeo sem contexto educativo — não está ensinando nada.",
@@ -62,7 +66,9 @@ function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescript
   const text = [...(nicheKeywords || []), nicheDescription].join(' ').toLowerCase();
   // Sub-grupos específicos primeiro
   if (/unboxing/.test(text)) return 'casa_unboxing';
-  if (/organizacao|organização|arrumando|limpeza|faxina/.test(text)) return 'casa_organizacao';
+  if (/decoracao|decoração|reforma|homedecor|casanova|moveis|móveis/.test(text)) return 'casa_decoracao';
+  if (/faxina|diarista|limpezadacasa|casalimpa/.test(text)) return 'casa_faxina';
+  if (/organizacao|organização|arrumando|limpeza/.test(text)) return 'casa_organizacao';
   if (/dancinha|danca|dança|coreografia/.test(text)) return 'lifestyle_danca';
   if (/musica|música|cantando|cover|sertanejo|funk|pagode/.test(text)) return 'lifestyle_musica';
   if (/rotina|dayinmylife/.test(text)) return 'lifestyle_rotina';
