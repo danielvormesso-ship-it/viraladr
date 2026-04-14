@@ -106,8 +106,8 @@ Deno.serve(async (req) => {
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size} fallback=${idsWithoutMeta.length}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
-    // Only serve videos with fresh CDN URLs (fetched within last 6 hours)
-    const freshCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    // Only serve videos with fresh CDN URLs (fetched within last 4 hours)
+    const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 50, 2000);
     const { data: poolRows, error: poolErr } = await adminClient
       .from('hashtag_pool')
