@@ -799,15 +799,10 @@ async function processJobAsync(jobId, videoUrl, config, assets) {
     let probeInfo = await probeVideo(inputPath);
     console.log(`Job ${jobId} probe: codec=${probeInfo.codecName} tag=${probeInfo.codecTag} ${probeInfo.width}x${probeInfo.height} audio=${probeInfo.hasAudio}`);
 
-    // Conditional pre-normalization to balance stability + speed
-    // Only normalize inputs that are likely to break filter_complex
-    const needsPreNormalize = !probeInfo.unsupportedCodec && (
-      !probeInfo.codecName ||
-      !probeInfo.rawWidth || !probeInfo.rawHeight ||
-      (probeInfo.codecName && probeInfo.codecName !== 'h264' && probeInfo.codecName !== 'mpeg4') ||
-      (probeInfo.rawWidth % 2 !== 0 || probeInfo.rawHeight % 2 !== 0) ||
-      (probeInfo.rawWidth > 1920 || probeInfo.rawHeight > 3840)
-    );
+    // Always pre-normalize to 720x1280 h264 yuv420p to prevent
+    // "Error initializing output stream" on filter_complex.
+    // Cost: ~3-5s extra. Benefit: eliminates all retries (~60s+ each).
+    const needsPreNormalize = !probeInfo.unsupportedCodec;
 
     if (needsPreNormalize) {
       const normPath = path.join(UPLOAD_DIR, `${uuidv4()}_prenorm.mp4`);
@@ -816,12 +811,12 @@ async function processJobAsync(jobId, videoUrl, config, assets) {
         await runWithFfmpegQueue([
           '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', String(FFMPEG_THREADS),
           '-i', inputPath,
-          '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,format=yuv420p',
+          '-vf', 'fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,format=yuv420p',
           '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
           '-pix_fmt', 'yuv420p',
           '-c:a', 'aac', '-b:a', '128k',
           '-map_metadata', '-1',
-          '-movflags', '+faststart', '-max_muxing_queue_size', '1024',
+          '-movflags', '+faststart', '-max_muxing_queue_size', '2048',
           '-y', normPath,
         ]);
         ensureFileLooksValid(normPath, 'pre-normalized video', 20 * 1024);
@@ -833,8 +828,6 @@ async function processJobAsync(jobId, videoUrl, config, assets) {
         try { fs.unlinkSync(normPath); } catch {}
         console.warn(`Job ${jobId} pre-normalize failed, continuing with original:`, normErr.message);
       }
-    } else if (!probeInfo.unsupportedCodec) {
-      console.log(`Job ${jobId} skipping pre-normalize (already compatible: ${probeInfo.codecName} ${probeInfo.rawWidth}x${probeInfo.rawHeight})`);
     }
 
     if (probeInfo.unsupportedCodec) {

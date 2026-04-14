@@ -202,12 +202,12 @@ export async function pollJobStatus(
   const BASE_POLL_INTERVAL_MS = 3000;
   const MAX_POLL_DURATION_MS = 30 * 60 * 1000; // 30 min por job
   const MAX_TRANSIENT_ERRORS = 20;
-  const MAX_STALLED_PROGRESS_MS = 4 * 60 * 1000; // 4 min sem avanço real
+  const MAX_STALLED_PROGRESS_MS = 90 * 1000; // 90s sem avanço real (pre-norm elimina retries)
   const STAGE_MAX_MS: Partial<Record<JobStatus['status'], number>> = {
-    queued: 2 * 60 * 1000,
-    downloading: 4 * 60 * 1000,
-    probing: 4 * 60 * 1000,
-    processing: 10 * 60 * 1000,
+    queued: 60 * 1000,
+    downloading: 90 * 1000,
+    probing: 45 * 1000,
+    processing: 5 * 60 * 1000,
   };
   const KNOWN_STATUSES: JobStatus['status'][] = ['queued', 'downloading', 'probing', 'processing', 'done', 'failed'];
   const pollStartedAt = Date.now();
