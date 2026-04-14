@@ -58,11 +58,11 @@ Deno.serve(async (req) => {
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
-        'x-goog-api-key': GEMINI_API_KEY,
+        'Authorization': `Bearer ${GEMINI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-2.0-flash',
         messages: [
           {
             role: 'user',
@@ -94,6 +94,8 @@ Exemplos de boas hashtags para nichos:
 
     if (!response.ok) {
       const status = response.status;
+      const errBody = await response.text().catch(() => '');
+      console.error(`[discover-hashtags] Gemini ${status}: ${errBody}`);
       if (status === 429) {
         return new Response(JSON.stringify({ error: 'Rate limit, tente novamente.' }), {
           status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
