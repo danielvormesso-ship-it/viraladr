@@ -13,26 +13,55 @@ interface VideoToFilter {
 }
 
 const NICHE_REJECT_MAP: Record<string, string> = {
-  humor: "receita, culinária, fitness, academia, treino, saúde, nutrição, kpop, gameplay, jogo, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, viagem, turismo, maquiagem, skincare, tutorial técnico, decoração, organização, ASMR, meditação, motivação, empreendedorismo",
-  viral: "receita, culinária, gameplay, jogo, kpop, política, tutorial técnico longo, fitness, maquiagem",
-  lifestyle: "pegadinha, trolagem, trollagem, gameplay, jogo, política, kpop",
-  ia_novela: "pegadinha, trolagem, receita, culinária, fitness, academia, kpop, gameplay, jogo, política",
-  casa: "pegadinha, trolagem, kpop, gameplay, jogo, política, fitness, romance",
-  dicas: "pegadinha, trolagem, kpop, gameplay, jogo, romance, entretenimento vazio",
-  hook: "receita, culinária, tutorial técnico, fitness detalhado, ASMR, meditação, kpop",
-  satisfying: "pegadinha, trolagem, gameplay, jogo, notícia, política, kpop, música agitada, funk",
+  // Humor & Entretenimento
+  humor: "música, kpop, k-pop, receita, culinária, cozinha, fitness, academia, treino, musculação, gameplay, jogo, gamer, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, eleição, governo, viagem, turismo, maquiagem, skincare, tutorial técnico, ASMR, unboxing, romance, casal, slideshow de foto, paisagem, decoração, organização, meditação, yoga, nutrição, dieta",
+  // Trends & Viral
+  viral: "receita detalhada, passo a passo culinário, tutorial técnico longo, fitness detalhado, série de exercícios, maquiagem tutorial, gameplay longo, partida completa, política, eleição, governo, kpop, k-pop",
+  // Lifestyle — sub-grupos
+  lifestyle_danca: "pegadinha, trolagem, receita, culinária, gameplay, jogo, gamer, notícia, tragédia, política, eleição, tutorial técnico, kpop, k-pop, unboxing, organização",
+  lifestyle_musica: "pegadinha, trolagem, gameplay, jogo, gamer, tutorial técnico, política, eleição, fitness, academia, receita, culinária",
+  lifestyle_asmr: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, política, eleição, kpop, k-pop, música agitada, funk, dancinha, pegadinha",
+  lifestyle_rotina: "gameplay, jogo, gamer, política, eleição, tutorial técnico, kpop, k-pop, pegadinha, trolagem",
+  lifestyle_viagem: "pegadinha, trolagem, gameplay, jogo, gamer, kpop, k-pop, política, eleição, fitness, academia, receita",
+  // IA & Novelas
+  ia_novela: "pegadinha, trolagem, receita, culinária, fitness, academia, treino, kpop, k-pop, gameplay, jogo, gamer, política, eleição, notícia, tragédia, unboxing, organização",
+  // Casa & Organização — sub-grupos
+  casa_unboxing: "pegadinha, trolagem, humor, comédia, dancinha, receita, culinária, comida, fitness, academia, treino, gameplay, jogo, gamer, romance, casal, política, eleição, notícia, tragédia, paisagem, viagem, turismo, ASMR, kpop, k-pop, música",
+  casa_organizacao: "pegadinha, trolagem, humor, comédia, dancinha, gameplay, jogo, gamer, política, eleição, notícia, tragédia, romance, casal, kpop, k-pop, viagem, turismo, fitness, academia, música",
+  // Dicas — sub-grupos
+  dicas_receita: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, dancinha, humor, comédia, fitness, academia, maquiagem",
+  dicas_fitness: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, receita culinária, cozinha, maquiagem, dancinha, humor",
+  dicas_tutorial: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, humor, comédia, dancinha",
+  dicas_motivacao: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, receita, culinária, humor, comédia, dancinha, maquiagem",
+  dicas_curiosidade: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, música, dancinha, maquiagem, fitness",
+  // Hook forte
+  hook: "receita, culinária, tutorial técnico, fitness detalhado, série de exercícios, ASMR, meditação, yoga, kpop, k-pop, organização, decoração",
+  // Satisfying & Curiosidades
+  satisfying: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, tragédia, política, eleição, kpop, k-pop, música agitada, funk, dancinha, humor, comédia",
 };
 
 function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescription: string): string {
   const text = [...(nicheKeywords || []), nicheDescription].join(' ').toLowerCase();
-  if (/pegadinha|humor|comedia|memes|zoeira|risada|fail|troll/.test(text)) return 'humor';
+  // Sub-grupos específicos primeiro
+  if (/unboxing/.test(text)) return 'casa_unboxing';
+  if (/organizacao|organização|arrumando|limpeza|faxina/.test(text)) return 'casa_organizacao';
+  if (/dancinha|danca|dança|coreografia/.test(text)) return 'lifestyle_danca';
+  if (/musica|música|cantando|cover|sertanejo|funk|pagode/.test(text)) return 'lifestyle_musica';
+  if (/asmr/.test(text)) return 'lifestyle_asmr';
+  if (/rotina|dayinmylife/.test(text)) return 'lifestyle_rotina';
+  if (/viagem|turismo|destino/.test(text)) return 'lifestyle_viagem';
+  if (/receita|culinária|cozinha/.test(text)) return 'dicas_receita';
+  if (/fitness|treino|academia|musculação|musculacao/.test(text)) return 'dicas_fitness';
+  if (/tutorial|comofazer|passoapasso/.test(text)) return 'dicas_tutorial';
+  if (/motivacao|motivação|superacao|inspiracao/.test(text)) return 'dicas_motivacao';
+  if (/curiosidade|vocesabia|fatocurioso/.test(text)) return 'dicas_curiosidade';
+  // Grupos gerais
+  if (/pegadinha|humor|comedia|comédia|memes|zoeira|risada|fail|troll/.test(text)) return 'humor';
   if (/viral|fyp|trending|storytime|parati|viraltiktok/.test(text)) return 'viral';
-  if (/dancinha|novelinha|satisfying|asmr|rotina|viagem|musica/.test(text)) return 'lifestyle';
   if (/iatransforma|filtrodeia|noveladeia|animaliaia|novelaantiga|cenasiconica|frutasia/.test(text)) return 'ia_novela';
-  if (/organizacao|unboxing/.test(text)) return 'casa';
-  if (/motivacao|receita|dica|curiosidade|fitness|saude|hack|tutorial/.test(text)) return 'dicas';
+  if (/dica|hack|saude|saúde/.test(text)) return 'dicas_tutorial';
   if (/react|desafio|antesedepois|transformacao|chocante|exposed|polemico|ninguemesperava/.test(text)) return 'hook';
-  if (/oddlysatisfying|relaxante|vocesabia|fatocurioso/.test(text)) return 'satisfying';
+  if (/oddlysatisfying|relaxante|satisfying/.test(text)) return 'satisfying';
   return 'viral';
 }
 
@@ -46,18 +75,21 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
 O editor busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
 
-APROVAR:
-- Títulos claramente relacionados ao nicho pedido
-- Títulos curtos/genéricos em PT sem sinal de outro nicho ("kkk", "olha", "kkkk", "mds")
-- Títulos ambíguos em PT que PODERIAM ser do nicho
+APROVAR APENAS SE:
+- O título é claramente relacionado ao nicho "${nicheDescription}"
+- Título curto/genérico em PT sem sinal de outro nicho ("kkk", "olha", "mds") — APROVAR só se puder ser do nicho
+- Título ambíguo em PT que PODERIA ser do nicho pedido
 
-REJEITAR:
-- Títulos em inglês, espanhol, alemão ou outro idioma estrangeiro
-- Títulos claramente de um nicho DIFERENTE do pedido
-- Títulos de trends/filtros sem relação com o nicho (mewing, AI filter, manga filter)
-- REJEITAR obrigatoriamente conteúdo destes nichos: ${rejectList}
+REJEITAR SE:
+- O vídeo CLARAMENTE não pertence ao nicho pedido
+- Título em inglês, espanhol, alemão ou outro idioma estrangeiro (exceto palavras comuns como "fail", "react")
+- Título de trend/filtro sem relação (mewing, AI filter, manga filter, kpop dance)
+- Conteúdo de slideshow de fotos, paisagem sem contexto, propaganda
+- REJEITAR OBRIGATORIAMENTE conteúdo destes nichos: ${rejectList}
 
-REGRA FINAL: Se claramente é outro nicho → REJEITAR. Se ambíguo ou genérico em PT → APROVAR.
+REGRA CRÍTICA: Se o vídeo CLARAMENTE é de outro nicho → REJEITAR sem hesitar.
+Títulos ambíguos em português → APROVAR apenas se puderem razoavelmente ser do nicho "${nicheDescription}".
+Na DÚVIDA entre aprovar e rejeitar → REJEITAR. Prefira falso negativo a falso positivo.
 
 Responda APENAS com JSON puro sem markdown:
 {"approved": ["id1", "id2"], "rejected": ["id3"]}
