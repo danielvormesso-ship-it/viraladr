@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    const freshCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
 
     // Build flat list of all presets
     const allPresets: string[] = [];

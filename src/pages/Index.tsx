@@ -123,17 +123,39 @@ const BR_POSITIVE_WORDS = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|
 const BR_POSITIVE_CHARS = /[ãáàâéêíóôõúüç]/;
 
 function isForeignContent(v: TikTokVideo): boolean {
-  const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
-  // If has Portuguese signal, not foreign
-  if (BR_POSITIVE_WORDS.test(text) || BR_POSITIVE_CHARS.test(text)) return false;
-  // Count foreign language matches
+  const title = (v.title || '').toLowerCase();
+  const author = (v.author || '').toLowerCase();
+  const text = `${title} ${author}`;
+  // Reject non-BR author patterns
+  if (NON_BR_AUTHOR_PATTERNS.test(author.replace('@', ''))) return true;
+  // Reject non-BR culture (kpop, anime, etc.)
+  if (NON_BR_CONTENT_PATTERNS.test(text)) return true;
+  // Reject foreign languages (Turkish, Polish, Indonesian, etc.)
+  if (FOREIGN_LANG_PATTERNS.test(text)) return true;
+  // Reject foreign sentence patterns (FR/ES structures)
+  const foreignSentenceMatches = text.match(FOREIGN_SENTENCE_PATTERNS);
+  if (foreignSentenceMatches && foreignSentenceMatches.length >= 2) return true;
+  // Reject non-latin scripts
+  if (CJK_PATTERN.test(text)) return true;
+  if (CYRILLIC_PATTERN.test(text)) return true;
+  if (ARABIC_PATTERN.test(text)) return true;
+  if (OTHER_SCRIPT_PATTERN.test(text)) return true;
+  // Reject high English density
+  const engMatches = text.match(ENG_WORDS_PATTERN);
+  if (engMatches && engMatches.length >= 4) return true;
+  // Reject if 2+ words in any single foreign language
   const enCount = (text.match(FOREIGN_EN_WORDS) || []).length;
   const esCount = (text.match(FOREIGN_ES_WORDS) || []).length;
   const frCount = (text.match(FOREIGN_FR_WORDS) || []).length;
   const itCount = (text.match(FOREIGN_IT_WORDS) || []).length;
   const deCount = (text.match(FOREIGN_DE_WORDS) || []).length;
-  // Foreign if 2+ words in any single language
-  return enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2;
+  if (enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2) return true;
+  // Require at least one positive BR signal
+  if (BR_POSITIVE_CHARS.test(text)) return false;
+  if (BR_POSITIVE_WORDS.test(text)) return false;
+  if (BR_HASHTAGS_PATTERN.test(title)) return false;
+  // No positive signal → foreign
+  return true;
 }
 
 // Hoisted regex patterns for isBrazilianContent (avoid re-creation per call)
@@ -1896,7 +1918,7 @@ const Index = () => {
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
-        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([currentVideo.tiktok_id]).catch(err => console.error('[markVideosUsed] erro:', err));
+        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
         // Remove downloaded video from preview and DB
@@ -2175,8 +2197,8 @@ const Index = () => {
     console.log(`[Batch Download] ${successCount}/${batchCount} em ${totalTime}s | Direto: ${directUrlCount} | Edge Fn: ${edgeFnCount}`);
 
     // Mark downloaded videos as used (persisted in Supabase)
-    const usedTiktokIds = videosToDownload.map(v => v.tiktok_id).filter(Boolean) as string[];
-    await tiktokApi.markVideosUsed(usedTiktokIds).catch(err => console.error('[markVideosUsed] erro:', err));
+    const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
+    await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
 
     // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));
