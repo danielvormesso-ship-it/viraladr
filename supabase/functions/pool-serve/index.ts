@@ -73,12 +73,15 @@ Deno.serve(async (req) => {
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
+    // Only serve videos with fresh CDN URLs (fetched within last 6 hours)
+    const freshCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 50, 2000);
     const { data: poolRows, error: poolErr } = await adminClient
       .from('hashtag_pool')
-      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, source_url')
+      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
       .eq('hashtag_group', groupKey)
       .eq('niche_approved', true)
+      .gte('fetched_at', freshCutoff)
       .order('br_score', { ascending: false })
       .order('views', { ascending: false })
       .limit(overfetch);
@@ -113,7 +116,7 @@ Deno.serve(async (req) => {
       shares: v.shares || 0,
       duration: v.duration,
       author: v.author,
-      video_url: null,
+      video_url: v.video_url || null,
       source_url: v.source_url,
       status: 'pool',
     }));
