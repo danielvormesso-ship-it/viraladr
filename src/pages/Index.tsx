@@ -1133,14 +1133,12 @@ const Index = () => {
       // ── Pool: try serving from pre-built pool first ──
       const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === mainTag) || p.tag === tag);
       const poolGroupKey = preset?.label?.toLowerCase() || null;
-      console.log('[pool] poolGroupKey=', poolGroupKey, 'preset.label=', preset?.label, 'mainTag=', mainTag, 'tag=', tag.slice(0, 40));
 
       if (poolGroupKey && !forceRefresh) {
         try {
           const userId = (await supabase.auth.getUser()).data.user?.id;
           if (userId) {
             const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, targetCount);
-            console.log('[pool] result:', { served: poolResult.served, pool_available: poolResult.pool_available, hit_rate: poolResult.hit_rate, targetCount });
             if (poolResult.served >= targetCount) {
               // Pool satisfied 100% — instant results
               const poolApproved = poolResult.videos.slice(0, targetCount);
@@ -1164,7 +1162,7 @@ const Index = () => {
             }
           }
         } catch (err) {
-          console.warn('[pool] error, continuing with live scrape:', err);
+          // pool error — fall through to live scrape
         }
       }
 
@@ -1377,7 +1375,7 @@ const Index = () => {
         }
       }
     } catch (err) {
-      console.warn('[pool-merge] error, continuing with live:', err);
+      // pool-merge error — fall through to live scrape
       addLog(`⚠️ Pool falhou, usando busca ao vivo...`);
     }
 
