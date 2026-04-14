@@ -2,10 +2,10 @@
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 
--- Agendar pool-scheduler a cada 30 minutos
+-- Agendar pool-scheduler a cada 15 minutos
 SELECT cron.schedule(
-  'pool-scheduler-30min',
-  '*/30 * * * *',
+  'pool-scheduler-15min',
+  '*/15 * * * *',
   $$
   SELECT net.http_post(
     url := 'https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-scheduler',
