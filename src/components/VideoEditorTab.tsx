@@ -223,7 +223,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         .from('editor_configs')
         .select('config')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       if (data?.config) {
         const c = data.config as any;
         const toNum = (v: any, def: number, min: number, max: number) => {
