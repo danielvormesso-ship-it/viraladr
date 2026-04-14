@@ -1478,7 +1478,7 @@ const Index = () => {
         if (exhaustedTags.has(tag)) return false;
         if (tagQuotas && tagQuotas[tag] !== undefined) {
           const already = tagFetchedCount[tag] || 0;
-          return Math.ceil(tagQuotas[tag] * 1.5) - already > 0;
+          return Math.ceil(tagQuotas[tag] * 3) - already > 0;
         }
         return true;
       });
@@ -1493,21 +1493,21 @@ const Index = () => {
             let tagLimit: number;
             if (tagQuotas && tagQuotas[tag] !== undefined) {
               const already = tagFetchedCount[tag] || 0;
-              const remaining = Math.ceil(tagQuotas[tag] * 1.5) - already;
+              const remaining = Math.ceil(tagQuotas[tag] * 3) - already;
               if (remaining <= 0) return { tag, filtered: [] as TikTokVideo[] };
               tagLimit = remaining;
             } else {
               tagLimit = targetCount - freshVideos.length;
             }
 
-            const requestAmount = Math.min(tagLimit * 3, 1000);
+            const requestAmount = Math.min(tagLimit * 6, 1000);
 
             try {
               const result = await tiktokApi.scrapeByHashtag(tag, requestAmount, undefined, forceRefresh, true, cursorMap.get(tag));
               if (result?.videos) {
                 const filtered = applyFilters(result.videos);
                 const limited = tagQuotas && tagQuotas[tag] !== undefined
-                  ? filtered.slice(0, Math.ceil(tagQuotas[tag] * 1.5) - (tagFetchedCount[tag] || 0))
+                  ? filtered.slice(0, Math.ceil(tagQuotas[tag] * 3) - (tagFetchedCount[tag] || 0))
                   : filtered;
                 totalNew += result.new_scraped || 0;
                 if (result.next_cursor) {
@@ -1541,8 +1541,8 @@ const Index = () => {
       return result;
     };
 
-    // E: fetch candidates with minimal overfetch (1.5x per quota compensates ~70% BR filter)
-    const OVERFETCH_MULTIPLIER = 1.5;
+    // E: fetch candidates with 3x overfetch (BR filter approval rate ~33%)
+    const OVERFETCH_MULTIPLIER = 3;
     const fetchTarget = Math.ceil(totalTarget * OVERFETCH_MULTIPLIER);
     addLog(`⏳ Buscando ~${fetchTarget} vídeos brutos para filtrar os ${totalTarget} melhores...`);
     setScrapeProgress(`Buscando ${expandedTags.length} hashtags sequencialmente...`);
