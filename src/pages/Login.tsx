@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, LogIn, UserPlus, User, Lock, Sparkles } from 'lucide-react';
+import { Loader2, LogIn, UserPlus, User, Lock, Sparkles, Mail, Phone } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -49,6 +52,14 @@ const Login = () => {
         if (error) {
           toast({ title: 'Erro ao cadastrar', description: error.message, variant: 'destructive' });
         } else {
+          // Save email and phone to profile
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await (supabase.from('profiles') as any).update({
+              email: email.trim() || null,
+              phone: phone.trim() || null,
+            }).eq('id', user.id);
+          }
           toast({ title: 'Conta criada!', description: 'Você já está logado.' });
           navigate('/');
         }
@@ -134,6 +145,44 @@ const Login = () => {
                 />
               </div>
             </div>
+
+            {/* Email — only on signup */}
+            {!isLogin && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Email</label>
+                <div className="relative group">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 group-focus-within:text-primary/60 transition-colors duration-200" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    autoComplete="email"
+                    disabled={loading}
+                    className="w-full h-11 pl-10 pr-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none transition-all duration-200 focus:bg-secondary/60 input-glow disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Phone — only on signup */}
+            {!isLogin && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Telefone <span className="normal-case font-normal">(opcional)</span></label>
+                <div className="relative group">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 group-focus-within:text-primary/60 transition-colors duration-200" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    autoComplete="tel"
+                    disabled={loading}
+                    className="w-full h-11 pl-10 pr-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none transition-all duration-200 focus:bg-secondary/60 input-glow disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Password */}
             <div className="space-y-1.5">

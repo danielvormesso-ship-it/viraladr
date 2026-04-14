@@ -17,6 +17,8 @@ interface EditorProfile {
   plan_expires_at: string | null;
   credits_used: number;
   credits_reset_at: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 interface ActivityRow {
@@ -251,7 +253,11 @@ const AdminPanel = () => {
                           );
                         })()}
                       </div>
-                      <p className="text-xs text-muted-foreground">@{editor.username} · Desde {formatDate(editor.created_at)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        @{editor.username} · Desde {formatDate(editor.created_at)}
+                        {editor.email && <span className="ml-1">· {editor.email}</span>}
+                        {editor.phone && <span className="ml-1">· {editor.phone}</span>}
+                      </p>
                     </div>
                   </div>
 
