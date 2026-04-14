@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
     // Only serve videos with fresh CDN URLs (fetched within last 6 hours)
-    const freshCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const freshCutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 50, 2000);
     const { data: poolRows, error: poolErr } = await adminClient
       .from('hashtag_pool')
