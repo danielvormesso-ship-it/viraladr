@@ -279,9 +279,9 @@ const AdminPanel = () => {
                     </div>
 
                     {/* Approve/Revoke + Plan */}
-                    {editor.id !== profile?.id && (
-                      <div className="flex gap-1.5 items-center">
-                        {!editor.approved ? (
+                    <div className="flex gap-1.5 items-center">
+                      {editor.id !== profile?.id && (
+                        !editor.approved ? (
                           <Button size="sm" onClick={() => handleApprove(editor.id, true)} className="h-8 gap-1.5 text-xs">
                             <CheckCircle className="h-3.5 w-3.5" />
                             Aprovar
@@ -291,41 +291,41 @@ const AdminPanel = () => {
                             <XCircle className="h-3.5 w-3.5" />
                             Revogar
                           </Button>
+                        )
+                      )}
+                      <div className="relative">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPlanDropdown(planDropdown === editor.id ? null : editor.id)}
+                          className="h-8 gap-1.5 text-xs"
+                        >
+                          <Crown className="h-3.5 w-3.5" />
+                          Plano
+                        </Button>
+                        {planDropdown === editor.id && (
+                          <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                            {ALL_PLANS.map(plan => {
+                              const info = getPlanLimits(plan);
+                              const isActive = (editor.plan || 'free') === plan;
+                              return (
+                                <button
+                                  key={plan}
+                                  onClick={() => handlePlanChange(editor.id, plan)}
+                                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors flex items-center justify-between ${isActive ? 'font-bold text-primary' : 'text-foreground'}`}
+                                >
+                                  <span>{info.label}</span>
+                                  {info.credits === Infinity
+                                    ? <span className="text-[10px] text-muted-foreground">ilimitado</span>
+                                    : <span className="text-[10px] text-muted-foreground">{info.credits}/{info.period === 'month' ? 'mês' : 'total'}</span>
+                                  }
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
-                        <div className="relative">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setPlanDropdown(planDropdown === editor.id ? null : editor.id)}
-                            className="h-8 gap-1.5 text-xs"
-                          >
-                            <Crown className="h-3.5 w-3.5" />
-                            Plano
-                          </Button>
-                          {planDropdown === editor.id && (
-                            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
-                              {ALL_PLANS.map(plan => {
-                                const info = getPlanLimits(plan);
-                                const isActive = (editor.plan || 'free') === plan;
-                                return (
-                                  <button
-                                    key={plan}
-                                    onClick={() => handlePlanChange(editor.id, plan)}
-                                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors flex items-center justify-between ${isActive ? 'font-bold text-primary' : 'text-foreground'}`}
-                                  >
-                                    <span>{info.label}</span>
-                                    {info.credits === Infinity
-                                      ? <span className="text-[10px] text-muted-foreground">ilimitado</span>
-                                      : <span className="text-[10px] text-muted-foreground">{info.credits}/{info.period === 'month' ? 'mês' : 'total'}</span>
-                                    }
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               ))}
