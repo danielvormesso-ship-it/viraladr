@@ -1280,7 +1280,8 @@ const Index = () => {
       }
     }
 
-    const totalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    const originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    let totalTarget = originalTarget;
     const startTime = performance.now();
     const logs: string[] = [];
     const addLog = (msg: string) => { logs.push(msg); setMergeLogs([...logs]); };
@@ -1296,6 +1297,89 @@ const Index = () => {
 
     const tagQtyStr = expandedTags.map(t => `#${t}(${expandedQty[t]})`).join(', ');
     addLog(`🎯 Meta: ${totalTarget} vídeos — ${tagQtyStr}`);
+
+    // ── Pool: try serving from pre-built pool first ──
+    let poolServedCount = 0;
+    try {
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (userId) {
+        const poolRequests: { groupKey: string; qty: number; tagStr: string }[] = [];
+        for (const tagStr of selectedTags) {
+          const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+          const groupKey = preset?.label?.toLowerCase();
+          if (groupKey) {
+            poolRequests.push({ groupKey, qty: tagQuantities[tagStr] || 50, tagStr });
+          }
+        }
+
+        if (poolRequests.length > 0) {
+          addLog(`⚡ Tentando pool para ${poolRequests.map(r => r.groupKey).join(', ')}...`);
+          const poolResults = await Promise.all(
+            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, r.qty))
+          );
+
+          const poolVideos: TikTokVideo[] = [];
+          for (let i = 0; i < poolResults.length; i++) {
+            const result = poolResults[i];
+            const req = poolRequests[i];
+            if (result.served > 0) {
+              poolVideos.push(...result.videos);
+              addLog(`  ✅ Pool ${req.groupKey}: ${result.served}/${req.qty}`);
+            } else {
+              addLog(`  ⏭️ Pool ${req.groupKey}: vazio`);
+            }
+          }
+
+          poolServedCount = poolVideos.length;
+
+          if (poolServedCount >= originalTarget) {
+            // Pool satisfied 100%
+            const trimmed = dedupeVideos(poolVideos).slice(0, originalTarget);
+            tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+            const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+            addLog(`🏁 Pool completo: ${trimmed.length}/${originalTarget} em ${elapsed}s`);
+            setResultFilterMode("ai");
+            addVideosToUI(rankByBrazilianContent(trimmed), true);
+            setCurrentIndex(0);
+            setScrapeProgress("");
+            setCacheStatus(`Pool: ${trimmed.length} vídeos prontos instantaneamente.`);
+            activityTracker.logMerge(selectedTags);
+            toast({ title: `Mescla do pool!`, description: `${trimmed.length} vídeos prontos em ${elapsed}s.` });
+            setIsScraping(false);
+            return;
+          }
+
+          if (poolServedCount > 0) {
+            // Pool partial — show immediately, reduce quotas for live
+            const deduped = dedupeVideos(poolVideos);
+            tiktokApi.markVideosSeen(deduped.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+            addVideosToUI(rankByBrazilianContent(deduped), true);
+            setCurrentIndex(0);
+            addLog(`📦 Pool parcial: ${deduped.length} exibidos, buscando ${originalTarget - deduped.length} ao vivo...`);
+
+            // Reduce expandedQty per group so live scrape targets only the deficit
+            for (let i = 0; i < poolResults.length; i++) {
+              const served = poolResults[i].served;
+              if (served <= 0) continue;
+              const tagStr = poolRequests[i].tagStr;
+              if (tagStr.includes(',')) {
+                const subTags = tagStr.split(',').map(t => t.trim()).filter(Boolean);
+                const reducePerTag = Math.ceil(served / subTags.length);
+                for (const st of subTags) {
+                  if (expandedQty[st]) expandedQty[st] = Math.max(0, expandedQty[st] - reducePerTag);
+                }
+              } else if (expandedQty[tagStr]) {
+                expandedQty[tagStr] = Math.max(0, expandedQty[tagStr] - served);
+              }
+            }
+            totalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[pool-merge] error, continuing with live:', err);
+      addLog(`⚠️ Pool falhou, usando busca ao vivo...`);
+    }
 
     let totalNew = 0;
 
@@ -1730,11 +1814,12 @@ const Index = () => {
     await tiktokApi.markVideosSeen(unique.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
 
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-    addLog(`🏁 Concluído: ${unique.length}/${totalTarget} vídeos em ${elapsed}s`);
+    const grandTotal = poolServedCount + unique.length;
+    addLog(`🏁 Concluído: ${grandTotal}/${originalTarget} vídeos em ${elapsed}s${poolServedCount > 0 ? ` (${poolServedCount} do pool)` : ''}`);
 
     setResultFilterMode("ai");
     if (unique.length > 0) {
-      if (firstProgressiveInsertAt === -1) {
+      if (firstProgressiveInsertAt === -1 && poolServedCount === 0) {
         setCurrentIndex(videosRef.current.length === 0 ? 0 : videosRef.current.length);
       }
       addVideosToUI(rankByBrazilianContent(unique));
@@ -1742,11 +1827,13 @@ const Index = () => {
     }
     setScrapeProgress("");
 
-    setCacheStatus(`Mesclado ${selectedTags.length} hashtags: ${unique.length} vídeos únicos (${totalNew} novos). Meta: ${totalTarget}.`);
+    setCacheStatus(poolServedCount > 0
+      ? `Pool: ${poolServedCount} + Live: ${unique.length} = ${grandTotal} vídeos. Meta: ${originalTarget}.`
+      : `Mesclado ${selectedTags.length} hashtags: ${unique.length} vídeos únicos (${totalNew} novos). Meta: ${originalTarget}.`);
     activityTracker.logMerge(selectedTags);
     toast({
-      title: `🔀 Mescla concluída! ⚡ ${elapsed}s`,
-      description: `${unique.length}/${totalTarget} vídeos de ${selectedTags.length} hashtags.`,
+      title: poolServedCount > 0 ? `Mescla pool + live! ${elapsed}s` : `Mescla concluída! ${elapsed}s`,
+      description: `${grandTotal}/${originalTarget} vídeos de ${selectedTags.length} hashtags${poolServedCount > 0 ? ` (${poolServedCount} do pool)` : ''}.`,
     });
     setIsScraping(false);
   };
