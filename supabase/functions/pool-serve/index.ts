@@ -5,6 +5,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Normalized content signature for secondary dedup (mirrors frontend getVideoMeta)
+function getVideoMeta(v: { author: string | null; title: string | null; duration: string | null }): string {
+  const author = (v.author || '').toLowerCase().trim();
+  const rawTitle = (v.title || '').toLowerCase()
+    .replace(/[\u{1F600}-\u{1F9FF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{1F000}-\u{1FAFF}]/gu, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30);
+  const dur = v.duration || '';
+  return `${author}|${rawTitle}|${dur}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -53,13 +66,27 @@ Deno.serve(async (req) => {
     for (const r of seenRes.data || []) excludeIds.add(r.tiktok_id);
     for (const r of usedRes.data || []) excludeIds.add(r.tiktok_id);
 
-    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size}`);
+    // ── 1b. Build meta exclusion set from seen videos in pool ──
+    const excludeMetas = new Set<string>();
+    if (excludeIds.size > 0) {
+      const excludeArray = [...excludeIds].slice(0, 1000);
+      const { data: seenPoolRows } = await adminClient
+        .from('hashtag_pool')
+        .select('author, title, duration')
+        .in('tiktok_id', excludeArray);
+      for (const r of seenPoolRows || []) {
+        const meta = getVideoMeta(r);
+        if (meta !== '||') excludeMetas.add(meta);
+      }
+    }
+
+    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
-    const overfetch = Math.min(safeLimit + excludeIds.size + 50, 2000);
+    const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 50, 2000);
     const { data: poolRows, error: poolErr } = await adminClient
       .from('hashtag_pool')
-      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
+      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, source_url')
       .eq('hashtag_group', groupKey)
       .eq('niche_approved', true)
       .order('br_score', { ascending: false })
@@ -74,9 +101,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Filter out seen/used, take up to limit ──
+    // ── 3. Filter out seen/used by tiktok_id AND by meta (catches reposts) ──
     const served = (poolRows || [])
-      .filter(v => !excludeIds.has(v.tiktok_id))
+      .filter(v => {
+        if (excludeIds.has(v.tiktok_id)) return false;
+        const meta = getVideoMeta(v);
+        if (meta !== '||' && excludeMetas.has(meta)) return false;
+        return true;
+      })
       .slice(0, safeLimit);
 
     // ── 4. Format as TikTokVideo (same shape frontend expects) ──
@@ -111,7 +143,12 @@ Deno.serve(async (req) => {
     }
 
     // ── 6. Update editor_hashtag_stats ──
-    const poolAvailable = (poolRows || []).filter(v => !excludeIds.has(v.tiktok_id)).length;
+    const poolAvailable = (poolRows || []).filter(v => {
+      if (excludeIds.has(v.tiktok_id)) return false;
+      const meta = getVideoMeta(v);
+      if (meta !== '||' && excludeMetas.has(meta)) return false;
+      return true;
+    }).length;
     const hitRate = safeLimit > 0 ? Math.min(1, videos.length / safeLimit) : 0;
 
     const { data: existingStats } = await adminClient
