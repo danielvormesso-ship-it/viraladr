@@ -8,7 +8,7 @@ const corsHeaders = {
 const DEFAULT_PRESETS: Record<string, string[]> = {
   humor:      ['pegadinha', 'humor', 'memes', 'zoeira', 'fail', 'trollagem', 'risada'],
   viral:      ['viral', 'fyp', 'trending', 'viraltiktok'],
-  lifestyle:  ['dancinha', 'novelinha', 'satisfying', 'asmr', 'rotina'],
+  lifestyle:  ['dancinha', 'novelinha', 'satisfying', 'rotina'],
   ia_novela:  ['ia transforma', 'novela antiga', 'cenas icônicas'],
   casa:       ['organização', 'unboxing'],
   dicas:      ['receita', 'dica', 'curiosidade', 'motivação', 'fitness'],
@@ -17,9 +17,7 @@ const DEFAULT_PRESETS: Record<string, string[]> = {
 };
 
 // Low BR-rate presets — cap target to avoid wasting API calls
-const LOW_BR_RATE_CAPS: Record<string, number> = {
-  'asmr': 100,
-};
+const LOW_BR_RATE_CAPS: Record<string, number> = {};
 
 // Dynamic priority tiers based on search_count in last 7 days
 function getTier(searchCount: number): { target: number; threshold: number } {

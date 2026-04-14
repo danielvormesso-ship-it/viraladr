@@ -20,7 +20,6 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   // Lifestyle — sub-grupos
   lifestyle_danca: "pegadinha, trolagem, receita, culinária, gameplay, jogo, gamer, notícia, tragédia, política, eleição, tutorial técnico, kpop, k-pop, unboxing, organização",
   lifestyle_musica: "pegadinha, trolagem, gameplay, jogo, gamer, tutorial técnico, política, eleição, fitness, academia, receita, culinária",
-  lifestyle_asmr: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, política, eleição, kpop, k-pop, música agitada, funk, dancinha, pegadinha",
   lifestyle_rotina: "gameplay, jogo, gamer, política, eleição, tutorial técnico, kpop, k-pop, pegadinha, trolagem",
   lifestyle_viagem: "pegadinha, trolagem, gameplay, jogo, gamer, kpop, k-pop, política, eleição, fitness, academia, receita",
   // IA & Novelas
@@ -45,7 +44,6 @@ const NICHE_INSTRUCTIONS: Record<string, string> = {
   viral: "APROVAR: trending, viral, react, story time, conteúdo para viralizar, desafio viral, vídeo curto impactante. REJEITAR: tutoriais longos e detalhados, receitas passo a passo, gameplay completo.",
   lifestyle_danca: "APROVAR: dança, coreografia, passinho, dancinha, ballet, funk dance, dancetrend, dançando. REJEITAR: qualquer vídeo sem elemento de dança ou movimento corporal coreografado.",
   lifestyle_musica: "APROVAR: cantando, cover, clipe, show, performance musical, instrumento, vocal, música ao vivo, karaoke. REJEITAR: qualquer vídeo sem elemento musical — pessoa cantando ou tocando.",
-  lifestyle_asmr: "APROVAR: sons relaxantes, ASMR triggers, slime, comida ASMR, sussurro, tapping, scratching, sons de corte, crocante. REJEITAR: conteúdo agitado, pegadinha, música alta, gritaria.",
   lifestyle_rotina: "APROVAR: dia a dia, rotina matinal, rotina noturna, dayinmylife, morning routine, vida cotidiana, produtividade pessoal. REJEITAR: vídeo sem contexto de rotina ou cotidiano pessoal.",
   lifestyle_viagem: "APROVAR: turismo, destinos, passeio, lugar bonito, hotel, praia, cidade, ponto turístico, mochilão, viajando. REJEITAR: vídeo sem contexto de viagem, lugar ou turismo.",
   ia_novela: "APROVAR: filtro de IA, transformação com IA, novela, cena de novela, personagem IA, novela antiga, cenas icônicas, IA cria, IA transforma. REJEITAR: vídeo sem referência a IA ou novela/dramaturgia.",
@@ -67,7 +65,6 @@ function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescript
   if (/organizacao|organização|arrumando|limpeza|faxina/.test(text)) return 'casa_organizacao';
   if (/dancinha|danca|dança|coreografia/.test(text)) return 'lifestyle_danca';
   if (/musica|música|cantando|cover|sertanejo|funk|pagode/.test(text)) return 'lifestyle_musica';
-  if (/asmr/.test(text)) return 'lifestyle_asmr';
   if (/rotina|dayinmylife/.test(text)) return 'lifestyle_rotina';
   if (/viagem|turismo|destino/.test(text)) return 'lifestyle_viagem';
   if (/receita|culinária|cozinha/.test(text)) return 'dicas_receita';
