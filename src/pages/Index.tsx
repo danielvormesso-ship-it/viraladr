@@ -2087,7 +2087,7 @@ const Index = () => {
     setBatchProgress({ current: Math.floor(batchCount * 0.4), total: batchCount, active: true });
 
     // Step 2: Download actual video files in parallel using resolved URLs
-    const CONCURRENCY = 30;
+    const CONCURRENCY = 15;
     const downloadFile = async (
       video: typeof videosToDownload[0],
       index: number
