@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const [seenRes, usedRes] = await Promise.all([
       adminClient
         .from('seen_videos')
-        .select('tiktok_id')
+        .select('tiktok_id, video_meta')
         .eq('user_id', user_id)
         .gte('seen_at', ttlCutoff),
       adminClient
@@ -63,22 +63,12 @@ Deno.serve(async (req) => {
     ]);
 
     const excludeIds = new Set<string>();
-    for (const r of seenRes.data || []) excludeIds.add(r.tiktok_id);
-    for (const r of usedRes.data || []) excludeIds.add(r.tiktok_id);
-
-    // ── 1b. Build meta exclusion set from seen videos in pool ──
     const excludeMetas = new Set<string>();
-    if (excludeIds.size > 0) {
-      const excludeArray = [...excludeIds].slice(0, 1000);
-      const { data: seenPoolRows } = await adminClient
-        .from('hashtag_pool')
-        .select('author, title, duration')
-        .in('tiktok_id', excludeArray);
-      for (const r of seenPoolRows || []) {
-        const meta = getVideoMeta(r);
-        if (meta !== '||') excludeMetas.add(meta);
-      }
+    for (const r of seenRes.data || []) {
+      excludeIds.add(r.tiktok_id);
+      if (r.video_meta) excludeMetas.add(r.video_meta);
     }
+    for (const r of usedRes.data || []) excludeIds.add(r.tiktok_id);
 
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size}`);
 
@@ -130,7 +120,7 @@ Deno.serve(async (req) => {
 
     // ── 5. Mark served videos as seen (fire-and-forget) ──
     if (videos.length > 0) {
-      const seenRows = videos.map(v => ({ user_id, tiktok_id: v.tiktok_id }));
+      const seenRows = videos.map(v => ({ user_id, tiktok_id: v.tiktok_id, video_meta: getVideoMeta(v) }));
       for (let i = 0; i < seenRows.length; i += 50) {
         const batch = seenRows.slice(i, i + 50);
         adminClient

@@ -1081,8 +1081,7 @@ const Index = () => {
       const unique = approvedVideos.slice(0, totalTarget);
 
       // Mark seen so this user won't get the same videos again
-      const seenIdsToMark = unique.map(v => v.tiktok_id).filter(Boolean) as string[];
-      await tiktokApi.markVideosSeen(seenIdsToMark).catch(err => console.error('[markVideosSeen] erro:', err));
+      await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
@@ -1142,7 +1141,7 @@ const Index = () => {
             if (poolResult.served >= targetCount) {
               // Pool satisfied 100% — instant results
               const poolApproved = poolResult.videos.slice(0, targetCount);
-              tiktokApi.markVideosSeen(poolApproved.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+              tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("strict");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
               setCurrentIndex(0);
@@ -1152,7 +1151,7 @@ const Index = () => {
             } else if (poolResult.served > 0) {
               // Pool partial — show what we have, continue with live for deficit
               const poolApproved = poolResult.videos;
-              tiktokApi.markVideosSeen(poolApproved.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+              tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("strict");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
               setCurrentIndex(0);
@@ -1214,7 +1213,7 @@ const Index = () => {
       }
       if (approved.length > liveTarget) approved = approved.slice(0, liveTarget);
 
-      tiktokApi.markVideosSeen(approved.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
+      tiktokApi.markVideosSeen(approved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const totalApproved = poolServedCount + approved.length;
 
@@ -1333,7 +1332,7 @@ const Index = () => {
           if (poolServedCount >= originalTarget) {
             // Pool satisfied 100%
             const trimmed = dedupeVideos(poolVideos).slice(0, originalTarget);
-            tiktokApi.markVideosSeen(trimmed.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+            tiktokApi.markVideosSeen(trimmed.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             addLog(`🏁 Pool completo: ${trimmed.length}/${originalTarget} em ${elapsed}s`);
             setResultFilterMode("ai");
@@ -1350,7 +1349,7 @@ const Index = () => {
           if (poolServedCount > 0) {
             // Pool partial — show immediately, reduce quotas for live
             const deduped = dedupeVideos(poolVideos);
-            tiktokApi.markVideosSeen(deduped.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(() => {});
+            tiktokApi.markVideosSeen(deduped.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             addVideosToUI(rankByBrazilianContent(deduped), true);
             setCurrentIndex(0);
             addLog(`📦 Pool parcial: ${deduped.length} exibidos, buscando ${originalTarget - deduped.length} ao vivo...`);
@@ -1809,7 +1808,7 @@ const Index = () => {
     const unique = approvedVideos.slice(0, totalTarget);
 
     // Mark seen so this user won't get the same videos again
-    await tiktokApi.markVideosSeen(unique.map(v => v.tiktok_id).filter(Boolean) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
+    await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     const grandTotal = poolServedCount + unique.length;
@@ -1852,7 +1851,7 @@ const Index = () => {
       for (const id of usedIds) seenIds.add(id);
 
       const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
-      tiktokApi.markVideosSeen(unseenVideos.map(v => v.tiktok_id) as string[]).catch(err => console.error('[markVideosSeen] erro:', err));
+      tiktokApi.markVideosSeen(unseenVideos.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");

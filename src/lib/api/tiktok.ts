@@ -237,13 +237,15 @@ export const tiktokApi = {
     }
   },
 
-  async markVideosSeen(tiktokIds: string[]): Promise<void> {
-    const validIds = tiktokIds.filter(id => id != null && id !== '');
-    if (validIds.length === 0) return;
+  async markVideosSeen(items: (string | { tiktok_id: string; video_meta: string })[]): Promise<void> {
+    const valid = items
+      .map(item => typeof item === 'string' ? item : item.tiktok_id ? item : null)
+      .filter(Boolean);
+    if (valid.length === 0) return;
     try {
       const userId = await getCurrentUserId();
       const { data, error } = await supabase.functions.invoke('save-seen-videos', {
-        body: { tiktok_ids: validIds, table: 'seen_videos', user_id: userId },
+        body: { tiktok_ids: valid, table: 'seen_videos', user_id: userId },
       });
       if (error) console.error('[markVideosSeen] edge function error:', error);
     } catch (err) {

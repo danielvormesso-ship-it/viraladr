@@ -53,8 +53,12 @@ Deno.serve(async (req) => {
     if (cleanupErr) console.error(`[save-seen-videos] cleanup error:`, cleanupErr);
 
     const rows = tiktok_ids
-      .filter((id: any) => id != null && id !== '')
-      .map((id: string) => ({ user_id, tiktok_id: id }));
+      .filter((item: any) => item != null && item !== '')
+      .map((item: any) => {
+        if (typeof item === 'string') return { user_id, tiktok_id: item };
+        return { user_id, tiktok_id: item.tiktok_id, ...(item.video_meta ? { video_meta: item.video_meta } : {}) };
+      })
+      .filter((r: any) => r.tiktok_id);
 
     console.log(`[save-seen-videos] user=${user_id} table=${table} ids=${rows.length} first5=${rows.slice(0, 5).map(r => r.tiktok_id).join(',')}`);
 
