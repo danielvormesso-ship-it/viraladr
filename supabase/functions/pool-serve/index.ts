@@ -46,36 +46,49 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    // ── 1. Fetch seen + used IDs for this user (last 7 days) ──
+    // ── 1. Fetch ALL seen + used IDs for this user (last 7 days) via pagination ──
     const ttlCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    const [seenRes, usedRes] = await Promise.all([
-      adminClient
-        .from('seen_videos')
-        .select('tiktok_id, video_meta')
-        .eq('user_id', user_id)
-        .gte('seen_at', ttlCutoff)
-        .limit(10000),
-      adminClient
-        .from('used_videos')
-        .select('tiktok_id')
-        .eq('user_id', user_id)
-        .gte('used_at', ttlCutoff)
-        .limit(10000),
-    ]);
+    const PAGE = 1000;
 
     const excludeIds = new Set<string>();
     const excludeMetas = new Set<string>();
     const idsWithoutMeta: string[] = [];
-    for (const r of seenRes.data || []) {
-      excludeIds.add(r.tiktok_id);
-      if (r.video_meta) {
-        excludeMetas.add(r.video_meta);
-      } else {
-        idsWithoutMeta.push(r.tiktok_id);
+
+    // Paginate seen_videos
+    let seenTotal = 0;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await adminClient
+        .from('seen_videos')
+        .select('tiktok_id, video_meta')
+        .eq('user_id', user_id)
+        .gte('seen_at', ttlCutoff)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      for (const r of data) {
+        excludeIds.add(r.tiktok_id);
+        if (r.video_meta) excludeMetas.add(r.video_meta);
+        else idsWithoutMeta.push(r.tiktok_id);
       }
+      seenTotal += data.length;
+      if (data.length < PAGE) break;
     }
-    for (const r of usedRes.data || []) excludeIds.add(r.tiktok_id);
+
+    // Paginate used_videos
+    let usedTotal = 0;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await adminClient
+        .from('used_videos')
+        .select('tiktok_id')
+        .eq('user_id', user_id)
+        .gte('used_at', ttlCutoff)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      for (const r of data) excludeIds.add(r.tiktok_id);
+      usedTotal += data.length;
+      if (data.length < PAGE) break;
+    }
+
+    console.log(`[pool-serve] seenRows=${seenTotal} usedRows=${usedTotal} excludeIds=${excludeIds.size}`);
 
     // ── 1b. Fallback: for seen IDs without video_meta, lookup meta from hashtag_pool ──
     if (idsWithoutMeta.length > 0) {
@@ -205,6 +218,8 @@ Deno.serve(async (req) => {
     // LORO-DEBUG: build debug payload for browser console
     const loroInPool = (poolRows || []).filter(v => (v.title || '').toLowerCase().includes('loro'));
     const loroDebug = {
+      seen_rows: seenTotal,
+      used_rows: usedTotal,
       exclude_ids_size: excludeIds.size,
       exclude_metas_size: excludeMetas.size,
       fallback_count: idsWithoutMeta.length,

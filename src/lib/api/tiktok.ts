@@ -224,14 +224,22 @@ export const tiktokApi = {
   async getSeenVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const { data, error } = await supabase
-        .from('seen_videos')
-        .select('tiktok_id')
-        .eq('user_id', userId)
-        .gte('seen_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-        .limit(10000);
-      if (error) throw error;
-      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const ids = new Set<string>();
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('seen_videos')
+          .select('tiktok_id')
+          .eq('user_id', userId)
+          .gte('seen_at', cutoff)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const r of data) ids.add((r as any).tiktok_id);
+        if (data.length < PAGE) break;
+      }
+      return ids;
     } catch (err) {
       console.warn('Erro ao ler seen_videos:', err);
       return new Set<string>();
@@ -257,14 +265,22 @@ export const tiktokApi = {
   async getUsedVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const { data, error } = await supabase
-        .from('used_videos')
-        .select('tiktok_id')
-        .eq('user_id', userId)
-        .gte('used_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-        .limit(10000);
-      if (error) throw error;
-      return new Set<string>((data || []).map((r: any) => r.tiktok_id));
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const ids = new Set<string>();
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('used_videos')
+          .select('tiktok_id')
+          .eq('user_id', userId)
+          .gte('used_at', cutoff)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const r of data) ids.add((r as any).tiktok_id);
+        if (data.length < PAGE) break;
+      }
+      return ids;
     } catch (err) {
       console.warn('Erro ao ler used_videos:', err);
       return new Set<string>();
