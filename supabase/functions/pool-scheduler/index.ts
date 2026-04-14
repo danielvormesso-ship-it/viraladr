@@ -65,8 +65,24 @@ Deno.serve(async (req) => {
     console.log(`[pool-scheduler] ${allPresets.length} presets: ${triggered.length} need refill, ${sufficient.length} sufficient`);
     if (sufficient.length > 0) console.log(`[pool-scheduler] Sufficient: ${sufficient.join(', ')}`);
 
-    // ── 3. Fire-and-forget: dispatch pool-refill for each without awaiting ──
+    // ── 3. Reset exhausted cursors, then dispatch pool-refill ──
     for (const t of triggered) {
+      // Auto-reset cursors that are exhausted so refill can fetch new pages
+      try {
+        const { data: resetRows } = await adminClient
+          .from('pool_cursors')
+          .update({ exhausted: false, cursor_value: null })
+          .eq('hashtag_group', t.preset)
+          .eq('exhausted', true)
+          .select('hashtag_group');
+        const resetCount = resetRows?.length || 0;
+        if (resetCount > 0) {
+          console.log(`[pool-scheduler] Reset ${resetCount} exhausted cursors for ${t.preset}`);
+        }
+      } catch (err) {
+        console.error(`[pool-scheduler] cursor reset error ${t.preset}:`, err);
+      }
+
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh})`);
       fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
         method: 'POST',
