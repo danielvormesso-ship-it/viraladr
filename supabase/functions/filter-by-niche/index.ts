@@ -40,6 +40,26 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   satisfying: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, tragédia, política, eleição, kpop, k-pop, música agitada, funk, dancinha, humor, comédia",
 };
 
+const NICHE_INSTRUCTIONS: Record<string, string> = {
+  humor: "APROVAR: pegadinhas, trotes, câmera escondida, trolagem, susto, armadilha, humor, piada, meme, zueira, fail, queda engraçada, situação cômica, risada. REJEITAR: qualquer vídeo sem elemento de humor, surpresa ou engano. Vídeo sério/informativo → REJEITAR.",
+  viral: "APROVAR: trending, viral, react, story time, conteúdo para viralizar, desafio viral, vídeo curto impactante. REJEITAR: tutoriais longos e detalhados, receitas passo a passo, gameplay completo.",
+  lifestyle_danca: "APROVAR: dança, coreografia, passinho, dancinha, ballet, funk dance, dancetrend, dançando. REJEITAR: qualquer vídeo sem elemento de dança ou movimento corporal coreografado.",
+  lifestyle_musica: "APROVAR: cantando, cover, clipe, show, performance musical, instrumento, vocal, música ao vivo, karaoke. REJEITAR: qualquer vídeo sem elemento musical — pessoa cantando ou tocando.",
+  lifestyle_asmr: "APROVAR: sons relaxantes, ASMR triggers, slime, comida ASMR, sussurro, tapping, scratching, sons de corte, crocante. REJEITAR: conteúdo agitado, pegadinha, música alta, gritaria.",
+  lifestyle_rotina: "APROVAR: dia a dia, rotina matinal, rotina noturna, dayinmylife, morning routine, vida cotidiana, produtividade pessoal. REJEITAR: vídeo sem contexto de rotina ou cotidiano pessoal.",
+  lifestyle_viagem: "APROVAR: turismo, destinos, passeio, lugar bonito, hotel, praia, cidade, ponto turístico, mochilão, viajando. REJEITAR: vídeo sem contexto de viagem, lugar ou turismo.",
+  ia_novela: "APROVAR: filtro de IA, transformação com IA, novela, cena de novela, personagem IA, novela antiga, cenas icônicas, IA cria, IA transforma. REJEITAR: vídeo sem referência a IA ou novela/dramaturgia.",
+  casa_unboxing: "APROVAR: abertura de caixa, produto novo, compras, haul, recebidos, review de produto, encomenda, unboxing. REJEITAR: saúde, esporte, comida/receita, luta, música, dança, paisagem, viagem.",
+  casa_organizacao: "APROVAR: organização de casa, arrumando, limpeza, decoração, antes e depois de cômodo, faxina, armário organizado, home tour. REJEITAR: vídeo sem contexto de organização, arrumação ou decoração de ambientes.",
+  dicas_receita: "APROVAR: cozinhando, receita, prato, gastronomia, comida, ingredientes, modo de preparo, sobremesa, lanche. REJEITAR: vídeo sem contexto culinário — sem comida sendo preparada ou apresentada.",
+  dicas_fitness: "APROVAR: treino, exercício, academia, musculação, cardio, shape, série de exercícios, agachamento, supino, corrida. REJEITAR: vídeo sem contexto de exercício físico ou atividade esportiva.",
+  dicas_tutorial: "APROVAR: ensinando algo, passo a passo, como fazer, DIY, tutorial, dica prática, hack, truque útil. REJEITAR: vídeo sem contexto educativo — não está ensinando nada.",
+  dicas_motivacao: "APROVAR: superação, motivação, mindset, inspiração, frase motivacional, história de superação, empreendedorismo. REJEITAR: vídeo sem contexto motivacional ou inspiracional.",
+  dicas_curiosidade: "APROVAR: fatos curiosos, você sabia, ciência, descoberta, informação surpreendente, mundo curioso, história interessante. REJEITAR: vídeo sem fato curioso ou informação — puro entretenimento sem valor informativo.",
+  hook: "APROVAR: desafio, react, chocante, revelação, transformação, exposed, antes e depois, polêmico, surpresa, reviravolta. REJEITAR: receita, tutorial técnico, fitness detalhado, meditação.",
+  satisfying: "APROVAR: satisfatório, organizado visualmente, limpeza satisfatória, relaxante, ASMR visual, slime, corte satisfatório, oddly satisfying. REJEITAR: conteúdo agitado, pegadinha, política, humor sem elemento visual satisfatório.",
+};
+
 function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescription: string): string {
   const text = [...(nicheKeywords || []), nicheDescription].join(' ').toLowerCase();
   // Sub-grupos específicos primeiro
@@ -65,7 +85,7 @@ function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescript
   return 'viral';
 }
 
-async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nicheKeywords: string[] | undefined, apiKey: string, rejectList: string): Promise<string[]> {
+async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nicheKeywords: string[] | undefined, apiKey: string, rejectList: string, nicheInstructions: string): Promise<string[]> {
   const videoList = batch.map((v, idx) =>
     `${idx + 1}. [${v.id}] "${v.title}" (autor: ${v.author || 'desconhecido'})`
   ).join('\n');
@@ -75,20 +95,17 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
 O editor busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
 
-APROVAR APENAS SE:
-- O título é claramente relacionado ao nicho "${nicheDescription}"
-- Título curto/genérico em PT sem sinal de outro nicho ("kkk", "olha", "mds") — APROVAR só se puder ser do nicho
-- Título ambíguo em PT que PODERIA ser do nicho pedido
+INSTRUÇÕES ESPECÍFICAS DESTE NICHO:
+${nicheInstructions}
 
-REJEITAR SE:
-- O vídeo CLARAMENTE não pertence ao nicho pedido
-- Título em inglês, espanhol, alemão ou outro idioma estrangeiro (exceto palavras comuns como "fail", "react")
-- Título de trend/filtro sem relação (mewing, AI filter, manga filter, kpop dance)
-- Conteúdo de slideshow de fotos, paisagem sem contexto, propaganda
+REGRAS GERAIS:
+- Título em inglês, espanhol, alemão ou outro idioma estrangeiro → REJEITAR (exceto palavras comuns como "fail", "react", "challenge")
+- Título de trend/filtro sem relação (mewing, AI filter, manga filter, kpop dance) → REJEITAR
+- Slideshow de fotos, paisagem sem contexto, propaganda → REJEITAR
 - REJEITAR OBRIGATORIAMENTE conteúdo destes nichos: ${rejectList}
+- Título curto/genérico em PT ("kkk", "olha", "mds") sem sinal de outro nicho → APROVAR só se puder ser do nicho
 
 REGRA CRÍTICA: Se o vídeo CLARAMENTE é de outro nicho → REJEITAR sem hesitar.
-Títulos ambíguos em português → APROVAR apenas se puderem razoavelmente ser do nicho "${nicheDescription}".
 Na DÚVIDA entre aprovar e rejeitar → REJEITAR. Prefira falso negativo a falso positivo.
 
 Responda APENAS com JSON puro sem markdown:
@@ -173,9 +190,10 @@ serve(async (req) => {
     // Run ALL batches in PARALLEL for maximum speed
     const group = getGroupFromKeywords(nicheKeywords, nicheDescription);
     const rejectList = NICHE_REJECT_MAP[group] || NICHE_REJECT_MAP.viral;
-    console.log(`Niche filter: group=${group}, rejectList=${rejectList.slice(0, 60)}...`);
+    const nicheInstructions = NICHE_INSTRUCTIONS[group] || NICHE_INSTRUCTIONS.viral;
+    console.log(`Niche filter: group=${group}, instructions=${nicheInstructions.slice(0, 60)}...`);
     const results = await Promise.all(
-      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY, rejectList))
+      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY, rejectList, nicheInstructions))
     );
 
     const approvedIds = new Set<string>(autoApproved);
