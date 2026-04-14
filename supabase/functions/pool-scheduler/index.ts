@@ -16,8 +16,19 @@ const DEFAULT_PRESETS: Record<string, string[]> = {
   satisfying: ['oddly satisfying', 'relaxante', 'você sabia?', 'fato curioso'],
 };
 
-const MIN_POOL_THRESHOLD = 200;
-const REFILL_TARGET = 300;
+// Low BR-rate presets — cap target to avoid wasting API calls
+const LOW_BR_RATE_CAPS: Record<string, number> = {
+  'asmr': 100,
+};
+
+// Dynamic priority tiers based on search_count in last 7 days
+function getTier(searchCount: number): { target: number; threshold: number } {
+  if (searchCount > 30) return { target: 1000, threshold: 400 };
+  if (searchCount >= 16) return { target: 800, threshold: 300 };
+  if (searchCount >= 6)  return { target: 500, threshold: 200 };
+  if (searchCount >= 1)  return { target: 300, threshold: 150 };
+  return { target: 200, threshold: 100 };
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -30,6 +41,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // Build flat list of all presets
     const allPresets: string[] = [];
@@ -37,7 +49,20 @@ Deno.serve(async (req) => {
       for (const p of presets) allPresets.push(p);
     }
 
-    // ── 1. Check fresh pool count for all presets in parallel ──
+    // ── 1. Fetch usage stats from last 7 days ──
+    const { data: statsRows } = await adminClient
+      .from('editor_hashtag_stats')
+      .select('hashtag_group, search_count, last_searched_at')
+      .gte('last_searched_at', weekAgo);
+
+    // Aggregate search_count per group
+    const usageByGroup: Record<string, number> = {};
+    for (const row of statsRows || []) {
+      const g = row.hashtag_group;
+      usageByGroup[g] = (usageByGroup[g] || 0) + (row.search_count || 0);
+    }
+
+    // ── 2. Check fresh pool count for all presets in parallel ──
     const countResults = await Promise.all(
       allPresets.map(async (preset) => {
         const { count } = await adminClient
@@ -50,22 +75,35 @@ Deno.serve(async (req) => {
       })
     );
 
-    // ── 2. Determine which need refill ──
-    const triggered: { preset: string; fresh: number; threshold: number }[] = [];
+    // ── 3. Determine which need refill with dynamic tiers ──
+    const triggered: { preset: string; fresh: number; threshold: number; target: number; searches: number }[] = [];
     const sufficient: string[] = [];
 
     for (const { preset, fresh } of countResults) {
-      if (fresh >= MIN_POOL_THRESHOLD) {
-        sufficient.push(`${preset}(${fresh})`);
+      const searches = usageByGroup[preset] || 0;
+      const tier = getTier(searches);
+      let { target, threshold } = tier;
+
+      // Apply low-BR-rate cap
+      if (LOW_BR_RATE_CAPS[preset]) {
+        target = Math.min(target, LOW_BR_RATE_CAPS[preset]);
+        threshold = Math.min(threshold, Math.floor(LOW_BR_RATE_CAPS[preset] / 2));
+      }
+
+      if (fresh >= threshold) {
+        sufficient.push(`${preset}(${fresh}/${threshold}|${searches}s)`);
       } else {
-        triggered.push({ preset, fresh, threshold: MIN_POOL_THRESHOLD });
+        triggered.push({ preset, fresh, threshold, target, searches });
       }
     }
+
+    // Sort by searches descending — high-demand groups refill first
+    triggered.sort((a, b) => b.searches - a.searches);
 
     console.log(`[pool-scheduler] ${allPresets.length} presets: ${triggered.length} need refill, ${sufficient.length} sufficient`);
     if (sufficient.length > 0) console.log(`[pool-scheduler] Sufficient: ${sufficient.join(', ')}`);
 
-    // ── 3. Reset exhausted cursors, then dispatch pool-refill ──
+    // ── 4. Reset exhausted cursors, then dispatch pool-refill ──
     for (const t of triggered) {
       // Auto-reset cursors that are exhausted so refill can fetch new pages
       try {
@@ -83,14 +121,14 @@ Deno.serve(async (req) => {
         console.error(`[pool-scheduler] cursor reset error ${t.preset}:`, err);
       }
 
-      console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh})`);
+      console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
       fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${serviceKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ hashtag_group: t.preset, target: REFILL_TARGET }),
+        body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
       }).catch(err => console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err));
     }
 
@@ -100,7 +138,7 @@ Deno.serve(async (req) => {
         total_presets: allPresets.length,
         triggered_count: triggered.length,
         sufficient_count: sufficient.length,
-        triggered: triggered.map(t => ({ preset: t.preset, fresh: t.fresh })),
+        triggered: triggered.map(t => ({ preset: t.preset, fresh: t.fresh, threshold: t.threshold, target: t.target, searches: t.searches })),
         sufficient,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
