@@ -11,7 +11,7 @@ API de processamento de vídeo com FFmpeg para deploy no Railway.
    - `API_KEY` — uma chave secreta para proteger a API (ex: gere com `openssl rand -hex 32`)
 5. Railway detecta o Dockerfile automaticamente e faz o deploy
 6. Copie a URL gerada (ex: `https://seu-app.railway.app`)
-7. No app Lovable, vá em **Configurações** e cole a URL do servidor
+7. No app CriativosIA, vá em **Configurações** e cole a URL do servidor
 
 ## Endpoints
 

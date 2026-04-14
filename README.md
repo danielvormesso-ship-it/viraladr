@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# CriativosIA
 
-TODO: Document your project here
+Plataforma de curadoria e edição em massa de vídeos virais do TikTok.
