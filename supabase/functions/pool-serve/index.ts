@@ -104,10 +104,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size} fallback=${idsWithoutMeta.length}`);
-    // LORO-DEBUG: dump excludeMetas that contain "loro"
-    const loroMetas = [...excludeMetas].filter(m => m.includes('loro'));
-    if (loroMetas.length > 0) console.log('[LORO-DEBUG] excludeMetas with loro:', loroMetas);
-    else console.log('[LORO-DEBUG] NO loro in excludeMetas. Sample metas:', [...excludeMetas].slice(0, 5));
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
     // Only serve videos with fresh CDN URLs (fetched within last 6 hours)
@@ -134,17 +130,9 @@ Deno.serve(async (req) => {
     // ── 3. Filter out seen/used by tiktok_id AND by meta (catches reposts) ──
     const served = (poolRows || [])
       .filter(v => {
-        const isLoro = (v.title || '').toLowerCase().includes('loro');
-        if (excludeIds.has(v.tiktok_id)) {
-          if (isLoro) console.log('[LORO-DEBUG] BLOCKED by excludeIds:', v.tiktok_id, v.title?.slice(0, 40));
-          return false;
-        }
+        if (excludeIds.has(v.tiktok_id)) return false;
         const meta = getVideoMeta(v);
-        if (meta !== '||' && excludeMetas.has(meta)) {
-          if (isLoro) console.log('[LORO-DEBUG] BLOCKED by meta:', v.tiktok_id, 'meta=', meta);
-          return false;
-        }
-        if (isLoro) console.log('[LORO-DEBUG] PASSED:', v.tiktok_id, 'meta=', meta, 'inExcludeMetas=', excludeMetas.has(meta));
+        if (meta !== '||' && excludeMetas.has(meta)) return false;
         return true;
       })
       .slice(0, safeLimit);
@@ -215,19 +203,6 @@ Deno.serve(async (req) => {
 
     console.log(`[pool-serve] Served ${videos.length}/${safeLimit} from pool (available=${poolAvailable}, hitRate=${(hitRate * 100).toFixed(0)}%)`);
 
-    // LORO-DEBUG: build debug payload for browser console
-    const loroInPool = (poolRows || []).filter(v => (v.title || '').toLowerCase().includes('loro'));
-    const loroDebug = {
-      seen_rows: seenTotal,
-      used_rows: usedTotal,
-      exclude_ids_size: excludeIds.size,
-      exclude_metas_size: excludeMetas.size,
-      fallback_count: idsWithoutMeta.length,
-      loro_metas_in_exclude: [...excludeMetas].filter(m => m.includes('loro')),
-      loro_in_pool_fresh: loroInPool.map(v => ({ tiktok_id: v.tiktok_id, title: v.title?.slice(0, 50), meta: getVideoMeta(v), in_exclude_ids: excludeIds.has(v.tiktok_id), meta_in_exclude: excludeMetas.has(getVideoMeta(v)) })),
-      loro_in_served: videos.filter(v => v.title?.toLowerCase().includes('loro')).map(v => v.tiktok_id),
-    };
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -236,7 +211,6 @@ Deno.serve(async (req) => {
         pool_available: poolAvailable,
         hit_rate: hitRate,
         from_pool: true,
-        loro_debug: loroDebug,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

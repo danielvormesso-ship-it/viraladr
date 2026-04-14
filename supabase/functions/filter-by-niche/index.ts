@@ -13,7 +13,7 @@ interface VideoToFilter {
 }
 
 const NICHE_REJECT_MAP: Record<string, string> = {
-  humor: "receita, culinária, fitness, academia, treino, saúde, nutrição, kpop, gameplay, jogo, notícia, política, viagem, turismo, maquiagem, skincare, tutorial técnico, decoração, organização, ASMR, meditação, motivação, empreendedorismo",
+  humor: "receita, culinária, fitness, academia, treino, saúde, nutrição, kpop, gameplay, jogo, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, viagem, turismo, maquiagem, skincare, tutorial técnico, decoração, organização, ASMR, meditação, motivação, empreendedorismo",
   viral: "receita, culinária, gameplay, jogo, kpop, política, tutorial técnico longo, fitness, maquiagem",
   lifestyle: "pegadinha, trolagem, trollagem, gameplay, jogo, política, kpop",
   ia_novela: "pegadinha, trolagem, receita, culinária, fitness, academia, kpop, gameplay, jogo, política",

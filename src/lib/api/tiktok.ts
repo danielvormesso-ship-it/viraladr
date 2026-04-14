@@ -311,7 +311,6 @@ export const tiktokApi = {
         body: { hashtag_group: hashtagGroup, user_id: userId, limit },
       });
       if (error) throw error;
-      if (data?.loro_debug) console.log('[pool-serve loro_debug]', data.loro_debug);
       const videos = ((data?.videos || []) as TikTokVideo[]).map(v => ({
         ...v,
         id: v.id || v.tiktok_id || '',

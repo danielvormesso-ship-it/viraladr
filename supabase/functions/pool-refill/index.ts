@@ -59,14 +59,24 @@ const PRESET_HASHTAGS: Record<string, { tags: string[]; group: string }> = {
   'fato curioso':     { tags: ['fatocurioso','fatoscuriosos','curiosidadesdomundo','naoesabia','mundocurioso','fatosdomundo','planetaterra','cienciacuriosa','universocurioso','ninguémsabia'], group: 'satisfying' },
 };
 
-// ── Foreign content detection (ported from frontend Index.tsx) ──
+// ── Brazilian content detection (full port from frontend Index.tsx isBrazilianContent) ──
+const NON_BR_AUTHOR_PATTERNS = /^(the_|mr_|mrs_|miss_|queen|king|vibes_|baby_|princess|prince|daddy|mommy|babe\d)/i;
+const NON_BR_CONTENT_PATTERNS = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap)\b/i;
+const FOREIGN_LANG_PATTERNS = /\b(yapay[ıi]m|anla[dğ]|kadar[ıi]m|bercanda|serius|luôn|aussi|facile|apprend[sr]?|miejmy|nadzieje|przeszyl|polska|kurwa|dobra|bardzo|teraz|tylko|jeszcze|ludzie|gdzie|kiedy|dlaczego|wszystko|niczego|naprawde|c'est|donc|alors|cette|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|tres|même|être|faire|comme|peut|maniere|manière|nouvell|questa|quello|dieser|diese|terima ?kasih|salamat|construccion|encuentro|siempre|porque|cuando|donde|también|tambien|aunque|todavía|todavia|necesito|puedo|quiero|jefesito|enamorado|sprawiaj|kobiety|szpach|legiobb|zagad|sprawia|piéces|essentielles|dressing|mignon|minimalist|setup|organisez|rangement|ikea hack|centavos|despensa|action diy|pièces)\b/i;
+const FOREIGN_SENTENCE_PATTERNS = /\b(du |de la |les |des |une |un |est |et |en |au |aux |sur |sous |par |qui |il |elle |nous |vous |ils |elles |mon |ton |son |mes |tes |ses |notre |votre |leur |ce |cet |ces |el |los |las |del |al |con |sin |por |para |pero |como |más |muy |tiene |puede |hay |donde |cuando |quien |ese |eso |estos |estas |aquí |allí )\b/gi;
+const CJK_PATTERN = /[\u3000-\u9FFF\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF]/;
+const CYRILLIC_PATTERN = /[\u0400-\u04FF]/;
+const ARABIC_PATTERN = /[\u0600-\u06FF\u0750-\u077F]/;
+const OTHER_SCRIPT_PATTERN = /[\u0E00-\u0E7F\u0900-\u097F\u0B80-\u0BFF\u1000-\u109F]/;
+const ENG_WORDS_PATTERN = /\b(the|you|this|that|with|from|have|are|was|for|not|but|what|all|can|her|one|our|out|day|get|has|him|his|how|its|may|new|now|old|see|way|who|did|got|let|say|she|too|use|love|like|just|your|follow|thank|please|comment|share|watch|look|girl|boy|we|construction|trucks|challenge|always|never|keep|how to|i love the)\b/gi;
 const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live|scary|elevator|prank|challenge|funny|amazing|awesome|incredible|watch|check|guys|hey|omg|wtf|lol|bro|dude|girl|how|why|really|actually|literally|basically|people|money|world|gone|wrong|wait|part|real|best|worst|ever|must|much|most|didn|wasn|won|isn|don|can|fun|try|home|love|princess|dance|dancing|music|song|cute|sweet|hot|cool|old|new|big|little|small|long|short|high|low|fast|slow|happy|sad|mad|bad|let|get|put|set|run|sit|stand|move|play|hit|cut|buy|sell|kill|win|lose|eat|drink|sleep)\b/gi;
 const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier)\b/gi;
 const FOREIGN_FR_WORDS = /\b(c'est|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|très|même|être|faire|comme|peut|donc|alors|cette|aussi|encore|entre|après|avant|rien|toujours|jamais|quelque|chaque|depuis|pendant|sans|vers|ici|ailleurs|bonjour|merci|oui|salut|putain|merde|trop|voilà|quoi|bah|ouais|nan|chéri|chérie|les)\b/gi;
 const FOREIGN_IT_WORDS = /\b(questa|quello|perché|anche|dove|cosa|ogni|tutto|niente|qualcosa|qualcuno|nessuno|troppo|abbastanza|già|adesso|dopo|insieme|senza|contro|circa|pensi|sono|voglio|posso|bene|male|grazie|ciao|buongiorno|allora|molto|bello|ragazza|ragazzi|andiamo|stai|faccio|vuoi|sai|vieni|aspetta)\b/gi;
 const FOREIGN_DE_WORDS = /\b(dieser|diese|dieses|nicht|aber|auch|noch|oder|wenn|dass|weil|schon|immer|wieder|vielleicht|zwischen|gegen|unter|über|jetzt|heute|morgen|gestern|zusammen|ich|du|er|sie|wir|das|ist|bin|hab|macht|schau|guck|alter|krass|digga|bitte|danke|ja|nein)\b/gi;
-const BR_POSITIVE_WORDS = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|eita|uai|oxe|vish|krl|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
 const BR_POSITIVE_CHARS = /[ãáàâéêíóôõúüç]/;
+const BR_POSITIVE_WORDS = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|marido|namorad|namoral|partiu|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|oi |hein|eita|uai|oxe|vish|krl|pqp|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
+const BR_HASHTAGS_PATTERN = /#(brasil|brasileiro|brasileira|tiktokbrasil|humorbrasil|humorbr|pegadinha|zoeira|comediabr|dancinha|novelinha)/i;
 
 interface PoolVideo {
   tiktok_id: string;
@@ -82,15 +92,50 @@ interface PoolVideo {
   source_url: string | null;
 }
 
+// Returns true if content is NOT Brazilian (should be rejected)
 function isForeignContent(v: PoolVideo): boolean {
-  const text = `${v.title || ''} ${v.author || ''}`.toLowerCase();
-  if (BR_POSITIVE_WORDS.test(text) || BR_POSITIVE_CHARS.test(text)) return false;
+  const title = (v.title || '').toLowerCase();
+  const author = (v.author || '').toLowerCase();
+  const text = `${title} ${author}`;
+
+  // Reject non-BR author patterns
+  if (NON_BR_AUTHOR_PATTERNS.test(author.replace('@', ''))) return true;
+
+  // Reject non-BR culture (kpop, anime, etc.)
+  if (NON_BR_CONTENT_PATTERNS.test(text)) return true;
+
+  // Reject foreign languages (Turkish, Polish, Indonesian, etc.)
+  if (FOREIGN_LANG_PATTERNS.test(text)) return true;
+
+  // Reject foreign sentence patterns (FR/ES/IT structures)
+  const foreignSentenceMatches = text.match(FOREIGN_SENTENCE_PATTERNS);
+  if (foreignSentenceMatches && foreignSentenceMatches.length >= 2) return true;
+
+  // Reject non-latin scripts
+  if (CJK_PATTERN.test(text)) return true;
+  if (CYRILLIC_PATTERN.test(text)) return true;
+  if (ARABIC_PATTERN.test(text)) return true;
+  if (OTHER_SCRIPT_PATTERN.test(text)) return true;
+
+  // Reject high English density
+  const engMatches = text.match(ENG_WORDS_PATTERN);
+  if (engMatches && engMatches.length >= 4) return true;
+
+  // Reject if 2+ words in any single foreign language
   const enCount = (text.match(FOREIGN_EN_WORDS) || []).length;
   const esCount = (text.match(FOREIGN_ES_WORDS) || []).length;
   const frCount = (text.match(FOREIGN_FR_WORDS) || []).length;
   const itCount = (text.match(FOREIGN_IT_WORDS) || []).length;
   const deCount = (text.match(FOREIGN_DE_WORDS) || []).length;
-  return enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2;
+  if (enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2) return true;
+
+  // Require at least one positive BR signal — no signal = reject
+  if (BR_POSITIVE_CHARS.test(text)) return false;
+  if (BR_POSITIVE_WORDS.test(text)) return false;
+  if (BR_HASHTAGS_PATTERN.test(title)) return false;
+
+  // No positive signal → foreign
+  return true;
 }
 
 function calcBrScore(v: PoolVideo): number {
