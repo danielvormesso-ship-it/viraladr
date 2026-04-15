@@ -2319,6 +2319,14 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         </div>
       )}
 
+      {/* Completion message */}
+      {!processing && processingStatus && (
+        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 flex items-center justify-between">
+          <span className="text-sm font-semibold text-accent">{processingStatus}</span>
+          <button onClick={() => setProcessingStatus('')} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+        </div>
+      )}
+
       {/* Batch Error Report */}
       {!processing && batchReport && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">

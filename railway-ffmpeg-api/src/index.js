@@ -389,14 +389,15 @@ async function forceNormalizeSourceVideo(inputPath, jobId) {
   try {
     console.warn(`Job ${jobId} applying forced pre-normalization for recovery...`);
     await runWithFfmpegQueue([
-      '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', String(FFMPEG_THREADS),
+      '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', '1',
       '-i', inputPath,
+      '-map', '0:v:0', '-map', '0:a:0?',
       '-vf', 'fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,format=yuv420p',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '24',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
       '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '128k',
+      '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '44100',
       '-map_metadata', '-1',
-      '-movflags', '+faststart', '-max_muxing_queue_size', '2048',
+      '-movflags', '+faststart', '-max_muxing_queue_size', '4096',
       '-y', normPath,
     ]);
     ensureFileLooksValid(normPath, 'recovery pre-normalized video', 20 * 1024);
