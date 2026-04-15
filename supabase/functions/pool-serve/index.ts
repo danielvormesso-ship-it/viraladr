@@ -24,17 +24,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag_group, user_id, limit = 50 } = await req.json();
+    // Verify authenticated user from JWT
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const authClient = createClient(supabaseUrl, anonKey);
+    const { data: { user }, error: authError } = await authClient.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const user_id = user.id;
+
+    const { hashtag_group, limit = 50 } = await req.json();
 
     if (!hashtag_group || typeof hashtag_group !== 'string') {
       return new Response(
         JSON.stringify({ error: 'hashtag_group required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-    if (!user_id || typeof user_id !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'user_id required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
