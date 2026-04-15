@@ -22,11 +22,11 @@ const LOW_BR_RATE_CAPS: Record<string, number> = {};
 
 // Dynamic priority tiers based on search_count in last 7 days
 function getTier(searchCount: number): { target: number; threshold: number } {
-  if (searchCount > 30) return { target: 1000, threshold: 500 };
-  if (searchCount >= 16) return { target: 800, threshold: 500 };
-  if (searchCount >= 6)  return { target: 600, threshold: 500 };
-  if (searchCount >= 1)  return { target: 600, threshold: 500 };
-  return { target: 600, threshold: 500 };
+  if (searchCount > 30) return { target: 2000, threshold: 1000 };
+  if (searchCount >= 16) return { target: 1600, threshold: 1000 };
+  if (searchCount >= 6)  return { target: 1200, threshold: 1000 };
+  if (searchCount >= 1)  return { target: 1200, threshold: 1000 };
+  return { target: 1200, threshold: 1000 };
 }
 
 Deno.serve(async (req) => {
@@ -98,24 +98,25 @@ Deno.serve(async (req) => {
       usageByGroup[g] = (usageByGroup[g] || 0) + (row.search_count || 0);
     }
 
-    // ── 2. Check fresh pool count for all presets in parallel ──
+    // ── 2. Check fresh pool count + viral count (1M+ views) for all presets ──
     const countResults = await Promise.all(
       allPresets.map(async (preset) => {
-        const { count } = await adminClient
-          .from('hashtag_pool')
-          .select('*', { count: 'exact', head: true })
-          .eq('hashtag_group', preset)
-          .eq('niche_approved', true)
-          .gte('fetched_at', freshCutoff);
-        return { preset, fresh: count || 0 };
+        const [freshRes, viralRes] = await Promise.all([
+          adminClient.from('hashtag_pool').select('*', { count: 'exact', head: true })
+            .eq('hashtag_group', preset).eq('niche_approved', true).gte('fetched_at', freshCutoff),
+          adminClient.from('hashtag_pool').select('*', { count: 'exact', head: true })
+            .eq('hashtag_group', preset).eq('niche_approved', true).gte('fetched_at', freshCutoff).gte('views', 1000000),
+        ]);
+        return { preset, fresh: freshRes.count || 0, viral: viralRes.count || 0 };
       })
     );
 
     // ── 3. Determine which need refill with dynamic tiers ──
+    const VIRAL_THRESHOLD = 200; // minimum 1M+ views videos per group
     const triggered: { preset: string; fresh: number; threshold: number; target: number; searches: number }[] = [];
     const sufficient: string[] = [];
 
-    for (const { preset, fresh } of countResults) {
+    for (const { preset, fresh, viral } of countResults) {
       const searches = usageByGroup[preset] || 0;
       const tier = getTier(searches);
       let { target, threshold } = tier;
@@ -126,10 +127,15 @@ Deno.serve(async (req) => {
         threshold = Math.min(threshold, Math.floor(LOW_BR_RATE_CAPS[preset] / 2));
       }
 
-      if (fresh >= threshold) {
-        sufficient.push(`${preset}(${fresh}/${threshold}|${searches}s)`);
-      } else {
+      // Trigger refill if fresh count is low OR viral count is low
+      const needsViralRefill = viral < VIRAL_THRESHOLD && fresh >= threshold;
+      if (fresh < threshold || needsViralRefill) {
         triggered.push({ preset, fresh, threshold, target, searches });
+        if (needsViralRefill) {
+          console.log(`[pool-scheduler] ${preset}: fresh OK (${fresh}/${threshold}) but viral low (${viral}/${VIRAL_THRESHOLD})`);
+        }
+      } else {
+        sufficient.push(`${preset}(${fresh}/${threshold}|v${viral}|${searches}s)`);
       }
     }
 
