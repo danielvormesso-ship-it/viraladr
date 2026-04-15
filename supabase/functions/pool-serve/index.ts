@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
     // Only serve videos with fresh CDN URLs (fetched within last 4 hours)
     const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
-    const overfetch = Math.min(safeLimit * 3 + 200, 1000);
+    const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 100, 5000);
     const { data: poolRows, error: poolErr } = await adminClient
       .from('hashtag_pool')
       .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
