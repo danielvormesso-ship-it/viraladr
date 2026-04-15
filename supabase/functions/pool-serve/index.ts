@@ -52,24 +52,18 @@ Deno.serve(async (req) => {
     const PAGE = 1000;
 
     const excludeIds = new Set<string>();
-    const excludeMetas = new Set<string>();
-    const idsWithoutMeta: string[] = [];
 
-    // Paginate seen_videos
+    // Paginate seen_videos (only tiktok_id — no meta dedup)
     let seenTotal = 0;
     for (let from = 0; ; from += PAGE) {
       const { data } = await adminClient
         .from('seen_videos')
-        .select('tiktok_id, video_meta')
+        .select('tiktok_id')
         .eq('user_id', user_id)
         .gte('seen_at', ttlCutoff)
         .range(from, from + PAGE - 1);
       if (!data || data.length === 0) break;
-      for (const r of data) {
-        excludeIds.add(r.tiktok_id);
-        if (r.video_meta) excludeMetas.add(r.video_meta);
-        else idsWithoutMeta.push(r.tiktok_id);
-      }
+      for (const r of data) excludeIds.add(r.tiktok_id);
       seenTotal += data.length;
       if (data.length < PAGE) break;
     }
@@ -89,27 +83,12 @@ Deno.serve(async (req) => {
       if (data.length < PAGE) break;
     }
 
-    console.log(`[pool-serve] seenRows=${seenTotal} usedRows=${usedTotal} excludeIds=${excludeIds.size}`);
-
-    // ── 1b. Fallback: for seen IDs without video_meta, lookup meta from hashtag_pool ──
-    if (idsWithoutMeta.length > 0) {
-      const lookupIds = idsWithoutMeta.slice(0, 1000);
-      const { data: fallbackRows } = await adminClient
-        .from('hashtag_pool')
-        .select('author, title, duration')
-        .in('tiktok_id', lookupIds);
-      for (const r of fallbackRows || []) {
-        const meta = getVideoMeta(r);
-        if (meta !== '||') excludeMetas.add(meta);
-      }
-    }
-
-    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} excludeMetas=${excludeMetas.size} fallback=${idsWithoutMeta.length}`);
+    console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} seen=${seenTotal} used=${usedTotal}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
     // Only serve videos with fresh CDN URLs (fetched within last 4 hours)
     const freshCutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
-    const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 200, 8000);
+    const overfetch = Math.min(safeLimit + excludeIds.size + 200, 8000);
     let poolQuery = adminClient
       .from('hashtag_pool')
       .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
@@ -130,7 +109,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Filter out seen/used by tiktok_id AND by meta (catches reposts) ──
+    // ── 3. Filter out seen/used by tiktok_id only ──
     const parseDur = (d: string | null): number => {
       if (!d) return 0;
       const parts = d.split(':');
@@ -140,8 +119,6 @@ Deno.serve(async (req) => {
     const served = (poolRows || [])
       .filter(v => {
         if (excludeIds.has(v.tiktok_id)) return false;
-        const meta = getVideoMeta(v);
-        if (meta !== '||' && excludeMetas.has(meta)) return false;
         if (minDurSec > 0 && parseDur(v.duration) < minDurSec) return false;
         return true;
       })
@@ -177,12 +154,7 @@ Deno.serve(async (req) => {
     }
 
     // ── 6. Update editor_hashtag_stats ──
-    const poolAvailable = (poolRows || []).filter(v => {
-      if (excludeIds.has(v.tiktok_id)) return false;
-      const meta = getVideoMeta(v);
-      if (meta !== '||' && excludeMetas.has(meta)) return false;
-      return true;
-    }).length;
+    const poolAvailable = (poolRows || []).filter(v => !excludeIds.has(v.tiktok_id)).length;
     const hitRate = safeLimit > 0 ? Math.min(1, videos.length / safeLimit) : 0;
 
     const { data: existingStats } = await adminClient
