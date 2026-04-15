@@ -700,6 +700,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
     // ====== SERVER-SIDE PROCESSING ======
     if (serverConnected && serverConfig.url) {
       let sessionId = '';
+      let successCount = 0;
       let videosSinceLastAssetRefresh = 0;
       let isRefreshingSession = false;
       try {
@@ -997,7 +998,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         // Process videos on server (safe mode: low parallelism + minimal retries)
         const zip = new JSZip();
-        let successCount = 0;
+        successCount = 0; // reset (declared in outer scope for finally access)
         let failCount = 0;
         let completedCount = 0;
         let startedCount = 0;
@@ -1025,8 +1026,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             p,
             new Promise<T>((_, reject) =>
               setTimeout(
-                () => reject(new Error(`Timeout global de 5 minutos excedido — job sem resposta (${label})`)),
-                5 * 60 * 1000,
+                () => reject(new Error(`Timeout global de 2 minutos excedido — job sem resposta (${label})`)),
+                2 * 60 * 1000,
               )
             ),
           ]);
@@ -1498,7 +1499,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
         const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
-        setProcessingStatus(`✅ Edição concluída! ${typeof successCount === 'number' ? successCount : 0} vídeos em ${timeStr}`);
+        setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
         setProcessStartTime(null);
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
         setProcessing(false);
