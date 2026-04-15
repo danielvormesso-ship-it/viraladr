@@ -21,12 +21,18 @@ const DEFAULT_PRESETS: Record<string, string[]> = {
 const LOW_BR_RATE_CAPS: Record<string, number> = {};
 
 // Dynamic priority tiers based on search_count in last 7 days
-function getTier(searchCount: number): { target: number; threshold: number } {
+// Base tier by search demand — threshold/target adjusted by current fresh count below
+function getBaseTier(searchCount: number): { target: number; threshold: number } {
   if (searchCount > 30) return { target: 2000, threshold: 1000 };
   if (searchCount >= 16) return { target: 1600, threshold: 1000 };
-  if (searchCount >= 6)  return { target: 1200, threshold: 1000 };
-  if (searchCount >= 1)  return { target: 1200, threshold: 1000 };
   return { target: 1200, threshold: 1000 };
+}
+
+// Adaptive threshold: avoid overwhelming small groups while keeping large ones stocked
+function adaptTier(base: { target: number; threshold: number }, fresh: number): { target: number; threshold: number } {
+  if (fresh < 200) return { target: 600, threshold: 200 };   // urgent: low stock
+  if (fresh < 800) return { target: 800, threshold: 500 };   // normal refill
+  return base;                                                 // large stock: use base tier
 }
 
 Deno.serve(async (req) => {
@@ -118,7 +124,8 @@ Deno.serve(async (req) => {
 
     for (const { preset, fresh, viral } of countResults) {
       const searches = usageByGroup[preset] || 0;
-      const tier = getTier(searches);
+      const baseTier = getBaseTier(searches);
+      const tier = adaptTier(baseTier, fresh);
       let { target, threshold } = tier;
 
       // Apply low-BR-rate cap
