@@ -508,7 +508,14 @@ const Index = () => {
     const step7_br = resultFilterMode === "ai" ? step6_maxDur : step6_maxDur.filter(v => isBrazilianContent(v));
     const step8_ai = resultFilterMode === "ai" ? step7_br : step7_br.filter(v => passesAiContentFilter(v));
     const step9_dedup = dedupeVideos(step8_ai);
+    // Log removed videos per step
+    const removedByMinDur = step4_comments.filter(v => { const dur = parseDuration(v.duration); return filters.minDuration > 0 && dur > 0 && dur < filters.minDuration; });
+    const removedByMaxDur = step5_minDur.filter(v => parseDuration(v.duration) > 120);
+    const removedByDedup = step8_ai.length - step9_dedup.length;
     console.log(`[filteredVideos] mode=${resultFilterMode} | total=${videos.length} → views=${step1_views.length} → likes=${step2_likes.length} → shares=${step3_shares.length} → comments=${step4_comments.length} → minDur=${step5_minDur.length} → maxDur=${step6_maxDur.length} → br=${step7_br.length} → ai=${step8_ai.length} → dedup=${step9_dedup.length} | filters: views=${filters.minViews} dur=${filters.minDuration}`);
+    if (removedByMinDur.length > 0) console.log(`[filteredVideos] ❌ Removidos por duração mín (${filters.minDuration}s+):`, removedByMinDur.map(v => `${v.tiktok_id?.slice(0,8)}… dur=${v.duration} (${parseDuration(v.duration)}s) "${v.title?.slice(0,40)}"`));
+    if (removedByMaxDur.length > 0) console.log(`[filteredVideos] ❌ Removidos por duração >120s:`, removedByMaxDur.map(v => `${v.tiktok_id?.slice(0,8)}… dur=${v.duration} (${parseDuration(v.duration)}s)`));
+    if (removedByDedup > 0) console.log(`[filteredVideos] ❌ Removidos por dedup: ${removedByDedup}`);
     return step9_dedup;
   }, [videos, filters, resultFilterMode, aiContentFilter]);
   const sortedFilteredVideos = useMemo(() => {
