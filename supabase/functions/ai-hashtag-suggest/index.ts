@@ -21,11 +21,15 @@ serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+    const GEMINI_KEYS = [
+      Deno.env.get("GEMINI_API_KEY"),
+      Deno.env.get("GEMINI_API_KEY_2"),
+      Deno.env.get("GEMINI_API_KEY_3"),
+    ].filter(Boolean) as string[];
+    if (GEMINI_KEYS.length === 0) throw new Error("No GEMINI_API_KEY configured");
 
     const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = GEMINI_KEYS.length * 2; // 2 attempts per key
     const prompt = `Especialista TikTok Brasil. Descrição do usuário: "${description}"
 
 Retorne JSON PURO sem markdown:
@@ -77,12 +81,14 @@ relevance: "alta", "media", "baixa"`;
     let response: Response | null = null;
     let lastError = '';
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const model = attempt < 2 ? MODELS[0] : MODELS[1]; // fallback to 1.5-flash on 3rd attempt
+      const keyIdx = attempt % GEMINI_KEYS.length;
+      const key = GEMINI_KEYS[keyIdx];
+      const model = attempt < GEMINI_KEYS.length ? MODELS[0] : MODELS[1];
       try {
         response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${GEMINI_API_KEY}`,
+            "Authorization": `Bearer ${key}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({

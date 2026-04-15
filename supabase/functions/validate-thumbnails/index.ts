@@ -48,20 +48,31 @@ Thumbnails:`
   }
 
   try {
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-2.0-flash",
-        messages: [{ role: "user", content }],
-      }),
-    });
+    const allKeys = [
+      Deno.env.get("GEMINI_API_KEY"),
+      Deno.env.get("GEMINI_API_KEY_2"),
+      Deno.env.get("GEMINI_API_KEY_3"),
+    ].filter(Boolean) as string[];
+    let response: Response | null = null;
+    for (const key of allKeys) {
+      response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gemini-2.0-flash",
+          messages: [{ role: "user", content }],
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (response.ok || response.status !== 429) break;
+      console.warn(`[validate-thumbnails] 429 with key ...${key.slice(-6)}, trying next`);
+    }
 
-    if (!response.ok) {
-      console.warn(`AI validation failed (${response.status}), auto-approving batch`);
+    if (!response || !response.ok) {
+      console.warn(`AI validation failed (${response?.status}), auto-approving batch`);
       return [...approved, ...withThumbs.map(v => v.id)];
     }
 
@@ -111,8 +122,13 @@ serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+    const GEMINI_KEYS = [
+      Deno.env.get("GEMINI_API_KEY"),
+      Deno.env.get("GEMINI_API_KEY_2"),
+      Deno.env.get("GEMINI_API_KEY_3"),
+    ].filter(Boolean) as string[];
+    if (GEMINI_KEYS.length === 0) throw new Error("No GEMINI_API_KEY configured");
+    const GEMINI_API_KEY = GEMINI_KEYS[Math.floor(Math.random() * GEMINI_KEYS.length)];
 
     // Larger batches (15 thumbnails each) + run ALL in parallel
     const BATCH_SIZE = 25;

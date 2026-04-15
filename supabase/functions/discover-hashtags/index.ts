@@ -32,8 +32,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
+    const GEMINI_KEYS = [
+      Deno.env.get('GEMINI_API_KEY'),
+      Deno.env.get('GEMINI_API_KEY_2'),
+      Deno.env.get('GEMINI_API_KEY_3'),
+    ].filter(Boolean) as string[];
+    if (GEMINI_KEYS.length === 0) throw new Error('No GEMINI_API_KEY configured');
 
     // Check if we already have recent discoveries for this topic (last 24h)
     const cacheRes = await fetch(
@@ -54,19 +58,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Use AI to discover related hashtags
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GEMINI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gemini-2.0-flash',
-        messages: [
-          {
-            role: 'user',
-            content: `Você é um especialista em TikTok brasileiro. Para o tópico/nicho "${topic}", descubra hashtags REAIS e ATIVAS no TikTok que tragam vídeos relevantes.
+    // Use AI to discover related hashtags — rotate keys on 429
+    const discoverPrompt = `Você é um especialista em TikTok brasileiro. Para o tópico/nicho "${topic}", descubra hashtags REAIS e ATIVAS no TikTok que tragam vídeos relevantes.
 
 RETORNE JSON PURO sem markdown:
 {"hashtags":[{"tag":"nome","emoji":"🎭","label":"Nome Legível","related":["tag1","tag2"],"score":85}]}
@@ -86,18 +79,26 @@ Exemplos de boas hashtags para nichos:
 - Novelas: novelaantiga, novelinha, cenasiconica, personagem, atuacao
 - Desafio: desafiotiktok, challenge, desafiodancinha, desafioviral
 - Satisfying: satisfying, relaxante, oddlysatisfying, asmrbr
-- Curiosidade: vocesabia, curiosidade, fatocurioso, mundocurioso`
-          }
-        ],
-      }),
-    });
+- Curiosidade: vocesabia, curiosidade, fatocurioso, mundocurioso`;
 
-    if (!response.ok) {
-      const status = response.status;
-      const errBody = await response.text().catch(() => '');
+    let response: Response | null = null;
+    for (const key of GEMINI_KEYS) {
+      response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gemini-2.0-flash', messages: [{ role: 'user', content: discoverPrompt }] }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (response.ok || response.status !== 429) break;
+      console.warn(`[discover-hashtags] 429 with key ...${key.slice(-6)}, trying next`);
+    }
+
+    if (!response || !response.ok) {
+      const status = response?.status || 0;
+      const errBody = await response?.text().catch(() => '') || '';
       console.error(`[discover-hashtags] Gemini ${status}: ${errBody}`);
       if (status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit, tente novamente.' }), {
+        return new Response(JSON.stringify({ error: 'Rate limit em todas as chaves, tente novamente.' }), {
           status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
