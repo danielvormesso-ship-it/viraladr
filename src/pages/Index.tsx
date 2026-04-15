@@ -1187,26 +1187,23 @@ const Index = () => {
           if (userId) {
             const poolRequest = Math.ceil(targetCount + Math.min(targetCount * 0.5, 200)); // +50% extra (max 200)
             const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest);
-            if (poolResult.served >= targetCount) {
-              // Pool satisfied 100% — instant results
+            if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("strict");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
               setCurrentIndex(0);
-              setCacheStatus(`Pool: ${poolApproved.length} vídeos prontos instantaneamente.`);
-              toast({ title: `#${mainTag} — Do pool!`, description: `${poolApproved.length} vídeos prontos.` });
-              return;
-            } else if (poolResult.served > 0) {
-              // Pool partial — show what we have, continue with live for deficit
-              const poolApproved = dedupeVideos(poolResult.videos);
-              tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
-              setResultFilterMode("strict");
-              addVideosToUI(rankByBrazilianContent(poolApproved), true);
-              setCurrentIndex(0);
               poolServedCount = poolApproved.length;
+
+              if (poolServedCount >= targetCount) {
+                // Pool satisfied 100% after dedup
+                setCacheStatus(`Pool: ${poolServedCount} vídeos prontos instantaneamente.`);
+                toast({ title: `#${mainTag} — Do pool!`, description: `${poolServedCount} vídeos prontos.` });
+                return;
+              }
+              // Pool partial after dedup — continue with live for deficit
               liveTarget = targetCount - poolServedCount;
-              setCacheStatus(`Pool: ${poolApproved.length} prontos + buscando ${liveTarget} ao vivo...`);
+              setCacheStatus(`Pool: ${poolServedCount} prontos + buscando ${liveTarget} ao vivo...`);
             }
           }
         } catch (err) {
