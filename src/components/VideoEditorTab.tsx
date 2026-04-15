@@ -678,6 +678,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
     }
     setProcessStartTime(Date.now());
     setElapsedTime(0);
+    setProcessingStatus('');
     setProcessLogs([]);
     setVideoStatuses({});
     setBatchReport(null);
@@ -991,7 +992,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         let completedCount = 0;
         let startedCount = 0;
         const successfulVideoIds = new Set<string>();
-        const SERVER_PARALLEL = 8; // Pipeline: enquanto job 1 processa, job 2 já baixa
+        const SERVER_PARALLEL = 12; // Pipeline: enquanto job 1 processa, jobs 2-4 já baixam
         const retryableFailedVideos: typeof finalTargets = [];
 
         const processQueue: typeof finalTargets = [];
@@ -1478,8 +1479,13 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
         setProcessing(false);
         try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); }
+        // Show final summary instead of clearing
+        const elapsedMs = processStartTime ? Date.now() - processStartTime : 0;
+        const mins = Math.floor(elapsedMs / 60000);
+        const secs = Math.floor((elapsedMs % 60000) / 1000);
+        const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
+        setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
         setProcessStartTime(null);
-        setProcessingStatus('');
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
       }
       return;
