@@ -348,7 +348,7 @@ const Index = () => {
       }
     }
     // Common related tags that shouldn't trigger off-topic
-    const commonRelated = ['risadas','piadas','engraçado','engraçada','risada','piada','comico','comica','gracinha','humor','comedia','zoeira','zueira','meme','memes','pegadinha','trollagem','fail','viral','fyp','trending','tiktok','brasil','tiktokbrasil'];
+    const commonRelated = ['risadas','piadas','engraçado','engraçada','risada','piada','comico','comica','gracinha','humor','comedia','zoeira','zueira','meme','memes','pegadinha','trollagem','fail','viral','fyp','trending','tiktok','brasil','tiktokbrasil','risadaria','gargalhadas','conteudodehumor','cômico','encenação','encenacao','shitposting','esquete','standupbr','standup','humorista','parodia','imitacao','comediabrasileira','comediabrasil','comediante','engraçadissimo','comédia'];
     commonRelated.forEach(t => requestedSet.add(t));
 
     const offTopicTags = new Map<string, number>();
