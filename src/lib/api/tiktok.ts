@@ -318,6 +318,7 @@ export const tiktokApi = {
         body: { hashtag_group: hashtagGroup, user_id: userId, limit, ...opts },
       });
       if (error) throw error;
+      console.log('[serveFromPool] raw response:', 'served:', data?.served, 'videos:', data?.videos?.length, 'sample:', data?.videos?.slice(0, 3).map((v: any) => ({ id: v.tiktok_id?.slice(0, 8), dur: v.duration, views: v.views, url: !!v.video_url, title: v.title?.slice(0, 30) })));
       const videos = ((data?.videos || []) as TikTokVideo[]).map(v => ({
         ...v,
         id: v.id || v.tiktok_id || '',
