@@ -220,23 +220,15 @@ const Index = () => {
 
   const addVideosToUI = useCallback((newVideos: TikTokVideo[], replace = false) => {
     if (replace) {
-      videosInUIRef.current = { keys: new Set(), metas: new Set() };
       const deduped = dedupeVideos(newVideos);
-      for (const v of deduped) {
-        videosInUIRef.current.keys.add(getVideoKey(v));
-        const m = getVideoMeta(v);
-        if (m !== '||') videosInUIRef.current.metas.add(m);
-      }
+      videosInUIRef.current = { keys: new Set(deduped.map(getVideoKey)), metas: new Set() };
       setVideos(deduped);
       return;
     }
     const filtered = newVideos.filter(v => {
       const key = getVideoKey(v);
       if (videosInUIRef.current.keys.has(key)) return false;
-      const meta = getVideoMeta(v);
-      if (meta !== '||' && videosInUIRef.current.metas.has(meta)) return false;
       videosInUIRef.current.keys.add(key);
-      if (meta !== '||') videosInUIRef.current.metas.add(meta);
       return true;
     });
     if (filtered.length > 0) setVideos(prev => [...prev, ...filtered]);
