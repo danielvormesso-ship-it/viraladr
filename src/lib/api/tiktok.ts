@@ -313,12 +313,10 @@ export const tiktokApi = {
     opts?: { min_views?: number; min_duration?: number }
   ): Promise<{ videos: TikTokVideo[]; served: number; pool_available: number; hit_rate: number }> {
     try {
-      console.log('[serveFromPool] chamando pool para:', hashtagGroup, 'limit:', limit, 'opts:', opts);
       const { data, error } = await supabase.functions.invoke('pool-serve', {
         body: { hashtag_group: hashtagGroup, user_id: userId, limit, ...opts },
       });
       if (error) throw error;
-      console.log('[serveFromPool] raw response:', 'served:', data?.served, 'videos:', data?.videos?.length, 'sample:', data?.videos?.slice(0, 3).map((v: any) => ({ id: v.tiktok_id?.slice(0, 8), dur: v.duration, views: v.views, url: !!v.video_url, title: v.title?.slice(0, 30) })));
       const videos = ((data?.videos || []) as TikTokVideo[]).map(v => ({
         ...v,
         id: v.id || v.tiktok_id || '',
@@ -330,7 +328,7 @@ export const tiktokApi = {
         hit_rate: data?.hit_rate || 0,
       };
     } catch (err) {
-      console.error('[serveFromPool] ERRO:', err);
+      console.warn('[serveFromPool] error, falling back to live:', err);
       return { videos: [], served: 0, pool_available: 0, hit_rate: 0 };
     }
   },

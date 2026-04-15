@@ -490,28 +490,20 @@ const Index = () => {
   };
 
   const filteredVideos = useMemo(() => {
-    console.log('[filteredVideos] entrada: videos.length=', videos.length, 'mode=', resultFilterMode, 'filters=', JSON.stringify(filters));
-    const step1_views = videos.filter(v => v.views >= filters.minViews);
-    const step2_likes = step1_views.filter(v => v.likes >= filters.minLikes);
-    const step3_shares = step2_likes.filter(v => v.shares >= filters.minShares);
-    const step4_comments = step3_shares.filter(v => v.comments >= filters.minComments);
-    const step5_minDur = step4_comments.filter(v => {
-      const dur = parseDuration(v.duration);
-      return !(filters.minDuration > 0 && dur > 0 && dur < filters.minDuration);
-    });
-    const step6_maxDur = step5_minDur.filter(v => parseDuration(v.duration) <= 120);
-    const step7_br = resultFilterMode === "ai" ? step6_maxDur : step6_maxDur.filter(v => isBrazilianContent(v));
-    const step8_ai = resultFilterMode === "ai" ? step7_br : step7_br.filter(v => passesAiContentFilter(v));
-    const step9_dedup = dedupeVideos(step8_ai);
-    // Log removed videos per step
-    const removedByMinDur = step4_comments.filter(v => { const dur = parseDuration(v.duration); return filters.minDuration > 0 && dur > 0 && dur < filters.minDuration; });
-    const removedByMaxDur = step5_minDur.filter(v => parseDuration(v.duration) > 120);
-    const removedByDedup = step8_ai.length - step9_dedup.length;
-    console.log(`[filteredVideos] mode=${resultFilterMode} | total=${videos.length} → views=${step1_views.length} → likes=${step2_likes.length} → shares=${step3_shares.length} → comments=${step4_comments.length} → minDur=${step5_minDur.length} → maxDur=${step6_maxDur.length} → br=${step7_br.length} → ai=${step8_ai.length} → dedup=${step9_dedup.length} | filters: views=${filters.minViews} dur=${filters.minDuration}`);
-    if (removedByMinDur.length > 0) console.log(`[filteredVideos] ❌ Removidos por duração mín (${filters.minDuration}s+):`, removedByMinDur.map(v => `${v.tiktok_id?.slice(0,8)}… dur=${v.duration} (${parseDuration(v.duration)}s) "${v.title?.slice(0,40)}"`));
-    if (removedByMaxDur.length > 0) console.log(`[filteredVideos] ❌ Removidos por duração >120s:`, removedByMaxDur.map(v => `${v.tiktok_id?.slice(0,8)}… dur=${v.duration} (${parseDuration(v.duration)}s)`));
-    if (removedByDedup > 0) console.log(`[filteredVideos] ❌ Removidos por dedup: ${removedByDedup}`);
-    return step9_dedup;
+    return dedupeVideos(
+      videos.filter(v => {
+        if (v.views < filters.minViews) return false;
+        if (v.likes < filters.minLikes) return false;
+        if (v.shares < filters.minShares) return false;
+        if (v.comments < filters.minComments) return false;
+        const dur = parseDuration(v.duration);
+        if (filters.minDuration > 0 && dur > 0 && dur < filters.minDuration) return false;
+        if (dur > 120) return false;
+        if (resultFilterMode !== "ai" && !isBrazilianContent(v)) return false;
+        if (resultFilterMode !== "ai" && !passesAiContentFilter(v)) return false;
+        return true;
+      })
+    );
   }, [videos, filters, resultFilterMode, aiContentFilter]);
   const sortedFilteredVideos = useMemo(() => {
     const sorted = [...filteredVideos];
@@ -1215,7 +1207,7 @@ const Index = () => {
       const mainTag = tag.includes(',') ? tag.split(',')[0].trim() : tag;
 
       // ── Pool: try serving from pre-built pool first ──
-      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t === mainTag) || p.tag === tag);
+      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t.trim() === mainTag) || p.tag === tag);
       const poolGroupKey = preset?.label?.toLowerCase() || null;
 
       if (poolGroupKey && !forceRefresh) {
@@ -1225,16 +1217,11 @@ const Index = () => {
             const poolRequest = Math.ceil(targetCount + Math.min(targetCount * 0.5, 200)); // +50% extra (max 200)
             const poolOpts = { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined };
             const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest, poolOpts);
-            console.log('[pool] recebidos:', poolResult.videos.length, 'served:', poolResult.served);
             if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
-              console.log('[pool] após dedup:', poolApproved.length);
               if (!isDev) tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("ai");
-              const ranked = rankByBrazilianContent(poolApproved);
-              console.log('[pool] antes de addVideosToUI:', ranked.length);
-              addVideosToUI(ranked, true);
-              console.log('[pool] após addVideosToUI, videosRef:', videosRef.current.length);
+              addVideosToUI(rankByBrazilianContent(poolApproved), true);
               setCurrentIndex(0);
               poolServedCount = poolApproved.length;
 
