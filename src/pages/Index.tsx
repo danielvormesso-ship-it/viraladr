@@ -2008,12 +2008,14 @@ const Index = () => {
 
   const handleDownload = async () => {
     if (!currentVideo) return;
+    if (!(await requireCredits())) return;
     setIsDownloading(true);
     activityTracker.logDownload(currentVideo.title, currentVideo.id);
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
         if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
+        await credits.deductCredits(1);
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
         // Remove downloaded video from preview and DB
