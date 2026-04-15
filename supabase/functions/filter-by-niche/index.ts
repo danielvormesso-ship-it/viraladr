@@ -14,7 +14,7 @@ interface VideoToFilter {
 
 const NICHE_REJECT_MAP: Record<string, string> = {
   // Humor & Entretenimento
-  humor: "música, kpop, k-pop, receita, culinária, cozinha, fitness, academia, treino, musculação, gameplay, jogo, gamer, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, eleição, governo, viagem, turismo, maquiagem, skincare, tutorial técnico, ASMR, unboxing, romance, casal, slideshow de foto, paisagem, decoração, organização, meditação, yoga, nutrição, dieta",
+  humor: "kpop, k-pop, receita, culinária, cozinha, fitness, academia, treino, musculação, gameplay, jogo, gamer, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, eleição, governo, viagem, turismo, maquiagem, skincare, tutorial técnico, ASMR, unboxing, romance, casal, slideshow de foto, paisagem, decoração, organização, meditação, yoga, nutrição, dieta",
   // Trends & Viral
   viral: "receita detalhada, passo a passo culinário, tutorial técnico longo, fitness detalhado, série de exercícios, maquiagem tutorial, gameplay longo, partida completa, política, eleição, governo, kpop, k-pop",
   // Lifestyle — sub-grupos
@@ -27,11 +27,11 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   // Casa & Organização — sub-grupos
   casa_unboxing: "pegadinha, trolagem, humor, comédia, dancinha, receita, culinária, comida, fitness, academia, treino, gameplay, jogo, gamer, romance, casal, política, eleição, notícia, tragédia, paisagem, viagem, turismo, ASMR, kpop, k-pop, música",
   casa_organizacao: "pegadinha, trolagem, humor, comédia, dancinha, gameplay, jogo, gamer, política, eleição, notícia, tragédia, romance, casal, kpop, k-pop, viagem, turismo, fitness, academia, música",
-  casa_decoracao: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness",
-  casa_faxina: "pegadinha, humor, dança, gameplay, política, kpop, receita, fitness, decoração",
-  novelas_fruta: "pegadinha, humor, dança, fitness, gameplay, política, unboxing, receita, tutorial",
-  novelas_drama: "pegadinha, fitness, gameplay, política, unboxing, receita, tutorial, kpop",
-  novelas_cortes: "pegadinha, fitness, gameplay, política, unboxing, receita, tutorial, kpop",
+  casa_decoracao: "pegadinha, humor, dança, kpop, k-pop, gameplay, jogo, gamer, fitness, academia, receita, culinária, tutorial, zoeira, trolagem, política, eleição, romance, casal, viagem, turismo",
+  casa_faxina: "pegadinha, humor, dança, kpop, k-pop, gameplay, jogo, gamer, fitness, academia, receita, culinária, tutorial, zoeira, trolagem, política, eleição, romance, casal, decoração",
+  novelas_fruta: "pegadinha, humor, dança, fitness, academia, gameplay, jogo, gamer, política, eleição, unboxing, receita, culinária, tutorial, hack, dica, organização, kpop, k-pop, zoeira",
+  novelas_drama: "pegadinha, fitness, academia, gameplay, jogo, gamer, política, eleição, unboxing, receita, culinária, tutorial, hack, dica, organização, kpop, k-pop, zoeira, trolagem",
+  novelas_cortes: "pegadinha, fitness, academia, gameplay, jogo, gamer, política, eleição, unboxing, receita, culinária, tutorial, hack, dica, organização, kpop, k-pop, zoeira, trolagem",
   // Dicas — sub-grupos
   dicas_receita: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, dancinha, humor, comédia, fitness, academia, maquiagem",
   dicas_fitness: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, política, eleição, receita culinária, cozinha, maquiagem, dancinha, humor",
@@ -39,9 +39,9 @@ const NICHE_REJECT_MAP: Record<string, string> = {
   dicas_motivacao: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, receita, culinária, humor, comédia, dancinha, maquiagem",
   dicas_curiosidade: "pegadinha, trolagem, kpop, k-pop, gameplay, jogo, gamer, romance, casal, música, dancinha, maquiagem, fitness",
   // Hook forte
-  hook: "receita, culinária, tutorial técnico, fitness detalhado, série de exercícios, ASMR, meditação, yoga, kpop, k-pop, organização, decoração",
+  hook: "receita, culinária, tutorial técnico, fitness detalhado, série de exercícios, ASMR, meditação, yoga, kpop, k-pop",
   // Satisfying & Curiosidades
-  satisfying: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, tragédia, política, eleição, kpop, k-pop, música agitada, funk, dancinha, humor, comédia",
+  satisfying: "pegadinha, trolagem, gameplay, jogo, gamer, notícia, tragédia, política, eleição, kpop, k-pop, música agitada, funk, dancinha",
 };
 
 const NICHE_INSTRUCTIONS: Record<string, string> = {
