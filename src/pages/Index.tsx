@@ -123,17 +123,24 @@ function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
 
 // Foreign content detection — REMOVE (not rank) videos that are clearly non-Portuguese
 const FOREIGN_EN_WORDS = /\b(the|this|that|when|with|your|have|from|they|what|are|you|for|and|its|were|been|would|could|should|their|about|into|over|then|them|these|those|will|just|like|make|know|time|very|back|also|only|come|than|most|find|here|thing|many|some|take|want|give|good|look|think|after|work|call|first|need|keep|help|every|still|between|never|start|last|might|next|under|right|tell|does|turn|another|same|each|feel|before|follow|show|live|scary|elevator|prank|challenge|funny|amazing|awesome|incredible|watch|check|guys|hey|omg|wtf|lol|bro|dude|girl|how|why|really|actually|literally|basically|people|money|world|gone|wrong|wait|part|real|best|worst|ever|must|much|most|didn|wasn|won|isn|don|can|fun|try|home|love|princess|dance|dancing|music|song|cute|sweet|hot|cool|old|new|big|little|small|long|short|high|low|fast|slow|happy|sad|mad|bad|let|get|put|set|run|sit|stand|move|play|hit|cut|buy|sell|kill|win|lose|eat|drink|sleep)\b/gi;
-const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier)\b/gi;
+const FOREIGN_ES_WORDS = /\b(pero|muy|esto|hola|gracias|hermano|bueno|jaja|amigo|novia|pareja|siempre|cuando|donde|también|tambien|porque|aunque|todavía|todavia|necesito|puedo|quiero|tiene|puede|vamos|mejor|peor|nunca|otra|otro|mismo|aquí|ahora|entonces|después|antes|todos|nada|algo|alguien|nadie|mucho|poco|demasiado|bastante|cada|algún|ningún|cualquier|bromas|broma|loquendo|dimision|dimisión|gobierno|presidente|elecciones|espana|españa|companero|compañero|chicos|chicas|mira esto|increíble|increible|verdad|mentira|cuidado|peligro|tonto|tonta|guapo|guapa|novio|chistoso|chistosa|gracioso|graciosa|jajaja|miren)\b/gi;
 const FOREIGN_FR_WORDS = /\b(c'est|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|très|même|être|faire|comme|peut|donc|alors|cette|aussi|encore|entre|après|avant|rien|toujours|jamais|quelque|chaque|depuis|pendant|sans|vers|ici|ailleurs|bonjour|merci|oui|salut|putain|merde|trop|voilà|quoi|bah|ouais|nan|chéri|chérie|les)\b/gi;
 const FOREIGN_IT_WORDS = /\b(questa|quello|perché|anche|dove|cosa|ogni|tutto|niente|qualcosa|qualcuno|nessuno|troppo|abbastanza|già|adesso|dopo|insieme|senza|contro|circa|pensi|sono|voglio|posso|bene|male|grazie|ciao|buongiorno|allora|molto|bello|ragazza|ragazzi|andiamo|stai|faccio|vuoi|sai|vieni|aspetta)\b/gi;
 const FOREIGN_DE_WORDS = /\b(dieser|diese|dieses|nicht|aber|auch|noch|oder|wenn|dass|weil|schon|immer|wieder|vielleicht|zwischen|gegen|unter|über|jetzt|heute|morgen|gestern|zusammen|ich|du|er|sie|wir|das|ist|bin|hab|macht|schau|guck|alter|krass|digga|bitte|danke|ja|nein)\b/gi;
 const BR_POSITIVE_WORDS = /\b(kkk+|mano|cara|gente|demais|muito|pra|né|tá|tô|vou|vai|faz|bora|slk|tmj|vlw|pqp|mds|então|voce|ninguem|obrigad|bonit|danç|dançando|pegadinha|zoeira|humor|comedia|risada|brasil|garota|menina|mulher|gostosa|linda|gata|novinha|solteira|treino|cabelo|maquiagem|roupa|look|arrasou|amei|perfeita|maravilhosa|saudade|churrasco|pagode|sertanejo|funk|forró|baile|favela|praia|carnaval|família|irmã|mãe|jeitinho|boa noite|bom dia|oii|olá|eita|uai|oxe|vish|krl|carai|poha|slc|mlk|mina|meu deus|socorro)\b/i;
 const BR_POSITIVE_CHARS = /[ãáàâéêíóôõúüç]/;
 
+// Flags of non-BR countries that share Portuguese/Spanish vocab: 🇦🇴🇵🇹🇪🇸🇦🇷🇨🇴🇲🇽🇨🇱🇵🇪🇻🇪🇪🇨🇺🇾
+const FOREIGN_FLAG_PATTERN = /🇦🇴|🇵🇹|🇪🇸|🇦🇷|🇨🇴|🇲🇽|🇨🇱|🇵🇪|🇻🇪|🇪🇨|🇺🇾/g;
+
 function isForeignContent(v: TikTokVideo): boolean {
   const title = (v.title || '').toLowerCase();
   const author = (v.author || '').toLowerCase();
+  const rawTitle = v.title || '';
   const text = `${title} ${author}`;
+  // Reject if foreign country flags present (🇦🇴🇵🇹🇪🇸🇦🇷🇨🇴🇲🇽🇨🇱🇵🇪)
+  const foreignFlags = rawTitle.match(FOREIGN_FLAG_PATTERN);
+  if (foreignFlags && foreignFlags.length >= 1) return true;
   // Reject non-BR author patterns
   if (NON_BR_AUTHOR_PATTERNS.test(author.replace('@', ''))) return true;
   // Reject non-BR culture (kpop, anime, etc.)
@@ -168,7 +175,7 @@ function isForeignContent(v: TikTokVideo): boolean {
 
 // Hoisted regex patterns for isBrazilianContent (avoid re-creation per call)
 const NON_BR_AUTHOR_PATTERNS = /^(the_|mr_|mrs_|miss_|queen|king|vibes_|baby_|princess|prince|daddy|mommy|babe\d)/i;
-const NON_BR_CONTENT_PATTERNS = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap)\b/i;
+const NON_BR_CONTENT_PATTERNS = /\b(kpop|k-pop|kpopfyp|babymonster|blackpink|twice|bts|stray ?kids|enhypen|aespa|itzy|newjeans|nct|seventeen|exo|red ?velvet|mamamoo|ateez|txt|ive|le ?sserafim|fancam|stan|bias|oppa|unnie|noona|hyung|aegyo|hallyu|comeback|teaser|choreo|idol|trainee|debut|maknae|selca|mukbang|pinay|pinoy|habibi|mashallah|tuto facile|apprend|yaparsam|bercanda|serius|ne yap|loquendo|pedrosanchez|dimision|angola.*portugal|portugal.*angola)\b/i;
 const FOREIGN_LANG_PATTERNS = /\b(yapay[ıi]m|anla[dğ]|kadar[ıi]m|bercanda|serius|luôn|aussi|facile|apprend[sr]?|c'est|donc|alors|cette|cette|cette|cette|avec|pour|dans|nous|vous|leur|quand|chez|sont|mais|tout|tres|même|être|faire|comme|peut|j'ai|l'on|qu'il|qu'on|cette|cette|maniere|manière|nouvell|dembrasser|questa|quello|dieser|diese|terima ?kasih|salamat|salamat po|costrucion|construccion|encuentro|siempre|porque|cuando|donde|también|tambien|aunque|todavía|todavia|necesito|puedo|quiero|jefesito|enamorado|comear|sprawiaj|kobiety|szpach|legiobb|zagad|sprawia|piéces|essentielles|dressing|mignon|minimalist|setup|organisez|organisez|rangement|ikea hack|centavos|despensa|action diy|pièces)\b/i;
 const FOREIGN_SENTENCE_PATTERNS = /\b(du |de la |les |des |une |un |est |et |en |au |aux |sur |sous |par |qui |que |il |elle |nous |vous |ils |elles |mon |ton |son |mes |tes |ses |notre |votre |leur |ce |cet |ces |el |la |los |las |del |al |con |sin |por |para |pero |como |más |muy |tiene |puede |hay |donde |cuando |quien |ese |eso |esta |estos |estas |aquí |allí )\b/gi;
 const CJK_PATTERN = /[\u3000-\u9FFF\uAC00-\uD7AF\u3040-\u309F\u30A0-\u30FF]/;
