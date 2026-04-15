@@ -38,6 +38,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceKey);
+    // Use service_role key for internal function-to-function calls (bypasses JWT verification)
+    const invokeKey = serviceKey;
 
     const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -123,27 +125,34 @@ Deno.serve(async (req) => {
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
     }
 
-    // Dispatch all refills in parallel and collect results
-    const dispatchResults = await Promise.all(
-      triggered.map(async (t) => {
-        try {
-          const res = await fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${serviceKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
-          });
-          const status = res.status;
-          console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${status}`);
-          return { preset: t.preset, status, ok: res.ok };
-        } catch (err) {
-          console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
-          return { preset: t.preset, status: 0, ok: false, error: err instanceof Error ? err.message : 'fetch failed' };
-        }
-      })
-    );
+    // Dispatch refills in sequential chunks of 5 to avoid rate limiting
+    const DISPATCH_CHUNK = 5;
+    const dispatchResults: { preset: string; status: number; ok: boolean; error?: string }[] = [];
+    for (let i = 0; i < triggered.length; i += DISPATCH_CHUNK) {
+      const chunk = triggered.slice(i, i + DISPATCH_CHUNK);
+      const chunkResults = await Promise.all(
+        chunk.map(async (t) => {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${invokeKey}`,
+                'apikey': invokeKey,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
+            });
+            const status = res.status;
+            console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${status}`);
+            return { preset: t.preset, status, ok: res.ok };
+          } catch (err) {
+            console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
+            return { preset: t.preset, status: 0, ok: false, error: err instanceof Error ? err.message : 'fetch failed' };
+          }
+        })
+      );
+      dispatchResults.push(...chunkResults);
+    }
 
     const failed = dispatchResults.filter(r => !r.ok);
     if (failed.length > 0) {
