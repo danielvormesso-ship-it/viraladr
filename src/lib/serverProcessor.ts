@@ -202,12 +202,12 @@ export async function pollJobStatus(
   const BASE_POLL_INTERVAL_MS = 3000;
   const MAX_POLL_DURATION_MS = 30 * 60 * 1000; // 30 min por job
   const MAX_TRANSIENT_ERRORS = 20;
-  const MAX_STALLED_PROGRESS_MS = 180 * 1000; // 180s sem avanço real
+  const MAX_STALLED_PROGRESS_MS = 60 * 1000; // 60s sem avanço real — cancela job travado
   const STAGE_MAX_MS: Partial<Record<JobStatus['status'], number>> = {
-    queued: 120 * 1000,
-    downloading: 180 * 1000,
-    probing: 180 * 1000,
-    processing: 8 * 60 * 1000,
+    queued: 90 * 1000,
+    downloading: 90 * 1000,
+    probing: 60 * 1000,
+    processing: 5 * 60 * 1000,
   };
   const KNOWN_STATUSES: JobStatus['status'][] = ['queued', 'downloading', 'probing', 'processing', 'done', 'failed'];
   const pollStartedAt = Date.now();
@@ -269,7 +269,7 @@ export async function pollJobStatus(
       data.status !== 'failed' &&
       Date.now() - lastProgressAt > MAX_STALLED_PROGRESS_MS
     ) {
-      throw new Error('Job sem progresso por mais de 4 minutos');
+      throw new Error('Job sem progresso por mais de 60 segundos');
     }
 
     if (data.status !== lastStatus) {
