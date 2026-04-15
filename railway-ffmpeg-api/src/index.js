@@ -388,19 +388,40 @@ async function forceNormalizeSourceVideo(inputPath, jobId) {
   const normPath = path.join(UPLOAD_DIR, `${uuidv4()}_recovery_prenorm.mp4`);
   try {
     console.warn(`Job ${jobId} applying forced pre-normalization for recovery...`);
-    await runWithFfmpegQueue([
-      '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', '1',
-      '-i', inputPath,
-      '-map', '0:v:0', '-map', '0:a:0?',
-      '-vf', 'fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,format=yuv420p',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '44100',
-      '-map_metadata', '-1',
-      '-movflags', '+faststart', '-max_muxing_queue_size', '4096',
-      '-y', normPath,
-    ]);
-    ensureFileLooksValid(normPath, 'recovery pre-normalized video', 20 * 1024);
+    // Attempt 1: full re-encode with error tolerance
+    try {
+      await runWithFfmpegQueue([
+        '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', '1',
+        '-err_detect', 'ignore_err', '-fflags', '+genpts+igndts',
+        '-i', inputPath,
+        '-map', '0:v:0', '-map', '0:a:0?',
+        '-vf', 'fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,format=yuv420p',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '44100',
+        '-map_metadata', '-1',
+        '-movflags', '+faststart', '-max_muxing_queue_size', '4096',
+        '-y', normPath,
+      ]);
+      ensureFileLooksValid(normPath, 'recovery pre-normalized video', 20 * 1024);
+    } catch (firstErr) {
+      // Attempt 2: strip video filters, just re-encode raw
+      console.warn(`Job ${jobId} recovery attempt 1 failed, trying minimal re-encode:`, firstErr.message?.slice(0, 200));
+      try { fs.unlinkSync(normPath); } catch {}
+      await runWithFfmpegQueue([
+        '-hide_banner', '-loglevel', 'error', '-nostats', '-threads', '1',
+        '-err_detect', 'ignore_err', '-fflags', '+genpts+igndts',
+        '-i', inputPath,
+        '-map', '0:v:0', '-map', '0:a:0?',
+        '-vf', 'scale=720:-2,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '96k', '-ac', '2', '-ar', '44100',
+        '-map_metadata', '-1', '-max_muxing_queue_size', '8192',
+        '-y', normPath,
+      ]);
+      ensureFileLooksValid(normPath, 'recovery pre-normalized video (attempt 2)', 10 * 1024);
+    }
     fs.unlinkSync(inputPath);
     fs.renameSync(normPath, inputPath);
     return await probeVideo(inputPath);
