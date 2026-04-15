@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     // ── 1. Fetch ALL seen + used IDs for this user (last 7 days) via pagination ──
-    const ttlCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const ttlCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
     const PAGE = 1000;
 
     const excludeIds = new Set<string>();

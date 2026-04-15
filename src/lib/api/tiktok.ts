@@ -224,7 +224,7 @@ export const tiktokApi = {
   async getSeenVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
       const ids = new Set<string>();
       const PAGE = 1000;
       for (let from = 0; ; from += PAGE) {
@@ -265,7 +265,7 @@ export const tiktokApi = {
   async getUsedVideoIds(): Promise<Set<string>> {
     try {
       const userId = await getCurrentUserId();
-      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
       const ids = new Set<string>();
       const PAGE = 1000;
       for (let from = 0; ; from += PAGE) {
