@@ -1437,6 +1437,7 @@ const Index = () => {
 
         if (poolRequests.length > 0) {
           addLog(`⚡ Tentando pool para ${poolRequests.map(r => r.groupKey).join(', ')}...`);
+          console.log('[merge-pool] groupKeys:', poolRequests.map(r => r.groupKey));
           const poolResults = await Promise.all(
             poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, Math.ceil(r.qty + Math.min(r.qty * 0.5, 200)), { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined }))
           );
@@ -2991,20 +2992,6 @@ const Index = () => {
 
               {/* Actions */}
               <div className="flex gap-2 pt-2.5 border-t border-border/10">
-                <Button
-                  onClick={() => {
-                    if (selectedTags.length >= 1) {
-                      handleSingleScrapeConfirm(selectedTags[selectedTags.length - 1]);
-                    }
-                  }}
-                  disabled={isScraping || selectedTags.length === 0}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 h-8 gap-1.5 text-[11px] font-semibold rounded-xl border-border/20 hover:border-primary/15 hover:bg-primary/5 hover:scale-[1.03] active:scale-[0.97] transition-all duration-200"
-                >
-                  <Search className="h-3 w-3" />
-                  Buscar 1
-                </Button>
                 <Button
                   onClick={handleMergeConfirm}
                   disabled={isScraping || selectedTags.length === 0}
