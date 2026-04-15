@@ -254,8 +254,13 @@ const Index = () => {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: "single" | "merge" | "foryou"; tag?: string }>({ open: false, type: "single" });
   const [scrapeProgress, setScrapeProgress] = useState("");
   const [mergeLogs, setMergeLogs] = useState<string[]>([]);
-  const [filters, setFilters] = useState({ minViews: 0, minLikes: 0, minShares: 0, minComments: 0, minDuration: 0 });
-  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('viraladr_filters');
+      if (saved) { const p = JSON.parse(saved); return { minViews: p.minViews || 0, minLikes: p.minLikes || 0, minShares: p.minShares || 0, minComments: p.minComments || 0, minDuration: p.minDuration || 0 }; }
+    } catch {}
+    return { minViews: 0, minLikes: 0, minShares: 0, minComments: 0, minDuration: 0 };
+  });
   const [batchQuantity, setBatchQuantity] = useState(40);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, active: false });
   const [activeTab, setActiveTab] = useState<"busca" | "edicao">("busca");
@@ -2435,51 +2440,50 @@ const Index = () => {
               <AlertTriangle className="h-5 w-5 text-yellow-500" />
               Confirmar busca
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
+            <AlertDialogDescription className="space-y-3">
               {confirmDialog.type === "single" ? (
-                <>
-                  <p>Buscar <strong>{tagQuantities[confirmDialog.tag!] || 50} vídeos</strong> de <strong>#{confirmDialog.tag}</strong>?</p>
-                  <p className="text-xs text-muted-foreground">
-                    Se os vídeos já estiverem no cache (últimas 6h), não haverá custo.
-                    Caso contrário, usará Apify como fallback (~$0.12).
-                  </p>
-                </>
+                <p>Buscar <strong>{tagQuantities[confirmDialog.tag!] || 50} vídeos</strong> de <strong>#{confirmDialog.tag}</strong>?</p>
               ) : confirmDialog.type === "foryou" ? (
-                <>
-                  <p>Buscar <strong>{foryouQuantity} vídeos</strong> do <strong>For You</strong> do TikTok?</p>
-                  {(filters.minViews > 0 || filters.minLikes > 0 || filters.minShares > 0 || filters.minComments > 0) && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Views {tiktokApi.formatNumber(filters.minViews)}+</span>}
-                      {filters.minLikes > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Likes {tiktokApi.formatNumber(filters.minLikes)}+</span>}
-                      {filters.minShares > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Shares {tiktokApi.formatNumber(filters.minShares)}+</span>}
-                      {filters.minComments > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">Comments {tiktokApi.formatNumber(filters.minComments)}+</span>}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2">
-                    O sistema vai buscar conteúdo trending até preencher <strong>{foryouQuantity} vídeos</strong> que passem nos seus filtros. Sem custo (usa APIs gratuitas).
-                  </p>
-                </>
+                <p>Buscar <strong>{foryouQuantity} vídeos</strong> do <strong>For You</strong>?</p>
               ) : (
                 <>
-                  <p>{aiSuggestedTags.length > 0 ? '🧠 Busca inteligente' : 'Mesclar'}: <strong>{selectedTags.length} {selectedTags.length === 1 ? 'grupo' : 'hashtags'}</strong></p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+                  <p>{aiSuggestedTags.length > 0 ? '🧠 Busca inteligente' : 'Mesclar'}: <strong>{selectedTags.length} hashtags</strong></p>
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedTags.map(t => {
                       const preset = PRESET_HASHTAGS.find(p => p.tag === t);
-                      const displayName = preset ? `${preset.emoji} ${preset.label}` : `#${t}`;
-                      const isMulti = t.includes(',');
-                      const subCount = isMulti ? t.split(',').length : 0;
-                      return (
-                        <span key={t} className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">
-                          {displayName} ({tagQuantities[t] || 50}){isMulti && <span className="text-primary/60 ml-1">• {subCount} tags</span>}
-                        </span>
-                      );
+                      return <span key={t} className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">{preset ? `${preset.emoji} ${preset.label}` : `#${t}`} ({tagQuantities[t] || 50})</span>;
                     })}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Total: até <strong>{selectedTags.reduce((s, t) => s + (tagQuantities[t] || 50), 0)} vídeos</strong>.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Total: até <strong>{selectedTags.reduce((s, t) => s + (tagQuantities[t] || 50), 0)} vídeos</strong>.</p>
                 </>
               )}
+
+              {/* Inline filters */}
+              <div className="rounded-xl border border-border/30 bg-secondary/10 p-3 space-y-3">
+                <p className="text-xs font-semibold text-foreground/70 flex items-center gap-1.5"><Filter className="h-3 w-3" /> Filtros de busca</p>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground/60 font-medium flex items-center gap-1"><Eye className="h-2.5 w-2.5" /> Views mínimas</p>
+                  <div className="flex flex-wrap gap-1">
+                    {[0, 100000, 500000, 1000000, 5000000].map(val => (
+                      <button key={val} onClick={() => { setFilters(prev => ({ ...prev, minViews: val })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minViews: val })); } catch {} }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 ${filters.minViews === val ? 'bg-primary/15 text-primary border border-primary/20' : 'bg-secondary/30 text-foreground/40 hover:bg-secondary/50'}`}>
+                        {val === 0 ? 'Todos' : tiktokApi.formatNumber(val) + '+'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground/60 font-medium flex items-center gap-1"><Film className="h-2.5 w-2.5" /> Duração mínima</p>
+                  <div className="flex flex-wrap gap-1">
+                    {[0, 15, 30, 60].map(val => (
+                      <button key={val} onClick={() => { setFilters(prev => ({ ...prev, minDuration: val })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minDuration: val })); } catch {} }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 ${filters.minDuration === val ? 'bg-primary/15 text-primary border border-primary/20' : 'bg-secondary/30 text-foreground/40 hover:bg-secondary/50'}`}>
+                        {val === 0 ? 'Todos' : `${val}s+`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3116,84 +3120,17 @@ const Index = () => {
                 )}
               </div>
             )}
-            <div className="rounded-2xl glass overflow-hidden">
-              <button
-                onClick={() => setShowFilters(p => !p)}
-                className="flex items-center justify-between w-full px-4 py-2.5 hover:bg-secondary/10 transition-all duration-200"
-              >
-                <div className="flex items-center gap-2">
-                  <Filter className="h-3 w-3 text-muted-foreground/50" />
-                  <span className="text-xs font-semibold text-foreground/60">Filtros</span>
-                  {(filters.minViews > 0 || filters.minLikes > 0 || filters.minShares > 0 || filters.minComments > 0 || filters.minDuration > 0) && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-glow" />
-                  )}
+            {/* Active filters badge */}
+            {(filters.minViews > 0 || filters.minDuration > 0) && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/5 border border-primary/10">
+                <Filter className="h-3 w-3 text-primary/60" />
+                <div className="flex gap-1.5">
+                  {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold">{tiktokApi.formatNumber(filters.minViews)}+ views</span>}
+                  {filters.minDuration > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold">{filters.minDuration}s+ duração</span>}
                 </div>
-                <ChevronDown className={`h-3 w-3 text-muted-foreground/40 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showFilters && (
-                <div className="px-4 pb-3 space-y-2.5 border-t border-border/10 animate-fade-in">
-                  {[
-                    { key: 'minViews' as const, label: 'Views', icon: Eye, presets: [0, 10000, 50000, 100000, 500000, 1000000] },
-                    { key: 'minLikes' as const, label: 'Likes', icon: Heart, presets: [0, 1000, 5000, 10000, 50000, 100000] },
-                    { key: 'minShares' as const, label: 'Shares', icon: Share2, presets: [0, 100, 500, 1000, 5000, 10000] },
-                    { key: 'minComments' as const, label: 'Comments', icon: MessageCircle, presets: [0, 100, 500, 1000, 5000] },
-                  ].map(({ key, label, icon: Icon, presets }) => (
-                    <div key={key} className="space-y-1 pt-1.5">
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
-                        <Icon className="h-2.5 w-2.5" />
-                        <span className="font-medium">{label}</span>
-                        {filters[key] > 0 && <span className="text-primary font-bold ml-auto">{tiktokApi.formatNumber(filters[key])}+</span>}
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {presets.map(val => (
-                          <button
-                            key={val}
-                            onClick={() => { setFilters(prev => ({ ...prev, [key]: val })); setCurrentIndex(0); }}
-                            className={`px-2 py-[3px] rounded-lg text-[10px] font-semibold transition-all duration-200
-                              ${filters[key] === val
-                                ? 'bg-primary/10 text-primary border border-primary/12 tag-glow'
-                                : 'bg-secondary/25 text-foreground/35 border border-transparent hover:bg-secondary/50 hover:text-foreground/60 hover:scale-[1.06] active:scale-[0.94]'
-                              }`}
-                          >
-                            {val === 0 ? 'Todos' : tiktokApi.formatNumber(val) + '+'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {/* Duration filter */}
-                  <div className="space-y-1 pt-1.5">
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
-                      <Film className="h-2.5 w-2.5" />
-                      <span className="font-medium">Duração mín.</span>
-                      {filters.minDuration > 0 && <span className="text-primary font-bold ml-auto">{filters.minDuration}s+</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {[0, 5, 10, 15, 20, 30].map(val => (
-                        <button
-                          key={val}
-                          onClick={() => { setFilters(prev => ({ ...prev, minDuration: val })); setCurrentIndex(0); }}
-                          className={`px-2 py-[3px] rounded-lg text-[10px] font-semibold transition-all duration-200
-                            ${filters.minDuration === val
-                              ? 'bg-primary/10 text-primary border border-primary/12 tag-glow'
-                              : 'bg-secondary/25 text-foreground/35 border border-transparent hover:bg-secondary/50 hover:text-foreground/60 hover:scale-[1.06] active:scale-[0.94]'
-                            }`}
-                        >
-                          {val === 0 ? 'Todos' : `${val}s+`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setFilters({ minViews: 0, minLikes: 0, minShares: 0, minComments: 0, minDuration: 0 }); setCurrentIndex(0); }}
-                    className="text-[10px] text-muted-foreground/50 hover:text-foreground font-medium transition-all duration-200 pt-1 hover:scale-[1.05]"
-                  >
-                    Limpar filtros
-                  </button>
-                </div>
-              )}
-            </div>
+                <button onClick={() => setFilters(prev => ({ ...prev, minViews: 0, minDuration: 0 }))} className="text-[10px] text-muted-foreground/50 hover:text-foreground ml-auto">✕</button>
+              </div>
+            )}
 
             {/* Stats bar */}
             {downloadedCount > 0 && (
