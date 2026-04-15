@@ -2397,17 +2397,17 @@ const Index = () => {
     const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
     if (!isDev) await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
 
-    // Deduct credits for downloaded videos
-    if (successCount > 0) {
-      await credits.deductCredits(successCount);
-    }
-
-    // Remove downloaded videos from preview and DB
+    // Remove downloaded videos from preview and DB (before deductCredits to avoid stuck UI)
     const downloadedIds = new Set(videosToDownload.map(v => v.id));
     setVideos(prev => prev.filter(v => !downloadedIds.has(v.id)));
     setCurrentIndex(0);
     setDownloadedCount((prev) => prev + requestedCount);
     tiktokApi.deleteVideos(Array.from(downloadedIds)).catch(err => console.error('Delete error:', err));
+
+    // Deduct credits for downloaded videos
+    if (successCount > 0) {
+      try { await credits.deductCredits(successCount); } catch (err) { console.error('[deductCredits] erro:', err); }
+    }
     setBatchProgress({ current: 0, total: 0, active: false });
     toast({
       title: successCount > 0 ? `ZIP pronto! ⚡ ${totalTime}s` : "Falha no download",
