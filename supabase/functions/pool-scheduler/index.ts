@@ -64,6 +64,21 @@ Deno.serve(async (req) => {
       console.warn('[pool-scheduler] cleanup error:', cleanupErr);
     }
 
+    // ── 0b. Reset ALL exhausted cursors so refills always have fresh pages ──
+    try {
+      const { data: resetRows } = await adminClient
+        .from('pool_cursors')
+        .update({ exhausted: false, cursor_value: null })
+        .eq('exhausted', true)
+        .select('hashtag_group');
+      const resetCount = resetRows?.length || 0;
+      if (resetCount > 0) {
+        console.log(`[pool-scheduler] Global cursor reset: ${resetCount} exhausted cursors cleared`);
+      }
+    } catch (cursorErr) {
+      console.warn('[pool-scheduler] global cursor reset error:', cursorErr);
+    }
+
     // Build flat list of all presets
     const allPresets: string[] = [];
     for (const presets of Object.values(DEFAULT_PRESETS)) {
@@ -124,24 +139,8 @@ Deno.serve(async (req) => {
     console.log(`[pool-scheduler] ${allPresets.length} presets: ${triggered.length} need refill, ${sufficient.length} sufficient`);
     if (sufficient.length > 0) console.log(`[pool-scheduler] Sufficient: ${sufficient.join(', ')}`);
 
-    // ── 4. Reset exhausted cursors, then dispatch pool-refill ──
+    // ── 4. Log triggered presets ──
     for (const t of triggered) {
-      // Auto-reset cursors that are exhausted so refill can fetch new pages
-      try {
-        const { data: resetRows } = await adminClient
-          .from('pool_cursors')
-          .update({ exhausted: false, cursor_value: null })
-          .eq('hashtag_group', t.preset)
-          .eq('exhausted', true)
-          .select('hashtag_group');
-        const resetCount = resetRows?.length || 0;
-        if (resetCount > 0) {
-          console.log(`[pool-scheduler] Reset ${resetCount} exhausted cursors for ${t.preset}`);
-        }
-      } catch (err) {
-        console.error(`[pool-scheduler] cursor reset error ${t.preset}:`, err);
-      }
-
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
     }
 
