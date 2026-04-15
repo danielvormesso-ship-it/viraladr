@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.process-video-creatomate]
 verify_jwt = false
+
+[functions.pool-refresh-urls]
+verify_jwt = false

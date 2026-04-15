@@ -22,11 +22,11 @@ const LOW_BR_RATE_CAPS: Record<string, number> = {};
 
 // Dynamic priority tiers based on search_count in last 7 days
 function getTier(searchCount: number): { target: number; threshold: number } {
-  if (searchCount > 30) return { target: 1000, threshold: 400 };
-  if (searchCount >= 16) return { target: 800, threshold: 300 };
-  if (searchCount >= 6)  return { target: 500, threshold: 200 };
-  if (searchCount >= 1)  return { target: 300, threshold: 150 };
-  return { target: 200, threshold: 100 };
+  if (searchCount > 30) return { target: 1000, threshold: 500 };
+  if (searchCount >= 16) return { target: 800, threshold: 500 };
+  if (searchCount >= 6)  return { target: 600, threshold: 500 };
+  if (searchCount >= 1)  return { target: 600, threshold: 500 };
+  return { target: 600, threshold: 500 };
 }
 
 Deno.serve(async (req) => {
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     // Use service_role key for internal function-to-function calls (bypasses JWT verification)
     const invokeKey = serviceKey;
 
-    const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const freshCutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // ── 0. Daily cleanup: delete pool videos older than 7 days (runs once per day) ──
