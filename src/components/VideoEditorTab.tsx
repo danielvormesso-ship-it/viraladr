@@ -1025,8 +1025,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             p,
             new Promise<T>((_, reject) =>
               setTimeout(
-                () => reject(new Error(`Timeout global de 3 minutos excedido — job sem resposta (${label})`)),
-                3 * 60 * 1000,
+                () => reject(new Error(`Timeout global de 5 minutos excedido — job sem resposta (${label})`)),
+                5 * 60 * 1000,
               )
             ),
           ]);
@@ -1492,9 +1492,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         toast({ title: "Erro no servidor", description: String(err), variant: "destructive" });
       } finally {
         if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
-        setProcessing(false);
         try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); }
-        // Show final summary instead of clearing
+        // Show final summary — set status BEFORE setProcessing(false) so React batches both
         const elapsedMs = processStartTime ? Date.now() - processStartTime : 0;
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
@@ -1502,6 +1501,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         setProcessingStatus(`✅ Edição concluída! ${typeof successCount === 'number' ? successCount : 0} vídeos em ${timeStr}`);
         setProcessStartTime(null);
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
+        setProcessing(false);
       }
       return;
     }
