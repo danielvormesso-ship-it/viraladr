@@ -1209,7 +1209,6 @@ const Index = () => {
       // ── Pool: try serving from pre-built pool first ──
       const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t.trim() === mainTag) || p.tag === tag);
       const poolGroupKey = preset?.label?.toLowerCase() || null;
-      console.log('[pool] groupKey:', poolGroupKey, 'tag:', tag, 'mainTag:', mainTag);
 
       if (poolGroupKey && !forceRefresh) {
         try {
@@ -1217,7 +1216,7 @@ const Index = () => {
           if (userId) {
             const poolRequest = Math.ceil(targetCount + Math.min(targetCount * 0.5, 200)); // +50% extra (max 200)
             const poolOpts = { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined };
-            const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest, poolOpts);
+            const poolResult = await tiktokApi.serveFromPool(poolGroupKey, isDev ? 'dev-test-user' : userId, poolRequest, poolOpts);
             if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
               if (!isDev) tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
@@ -1437,9 +1436,8 @@ const Index = () => {
 
         if (poolRequests.length > 0) {
           addLog(`⚡ Tentando pool para ${poolRequests.map(r => r.groupKey).join(', ')}...`);
-          console.log('[merge-pool] groupKeys:', poolRequests.map(r => r.groupKey));
           const poolResults = await Promise.all(
-            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, Math.ceil(r.qty + Math.min(r.qty * 0.5, 200)), { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined }))
+            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, isDev ? 'dev-test-user' : userId, Math.ceil(r.qty + Math.min(r.qty * 0.5, 200)), { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined }))
           );
 
           const poolVideos: TikTokVideo[] = [];
