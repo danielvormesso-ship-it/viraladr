@@ -18,6 +18,7 @@ import {
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCredits } from "@/hooks/useCredits";
 
 interface EditorConfig {
   appearAt: number;
@@ -61,6 +62,7 @@ const normalizePopupTransform = (raw?: Partial<PopupTransform> | null): PopupTra
 const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const credits = useCredits();
   const [configLoaded, setConfigLoaded] = useState(false);
   const configSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popupMediaPreviewUrlRef = useRef<string | null>(null);
@@ -582,6 +584,14 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
   const handleProcess = async (options?: { previewMode?: boolean }) => {
     const isPreview = options?.previewMode === true;
+    // Verify credits before processing (skip for preview/test)
+    if (!isPreview) {
+      const hasCredits = await credits.canUseCredits();
+      if (!hasCredits) {
+        toast({ title: "Sem créditos", description: "Seus créditos acabaram. Faça upgrade para continuar editando.", variant: "destructive" });
+        return;
+      }
+    }
     const rotationActive = rotationEnabled && (
       editMode === 'audio_only' ? rotationAudios.length > 0 : rotationPopups.length > 0
     );
@@ -1441,6 +1451,11 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           saveAs(zipBlob, zipName);
           addLog(`📦 [ZIP-DEBUG] ZIP gerado: ${zipName} — blob size=${(zipBlob.size / 1024 / 1024).toFixed(1)}MB, arquivos=${zipFileCount}`, 'success');
           
+          // Deduct credits for successfully edited videos (not preview)
+          if (successCount > 0 && !isPreview) {
+            await credits.deductCredits(successCount);
+          }
+
           // Remove processed videos from the list (never in preview mode)
           if (successfulVideoIds.size > 0 && !isPreview) {
             // Mark successfully edited videos as used so they don't appear in future searches
