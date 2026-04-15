@@ -196,12 +196,13 @@ Deno.serve(async (req) => {
 
     console.log(`[pool-refill] group=${groupKey} target=${target} subTags=${preset.tags.length}`);
 
-    // ── 1. Read existing pool tiktok_ids to skip ──
+    // ── 1. Read existing pool tiktok_ids ──
     const { data: existingPool } = await adminClient
       .from('hashtag_pool')
-      .select('tiktok_id')
+      .select('tiktok_id, niche_approved')
       .eq('hashtag_group', groupKey);
     const existingIds = new Set((existingPool || []).map((r: any) => r.tiktok_id));
+    const approvedIds = new Set((existingPool || []).filter((r: any) => r.niche_approved).map((r: any) => r.tiktok_id));
 
     // ── 2. Read cursors from pool_cursors ──
     const { data: cursorRows } = await adminClient
@@ -215,88 +216,112 @@ Deno.serve(async (req) => {
       if (row.exhausted) exhaustedSet.add(row.sub_hashtag);
     }
 
-    // ── 3. Scrape sub-hashtags via scrape-tiktok-apify (light mode) ──
-    const activeTags = preset.tags.filter(t => !exhaustedSet.has(t));
-    if (activeTags.length === 0) {
-      console.log(`[pool-refill] All sub-hashtags exhausted for group=${groupKey}`);
-      return new Response(
-        JSON.stringify({ success: true, added: 0, pool_size: existingIds.size, exhausted: true }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
+    // Helper: scrape a batch of tags
+    const scrapeTags = async (tags: string[], opts: { cursor?: boolean; sortType?: number; limit?: number }) => {
+      const vids: (PoolVideo & { source_hashtag: string })[] = [];
+      const cursors = new Map<string, { cursor: string | null; exhausted: boolean }>();
+      const perTag = opts.limit || Math.ceil((target * 3) / Math.max(tags.length, 1));
+      const PARALLEL = 5;
+      for (let i = 0; i < tags.length; i += PARALLEL) {
+        const batch = tags.slice(i, i + PARALLEL);
+        const results = await Promise.all(
+          batch.map(async (tag) => {
+            try {
+              const body: any = { hashtag: tag, limit: perTag, light: true };
+              if (opts.cursor) body.cursor = cursorMap.get(tag) || null;
+              if (opts.sortType) body.sort_type = opts.sortType;
+              const res = await fetch(`${supabaseUrl}/functions/v1/scrape-tiktok-apify`, {
+                signal: AbortSignal.timeout(60000),
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              if (!res.ok) return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true };
+              const data = await res.json();
+              const videos: PoolVideo[] = (data.videos || []).filter((v: any) => v.tiktok_id).map((v: any) => ({
+                tiktok_id: v.tiktok_id, title: v.title || '', thumbnail: v.thumbnail || null,
+                views: v.views || 0, likes: v.likes || 0, comments: v.comments || 0, shares: v.shares || 0,
+                duration: v.duration || null, author: v.author || null,
+                video_url: v.video_url || null, source_url: v.source_url || null,
+              }));
+              return { tag, videos, nextCursor: data.next_cursor || null, exhausted: !data.next_cursor };
+            } catch { return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true }; }
+          })
+        );
+        for (const r of results) {
+          cursors.set(r.tag, { cursor: r.nextCursor, exhausted: r.exhausted });
+          for (const v of r.videos) vids.push({ ...v, source_hashtag: r.tag });
+        }
+      }
+      return { videos: vids, cursors };
+    };
 
+    // ── 3. THREE-LAYER SCRAPING ──
     const allVideos: (PoolVideo & { source_hashtag: string })[] = [];
     const newCursors = new Map<string, { cursor: string | null; exhausted: boolean }>();
-    const perTagLimit = Math.ceil((target * 3) / activeTags.length);
-    const PARALLEL = 5;
+    const topTags = preset.tags.slice(0, 5); // Use top 5 tags for layers 1 & 2
+    let refreshedCount = 0;
 
-    for (let i = 0; i < activeTags.length; i += PARALLEL) {
-      if (allVideos.length >= target * 3) break;
+    // Layer 1: Popular (sort_type=1, no cursor) — viral hits
+    console.log(`[pool-refill] Layer 1: Popular for ${groupKey} (${topTags.length} tags)`);
+    const layer1 = await scrapeTags(topTags, { sortType: 1, limit: 200 });
+    const layer1Popular = layer1.videos.filter(v => v.views >= 1_000_000);
+    for (const v of layer1Popular) {
+      if (!existingIds.has(v.tiktok_id)) allVideos.push(v);
+    }
+    // Refresh URLs for already-approved videos (no Gemini cost)
+    const layer1Existing = layer1.videos.filter(v => approvedIds.has(v.tiktok_id) && v.video_url);
+    if (layer1Existing.length > 0) {
+      for (let i = 0; i < layer1Existing.length; i += 50) {
+        const batch = layer1Existing.slice(i, i + 50).map(v => ({
+          hashtag_group: groupKey, tiktok_id: v.tiktok_id,
+          video_url: v.video_url, fetched_at: new Date().toISOString(),
+        }));
+        await adminClient.from('hashtag_pool').upsert(batch, { onConflict: 'hashtag_group,tiktok_id' });
+        refreshedCount += batch.length;
+      }
+    }
+    console.log(`[pool-refill] Layer 1: ${allVideos.length} new popular, ${refreshedCount} URLs refreshed`);
 
-      const batch = activeTags.slice(i, i + PARALLEL);
-      const results = await Promise.all(
-        batch.map(async (tag) => {
-          try {
-            const res = await fetch(`${supabaseUrl}/functions/v1/scrape-tiktok-apify`, { signal: AbortSignal.timeout(60000),
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${serviceKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                hashtag: tag,
-                limit: perTagLimit,
-                light: true,
-                cursor: cursorMap.get(tag) || null,
-              }),
-            });
+    // Layer 2: Recent (no cursor, no sort_type)
+    console.log(`[pool-refill] Layer 2: Recent for ${groupKey}`);
+    const layer2 = await scrapeTags(topTags, { limit: 200 });
+    for (const v of layer2.videos) {
+      if (!existingIds.has(v.tiktok_id) && !allVideos.some(av => av.tiktok_id === v.tiktok_id)) {
+        allVideos.push(v);
+      }
+    }
+    // Refresh URLs for already-approved videos
+    const layer2Existing = layer2.videos.filter(v => approvedIds.has(v.tiktok_id) && v.video_url);
+    if (layer2Existing.length > 0) {
+      for (let i = 0; i < layer2Existing.length; i += 50) {
+        const batch = layer2Existing.slice(i, i + 50).map(v => ({
+          hashtag_group: groupKey, tiktok_id: v.tiktok_id,
+          video_url: v.video_url, fetched_at: new Date().toISOString(),
+        }));
+        await adminClient.from('hashtag_pool').upsert(batch, { onConflict: 'hashtag_group,tiktok_id' });
+        refreshedCount += batch.length;
+      }
+    }
+    console.log(`[pool-refill] Layer 2: ${allVideos.length} total new, ${refreshedCount} total refreshed`);
 
-            if (!res.ok) {
-              console.warn(`[pool-refill] scrape failed for #${tag}: ${res.status}`);
-              return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true };
-            }
-
-            const data = await res.json();
-            const videos: PoolVideo[] = (data.videos || [])
-              .filter((v: any) => v.tiktok_id)
-              .map((v: any) => ({
-                tiktok_id: v.tiktok_id,
-                title: v.title || '',
-                thumbnail: v.thumbnail || null,
-                views: v.views || 0,
-                likes: v.likes || 0,
-                comments: v.comments || 0,
-                shares: v.shares || 0,
-                duration: v.duration || null,
-                author: v.author || null,
-                video_url: v.video_url || null,
-                source_url: v.source_url || null,
-              }));
-
-            return {
-              tag,
-              videos,
-              nextCursor: data.next_cursor || null,
-              exhausted: !data.next_cursor,
-            };
-          } catch (err) {
-            console.warn(`[pool-refill] error scraping #${tag}:`, err);
-            return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true };
-          }
-        })
-      );
-
-      for (const r of results) {
-        newCursors.set(r.tag, { cursor: r.nextCursor, exhausted: r.exhausted });
-        for (const v of r.videos) {
-          if (!existingIds.has(v.tiktok_id)) {
-            allVideos.push({ ...v, source_hashtag: r.tag });
+    // Layer 3: Cursor-deep (only if layers 1+2 added <20 new)
+    if (allVideos.length < 20) {
+      const activeTags = preset.tags.filter(t => !exhaustedSet.has(t));
+      if (activeTags.length > 0) {
+        console.log(`[pool-refill] Layer 3: Cursor-deep for ${groupKey} (${activeTags.length} active tags)`);
+        const layer3 = await scrapeTags(activeTags, { cursor: true });
+        for (const [tag, c] of layer3.cursors) newCursors.set(tag, c);
+        for (const v of layer3.videos) {
+          if (!existingIds.has(v.tiktok_id) && !allVideos.some(av => av.tiktok_id === v.tiktok_id)) {
+            allVideos.push(v);
           }
         }
+        console.log(`[pool-refill] Layer 3: ${allVideos.length} total new`);
       }
     }
 
-    console.log(`[pool-refill] Scraped ${allVideos.length} new videos for group=${groupKey}`);
+    console.log(`[pool-refill] Scraped ${allVideos.length} new + ${refreshedCount} refreshed for group=${groupKey}`);
 
     // ── 4. Dedup by tiktok_id ──
     const seenIds = new Set<string>();
@@ -311,7 +336,7 @@ Deno.serve(async (req) => {
     const withScores = brFiltered.map(v => ({ ...v, br_score: calcBrScore(v) }));
     console.log(`[pool-refill] After BR filter: ${withScores.length}/${deduped.length} passed`);
 
-    // ── 6. Call filter-by-niche for IA filtering ──
+    // ── 6. Call filter-by-niche ONLY for truly new videos (Gemini optimization) ──
     let nicheApprovedIds = new Set<string>();
     let nicheRan = false;
 
@@ -327,15 +352,8 @@ Deno.serve(async (req) => {
 
         const nicheRes = await fetch(`${supabaseUrl}/functions/v1/filter-by-niche`, { signal: AbortSignal.timeout(60000),
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${serviceKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videos: nicheVideos,
-            nicheDescription,
-            nicheKeywords: preset.tags.slice(0, 10),
-          }),
+          headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videos: nicheVideos, nicheDescription, nicheKeywords: preset.tags.slice(0, 10) }),
         });
 
         if (nicheRes.ok) {
@@ -353,20 +371,10 @@ Deno.serve(async (req) => {
 
     // ── 7. Upsert into hashtag_pool ──
     const rows = withScores.map(v => ({
-      hashtag_group: groupKey,
-      tiktok_id: v.tiktok_id,
-      title: v.title,
-      thumbnail: v.thumbnail,
-      views: v.views,
-      likes: v.likes,
-      comments: v.comments,
-      shares: v.shares,
-      duration: v.duration,
-      author: v.author,
-      video_url: v.video_url,
-      source_url: v.source_url,
-      source_hashtag: v.source_hashtag,
-      br_score: v.br_score,
+      hashtag_group: groupKey, tiktok_id: v.tiktok_id, title: v.title, thumbnail: v.thumbnail,
+      views: v.views, likes: v.likes, comments: v.comments, shares: v.shares,
+      duration: v.duration, author: v.author, video_url: v.video_url, source_url: v.source_url,
+      source_hashtag: v.source_hashtag, br_score: v.br_score,
       niche_approved: nicheRan ? nicheApprovedIds.has(v.tiktok_id) : true,
     }));
 
@@ -414,6 +422,7 @@ Deno.serve(async (req) => {
         added: inserted,
         niche_approved: nicheRan ? nicheApprovedIds.size : inserted,
         pool_size: poolSize || 0,
+        refreshed_urls: refreshedCount,
         scraped_raw: allVideos.length,
         br_filtered: withScores.length,
         cursors_updated: cursorUpserts.length,

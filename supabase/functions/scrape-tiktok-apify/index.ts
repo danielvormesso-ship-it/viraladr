@@ -72,7 +72,7 @@ function isBrazilianContent(item: any): boolean {
   return matchCount >= 1;
 }
 
-async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requireBrazilian = true, maxDuration = 120, startCursor?: number | string): Promise<{ videos: VideoData[]; nextCursor: string | null; pageLogs: string[] }> {
+async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requireBrazilian = true, maxDuration = 120, startCursor?: number | string, sortType?: number): Promise<{ videos: VideoData[]; nextCursor: string | null; pageLogs: string[] }> {
   const videos: VideoData[] = [];
   const seenIds = new Set<string>();
   let lastCursor: string | null = null;
@@ -129,7 +129,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': randomUA(),
       },
-      body: `keywords=${encodeURIComponent('#' + hashtag)}&count=200&cursor=${cursor}&region=BR`,
+      body: `keywords=${encodeURIComponent('#' + hashtag)}&count=200&cursor=${cursor}&region=BR${sortType ? '&sort_type=' + sortType : ''}`,
     });
 
     if (!res.ok) return null;
@@ -240,15 +240,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag = 'viral', limit = 50, keyword, force = false, light = false, cursor: inputCursor } = await req.json().catch(() => ({}));
+    const { hashtag = 'viral', limit = 50, keyword, force = false, light = false, cursor: inputCursor, sort_type: inputSortType } = await req.json().catch(() => ({}));
     const searchTerm = (keyword || hashtag).replace('#', '').trim().toLowerCase();
     const requestedLimit = Math.max(1, Math.min(Number(limit) || 50, 1000));
+    const sortType = inputSortType ? Number(inputSortType) : undefined;
 
     // ── LIGHT MODE: skip ALL DB operations, just scrape and return ──
     if (light) {
-      console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}`);
+      console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}, sort_type=${sortType ?? 'default'}`);
 
-      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), 10, false, 120, inputCursor);
+      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), 10, false, 120, inputCursor, sortType);
 
       // Shuffle for variety
       const videos = tikwmResult.videos;
