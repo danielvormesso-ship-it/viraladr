@@ -28,7 +28,7 @@ serve(async (req) => {
     ].filter(Boolean) as string[];
     if (GEMINI_KEYS.length === 0) throw new Error("No GEMINI_API_KEY configured");
 
-    const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
     const MAX_RETRIES = GEMINI_KEYS.length * 2; // 2 attempts per key
     const prompt = `Especialista TikTok Brasil. Descrição do usuário: "${description}"
 

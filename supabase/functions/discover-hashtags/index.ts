@@ -86,7 +86,7 @@ Exemplos de boas hashtags para nichos:
       response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'gemini-2.0-flash', messages: [{ role: 'user', content: discoverPrompt }] }),
+        body: JSON.stringify({ model: 'gemini-2.5-flash', messages: [{ role: 'user', content: discoverPrompt }] }),
         signal: AbortSignal.timeout(30000),
       });
       if (response.ok || response.status !== 429) break;
