@@ -331,7 +331,26 @@ const Index = () => {
 
   // Detect videos from hashtags outside the requested niche
   const detectOffTopicVideos = (videos: TikTokVideo[], requestedTags: string[]) => {
+    // Build expanded set: all sub-tags from presets in the same groups as requested tags
     const requestedSet = new Set(requestedTags.map(t => t.toLowerCase()));
+    const requestedGroups = new Set<string>();
+    for (const tag of requestedTags) {
+      const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t.trim().toLowerCase() === tag.toLowerCase()));
+      if (preset) {
+        requestedGroups.add(preset.group);
+        preset.tag.split(',').forEach(t => requestedSet.add(t.trim().toLowerCase()));
+      }
+    }
+    // Add all sub-tags from same group
+    for (const preset of PRESET_HASHTAGS) {
+      if (requestedGroups.has(preset.group)) {
+        preset.tag.split(',').forEach(t => requestedSet.add(t.trim().toLowerCase()));
+      }
+    }
+    // Common related tags that shouldn't trigger off-topic
+    const commonRelated = ['risadas','piadas','engraçado','engraçada','risada','piada','comico','comica','gracinha','humor','comedia','zoeira','zueira','meme','memes','pegadinha','trollagem','fail','viral','fyp','trending','tiktok','brasil','tiktokbrasil'];
+    commonRelated.forEach(t => requestedSet.add(t));
+
     const offTopicTags = new Map<string, number>();
     const offTopicVideoIds: string[] = [];
     let offTopicCount = 0;
