@@ -1259,6 +1259,19 @@ const Index = () => {
       }
       if (approved.length > liveTarget) approved = approved.slice(0, liveTarget);
 
+      // Deficit fill: if pool + live didn't reach target, one more try
+      if (poolServedCount + approved.length < targetCount && retryCursor) {
+        const deficit = targetCount - poolServedCount - approved.length;
+        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 3, undefined, true, true, retryCursor);
+        if (deficitResult.next_cursor) { singleScrapeCursorRef.current.cursor = deficitResult.next_cursor; saveCursor(mainTag, deficitResult.next_cursor); }
+        const deficitUnseen = (deficitResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+        const deficitNiche = await applyNicheTitleFilter(deficitUnseen, nicheDesc, nicheKeywords);
+        const deficitApproved = deficitNiche.filter(v => !isForeignContent(v)).slice(0, deficit);
+        if (deficitApproved.length > 0) {
+          approved = dedupeVideos([...approved, ...deficitApproved]).slice(0, liveTarget);
+        }
+      }
+
       tiktokApi.markVideosSeen(approved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const totalApproved = poolServedCount + approved.length;
@@ -2170,22 +2183,32 @@ const Index = () => {
       if (!downloadUrl) return null;
 
       try {
-        // Route CDN URLs through proxy to avoid CORS, fetch others directly
-        let res: Response;
-        if (isCdnUrl(downloadUrl)) {
-          const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-video`;
-          res = await fetch(proxyUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-            body: JSON.stringify({ url: downloadUrl }),
-          });
-        } else {
-          res = await fetch(downloadUrl);
+        // Route CDN URLs through proxy to avoid CORS, fetch others directly — retry up to 3x on network errors
+        let res: Response | null = null;
+        const MAX_DL_RETRIES = 3;
+        for (let attempt = 1; attempt <= MAX_DL_RETRIES; attempt++) {
+          try {
+            if (isCdnUrl(downloadUrl)) {
+              const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-video`;
+              res = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                },
+                body: JSON.stringify({ url: downloadUrl }),
+              });
+            } else {
+              res = await fetch(downloadUrl);
+            }
+            if (res.ok) break;
+            res = null;
+          } catch (netErr) {
+            console.warn(`[Download] Attempt ${attempt}/${MAX_DL_RETRIES} failed for idx=${index}: ${netErr instanceof Error ? netErr.message : 'network error'}`);
+            if (attempt < MAX_DL_RETRIES) await new Promise(r => setTimeout(r, 1000 * attempt));
+          }
         }
-        if (!res.ok) return null;
+        if (!res || !res.ok) return null;
 
         const contentType = res.headers.get('content-type') || '';
         if (contentType.includes('audio') && !contentType.includes('video')) return null;
