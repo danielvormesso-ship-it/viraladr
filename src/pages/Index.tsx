@@ -1453,11 +1453,11 @@ const Index = () => {
           }
 
           poolServedCount = poolVideos.length;
-          addLog(`📊 Pool results: ${poolResults.map((r: any) => `${poolRequests[poolResults.indexOf(r)]?.groupKey}=${r.served}`).join(', ')} | total=${poolServedCount} target=${originalTarget}`);
 
           if (poolServedCount >= originalTarget) {
             // Pool satisfied 100%
             const trimmed = dedupeVideos(poolVideos).slice(0, originalTarget);
+            poolServedCount = trimmed.length;
             if (!isDev) tiktokApi.markVideosSeen(trimmed.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             addLog(`🏁 Pool completo: ${trimmed.length}/${originalTarget} em ${elapsed}s`);
@@ -1475,6 +1475,7 @@ const Index = () => {
           if (poolServedCount > 0) {
             // Pool partial — show immediately, reduce quotas for live
             const deduped = dedupeVideos(poolVideos);
+            poolServedCount = deduped.length;
             if (!isDev) tiktokApi.markVideosSeen(deduped.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             addVideosToUI(rankByBrazilianContent(deduped), true);
             setCurrentIndex(0);
