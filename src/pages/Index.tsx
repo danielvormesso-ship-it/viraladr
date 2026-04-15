@@ -2139,13 +2139,32 @@ const Index = () => {
     const urlMap = new Map<number, string>(); // index -> download_url
     const isCdnUrl = (url: string) => /tiktokcdn|tiktokcdn-eu|v\d+-webapp|tikwm\.com\/video|muscdn\.com/i.test(url);
 
+    // Check if a TikTok CDN URL is expired by reading the hex timestamp in the path
+    const isCdnUrlExpired = (url: string): boolean => {
+      const match = url.match(/tiktokcdn[^/]*\/([0-9a-f]{8})\//i);
+      if (!match) return false;
+      const expiresAt = parseInt(match[1], 16);
+      return expiresAt < Math.floor(Date.now() / 1000) + 300; // expired or <5min left
+    };
+
+    // Refresh a single video URL via edge function (max 1 attempt, non-blocking on failure)
+    const refreshVideoUrl = async (tiktokId: string): Promise<string | null> => {
+      try {
+        const { data, error } = await supabase.functions.invoke('refresh-video-url', {
+          body: { tiktok_id: tiktokId },
+        });
+        if (!error && data?.success && data?.video_url) return data.video_url;
+      } catch { /* fall through */ }
+      return null;
+    };
+
     {
       // Separate videos with direct CDN URLs from those needing resolution
       const needsResolution: { video: typeof videosToDownload[0]; index: number }[] = [];
       for (let i = 0; i < videosToDownload.length; i++) {
         const video = videosToDownload[i];
         const directUrl = video.video_url;
-        if (directUrl && isCdnUrl(directUrl)) {
+        if (directUrl && isCdnUrl(directUrl) && !isCdnUrlExpired(directUrl)) {
           urlMap.set(i, directUrl);
           directUrlCount++;
         } else {
@@ -2292,6 +2311,23 @@ const Index = () => {
           } catch (netErr) {
             console.warn(`[Download] Attempt ${attempt}/${MAX_DL_RETRIES} failed for idx=${index}: ${netErr instanceof Error ? netErr.message : 'network error'}`);
             if (attempt < MAX_DL_RETRIES) await new Promise(r => setTimeout(r, 1000 * attempt));
+          }
+        }
+        // If all retries failed and URL was CDN, try refreshing via TikWM (1 attempt)
+        if ((!res || !res.ok) && video.tiktok_id) {
+          const freshUrl = await refreshVideoUrl(video.tiktok_id);
+          if (freshUrl) {
+            try {
+              const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/proxy-video`;
+              res = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                },
+                body: JSON.stringify({ url: freshUrl }),
+              });
+            } catch { res = null; }
           }
         }
         if (!res || !res.ok) return null;
