@@ -1852,7 +1852,32 @@ const Index = () => {
     }
 
     // approvedVideos is already capped — slice is a safety net
-    const unique = approvedVideos.slice(0, totalTarget);
+    let unique = approvedVideos.slice(0, totalTarget);
+
+    // Deficit fill: if pool + live didn't reach originalTarget, do one extra fetch
+    const currentTotal = poolServedCount + unique.length;
+    if (currentTotal < originalTarget && allTags.length > 0) {
+      const deficit = originalTarget - currentTotal;
+      addLog(`⚡ Deficit de ${deficit} vídeos — buscando complemento...`);
+      try {
+        const deficitRaw = await fetchCandidates(deficit * 3, true);
+        const deficitFiltered = deficitRaw.filter((video) => {
+          const key = getVideoKey(video);
+          if (seenCandidateKeys.has(key)) return false;
+          if (video.tiktok_id && seenIds.has(video.tiktok_id)) return false;
+          if (video.tiktok_id && sessionSeenIds.has(video.tiktok_id)) return false;
+          seenCandidateKeys.add(key);
+          if (video.tiktok_id) sessionSeenIds.add(video.tiktok_id);
+          return true;
+        }).filter(v => !isForeignContent(v)).slice(0, deficit);
+        if (deficitFiltered.length > 0) {
+          unique = [...unique, ...deficitFiltered];
+          addLog(`  ✅ Complemento: +${deficitFiltered.length} vídeos (total: ${poolServedCount + unique.length}/${originalTarget})`);
+        }
+      } catch (err) {
+        addLog(`  ⚠️ Complemento falhou: ${err instanceof Error ? err.message : 'erro'}`);
+      }
+    }
 
     // Mark seen so this user won't get the same videos again
     await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
