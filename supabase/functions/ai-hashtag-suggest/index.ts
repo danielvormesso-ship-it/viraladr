@@ -24,18 +24,9 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-2.0-flash",
-        messages: [
-          {
-            role: "user",
-            content: `Especialista TikTok Brasil. Descrição do usuário: "${description}"
+    const MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    const MAX_RETRIES = 3;
+    const prompt = `Especialista TikTok Brasil. Descrição do usuário: "${description}"
 
 Retorne JSON PURO sem markdown:
 {"hashtags":[{"tag":"x","relevance":"alta"}],"genderFilter":"female"|"male"|"none","excludeKeywords":["word1","word2"],"contentType":"dancing"|"funny"|"lifestyle"|"general"}
@@ -53,7 +44,7 @@ REGRAS ABSOLUTAS - LEIA COM ATENÇÃO:
    - Essas hashtags são INFINITAS em conteúdo e devem ser priorizadas
 
 3. HASHTAGS PROIBIDAS (NUNCA use estas):
-   fyp, viral, trending, foryou, parati, dance, music, song, lyrics, audio, 
+   fyp, viral, trending, foryou, parati, dance, music, song, lyrics, audio,
    bregafunk, funk, pagode, sertanejo, forró, trap, rap, hiphop, reggaeton,
    nostalgia, status, statusvideo, reflexão, motivação, frases, pensamentos,
    sheesh, fancam, kpop, stan, idol, anime, edit, tutorial, photoshop
@@ -73,7 +64,7 @@ REGRAS ABSOLUTAS - LEIA COM ATENÇÃO:
 
 5. FILTRO DE GÊNERO:
    - MULHER/MINA/GAROTA/GATA/GOSTOSA/BONITA/LINDA → genderFilter="female"
-   - HOMEM/CARA/GAROTO/MANO → genderFilter="male"  
+   - HOMEM/CARA/GAROTO/MANO → genderFilter="male"
    - Neutro → genderFilter="none"
 
 6. excludeKeywords OBRIGATÓRIOS (SEMPRE incluir todos):
@@ -81,25 +72,51 @@ REGRAS ABSOLUTAS - LEIA COM ATENÇÃO:
    - Para female ADICIONAR: ["mano","cara","brother","garoto","menino","boy","man","bro","pai","king","homem"]
    - Para male ADICIONAR: ["mina","gata","menina","garota","girl","she","mãe","queen","mulher"]
 
-relevance: "alta", "media", "baixa"`,
-          },
-        ],
-      }),
-    });
+relevance: "alta", "media", "baixa"`;
 
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit, tente novamente." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    let response: Response | null = null;
+    let lastError = '';
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const model = attempt < 2 ? MODELS[0] : MODELS[1]; // fallback to 1.5-flash on 3rd attempt
+      try {
+        response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${GEMINI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+          }),
+          signal: AbortSignal.timeout(30000),
         });
+        if (response.ok) break;
+        lastError = `HTTP ${response.status}`;
+        if (response.status === 429) {
+          console.warn(`[ai-hashtag-suggest] 429 rate limit (attempt ${attempt + 1}/${MAX_RETRIES}, model=${model}), retrying...`);
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          response = null;
+          continue;
+        }
+        if (response.status === 402) {
+          return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
+            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        break; // Non-retryable error
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : 'fetch failed';
+        console.warn(`[ai-hashtag-suggest] fetch error (attempt ${attempt + 1}/${MAX_RETRIES}): ${lastError}`);
+        if (attempt < MAX_RETRIES - 1) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
       }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`AI error: ${status}`);
+    }
+
+    if (!response || !response.ok) {
+      const msg = `AI falhou após ${MAX_RETRIES} tentativas: ${lastError}`;
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
