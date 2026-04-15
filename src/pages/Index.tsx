@@ -1259,10 +1259,16 @@ const Index = () => {
       }
       if (approved.length > liveTarget) approved = approved.slice(0, liveTarget);
 
-      // Deficit fill: if pool + live didn't reach target, one more try
-      if (poolServedCount + approved.length < targetCount && retryCursor) {
+      // Deficit fill: if pool + live didn't reach target, try again (with or without cursor)
+      if (poolServedCount + approved.length < targetCount) {
         const deficit = targetCount - poolServedCount - approved.length;
-        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 3, undefined, true, true, retryCursor);
+        // If cursor exhausted, reset and fetch from page 0
+        const deficitCursor = retryCursor || undefined;
+        if (!deficitCursor) {
+          singleScrapeCursorRef.current.cursor = null;
+          try { localStorage.removeItem(`cursor_${mainTag}`); } catch {}
+        }
+        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 3, undefined, true, true, deficitCursor);
         if (deficitResult.next_cursor) { singleScrapeCursorRef.current.cursor = deficitResult.next_cursor; saveCursor(mainTag, deficitResult.next_cursor); }
         const deficitUnseen = (deficitResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
         const deficitNiche = await applyNicheTitleFilter(deficitUnseen, nicheDesc, nicheKeywords);
