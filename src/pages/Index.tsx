@@ -1236,7 +1236,19 @@ const Index = () => {
         }
       }
 
-      const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+      let unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+
+      // If cursor returned 0 unseen, reset and retry from page 0
+      if (unseenVideos.length === 0 && singleScrapeCursorRef.current.cursor) {
+        singleScrapeCursorRef.current.cursor = null;
+        try { localStorage.removeItem(`cursor_${mainTag}`); } catch {}
+        const freshResult = await tiktokApi.scrapeByHashtag(mainTag, liveTarget * 4, undefined, true, true);
+        if (freshResult.next_cursor) {
+          singleScrapeCursorRef.current.cursor = freshResult.next_cursor;
+          saveCursor(mainTag, freshResult.next_cursor);
+        }
+        unseenVideos = (freshResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+      }
 
       // Apply niche filter based on hashtag label
       const nicheLabel = preset?.label || mainTag;
@@ -1466,8 +1478,21 @@ const Index = () => {
     const sessionSeenIds = new Set<string>();
     // Track TikWM cursor per hashtag so each round fetches new pages
     const cursorMap = new Map<string, string>();
-    // Seed cursorMap from localStorage (cross-session persistence)
-    for (const t of expandedTags) { const c = loadCursor(t); if (c) cursorMap.set(t, c); }
+    // Seed cursorMap from localStorage (12h TTL for merge cursors — faster expiry = more diversity)
+    const MERGE_CURSOR_TTL = 12 * 60 * 60 * 1000;
+    const loadMergeCursor = (tag: string): string | null => {
+      try {
+        const raw = localStorage.getItem(`mcursor_${tag}`);
+        if (!raw) return null;
+        const { cursor, updatedAt } = JSON.parse(raw);
+        if (Date.now() - updatedAt > MERGE_CURSOR_TTL) { localStorage.removeItem(`mcursor_${tag}`); return null; }
+        return cursor || null;
+      } catch { return null; }
+    };
+    const saveMergeCursor = (tag: string, cursor: string) => {
+      try { localStorage.setItem(`mcursor_${tag}`, JSON.stringify({ cursor, updatedAt: Date.now() })); } catch {}
+    };
+    for (const t of expandedTags) { const c = loadMergeCursor(t); if (c) cursorMap.set(t, c); }
 
     // D: retry pool — sub-tags from selected presets not used in the initial expanded set
     const retryTagPool: string[] = [];
@@ -1528,7 +1553,7 @@ const Index = () => {
                 totalNew += result.new_scraped || 0;
                 if (result.next_cursor) {
                   cursorMap.set(tag, result.next_cursor);
-                  saveCursor(tag, result.next_cursor);
+                  saveMergeCursor(tag, result.next_cursor);
                 } else {
                   exhaustedTags.add(tag);
                 }
