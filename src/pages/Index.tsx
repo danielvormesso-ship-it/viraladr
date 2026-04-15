@@ -1427,7 +1427,7 @@ const Index = () => {
       if (userId) {
         const poolRequests: { groupKey: string; qty: number; tagStr: string }[] = [];
         for (const tagStr of selectedTags) {
-          const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+          const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr || p.tag.split(',').some(t => t.trim() === tagStr.trim()) || p.label.toLowerCase() === tagStr.toLowerCase());
           const groupKey = preset?.label?.toLowerCase();
           if (groupKey) {
             poolRequests.push({ groupKey, qty: tagQuantities[tagStr] || 50, tagStr });
@@ -1453,7 +1453,6 @@ const Index = () => {
           }
 
           poolServedCount = poolVideos.length;
-          addLog(`🔍 Pool: ${poolResults.map((r:any,i:number) => `${poolRequests[i]?.groupKey}=${r.served}`).join(', ')} | poolVideos=${poolVideos.length} | target=${originalTarget}`);
 
           if (poolServedCount >= originalTarget) {
             // Pool satisfied 100%
