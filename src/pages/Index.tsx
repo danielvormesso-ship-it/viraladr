@@ -521,9 +521,9 @@ const Index = () => {
       });
 
       if (error) {
-        console.warn('Niche filter error, auto-approving all:', error);
-        addLog?.(`⚠️ Filtro de nicho falhou, mantendo todos os vídeos`);
-        return inputVideos;
+        console.warn('Niche filter error, rejecting all:', error);
+        addLog?.(`⚠️ Filtro de nicho falhou, rejeitando vídeos por segurança`);
+        return [];
       }
 
       if (data?.approvedIds) {
@@ -2040,8 +2040,12 @@ const Index = () => {
     const requestedCount = Math.min(qty, totalFiltered);
     if (requestedCount <= 0) return;
 
+    // Cap download to remaining credits
+    const maxAllowed = credits.isUnlimited ? requestedCount : Math.min(requestedCount, credits.creditsRemaining);
+    if (maxAllowed <= 0) { setShowUpgrade(true); return; }
+
     // Always slice from 0 since downloaded videos are removed from the list
-    const videosToDownloadRaw = filteredVideos.slice(0, requestedCount);
+    const videosToDownloadRaw = filteredVideos.slice(0, maxAllowed);
 
     const seenVideoKeys = new Set<string>();
     const videosToDownload = videosToDownloadRaw.filter((video) => {
