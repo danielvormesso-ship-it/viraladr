@@ -279,7 +279,7 @@ const Index = () => {
   const [discoveredTags, setDiscoveredTags] = useState<{ tag: string; emoji: string; label: string; popularity_score: number; category: string }[]>([]);
   const [sortByQuality, setSortByQuality] = useState(false);
   const [nicheWarning, setNicheWarning] = useState<{ offTopicCount: number; offTopicTags: string[]; offTopicVideoIds: string[] } | null>(null);
-  const [resultFilterMode, setResultFilterMode] = useState<"strict" | "ai">("strict");
+  const [resultFilterMode, setResultFilterMode] = useState<"strict" | "ai">("ai");
   const { toast } = useToast();
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
