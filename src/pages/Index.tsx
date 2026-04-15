@@ -2375,12 +2375,12 @@ const Index = () => {
           ) : (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5">
-                <span className={`text-[11px] font-bold ${credits.creditsRemaining <= 10 ? 'text-red-400' : 'text-muted-foreground'}`}>
-                  {credits.creditsRemaining}/{credits.creditsTotal}
+                <span className={`text-[11px] font-bold ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  {credits.creditsUsed}/{credits.creditsTotal}
                 </span>
                 <div className="w-16 h-1.5 rounded-full bg-secondary/50 overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${credits.creditsRemaining <= 10 ? 'bg-red-500' : 'bg-primary'}`}
+                    className={`h-full rounded-full transition-all duration-500 ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'bg-red-500' : 'bg-orange-500'}`}
                     style={{ width: `${Math.min(100, (credits.creditsUsed / credits.creditsTotal) * 100)}%` }}
                   />
                 </div>
