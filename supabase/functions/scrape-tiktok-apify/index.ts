@@ -129,7 +129,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': randomUA(),
       },
-      body: `keywords=${encodeURIComponent('#' + hashtag)}&count=200&cursor=${cursor}&HD=1&region=BR`,
+      body: `keywords=${encodeURIComponent('#' + hashtag)}&count=200&cursor=${cursor}&region=BR`,
     });
 
     if (!res.ok) return null;
