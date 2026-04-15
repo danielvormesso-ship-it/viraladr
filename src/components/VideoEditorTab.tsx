@@ -1501,14 +1501,15 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
       } finally {
         if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
         try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); }
+        // Clear progress FIRST so React doesn't flash stale polling values
+        setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
+        setProcessStartTime(null);
         // Show final summary — set status BEFORE setProcessing(false) so React batches both
         const elapsedMs = processStartTime ? Date.now() - processStartTime : 0;
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
         const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
         setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
-        setProcessStartTime(null);
-        setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
         setProcessing(false);
       }
       return;
@@ -2344,8 +2345,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
       {/* Completion message */}
       {!processing && processingStatus && (
-        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-accent">{processingStatus}</span>
+        <div className="rounded-xl border border-green-500/50 bg-green-500/10 p-4 flex items-center justify-between">
+          <span className="text-sm font-semibold text-green-400">{processingStatus}</span>
           <button onClick={() => setProcessingStatus('')} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
         </div>
       )}
