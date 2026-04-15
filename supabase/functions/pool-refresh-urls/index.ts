@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     let retried = 0;
     let deleted = 0;
     let errors = 0;
-    const BATCH = 25;
+    const BATCH = 15;
     const retryThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30min ago = already retried
 
     for (let i = 0; i < staleVideos.length; i += BATCH) {
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
                 'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
               },
               body: `url=${encodeURIComponent(video.source_url || `https://www.tiktok.com/@${video.author || 'user'}/video/${video.tiktok_id}`)}`,
-              signal: AbortSignal.timeout(6000),
+              signal: AbortSignal.timeout(8000),
             });
 
             if (!res.ok) return { id: video.id, status: 'error' as const };
@@ -107,6 +107,9 @@ Deno.serve(async (req) => {
           }
         })
       );
+
+      // 200ms delay between batches to avoid TikWM rate limits
+      if (i + BATCH < staleVideos.length) await new Promise(r => setTimeout(r, 200));
 
       for (const r of results) {
         if (r.status === 'refreshed') refreshed++;
