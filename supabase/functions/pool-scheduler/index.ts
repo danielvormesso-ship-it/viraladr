@@ -125,27 +125,34 @@ Deno.serve(async (req) => {
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
     }
 
-    // Fire-and-forget refills — don't await (each refill takes 30-60s, would exceed function timeout)
-    // Stagger dispatches with 500ms delay between each to avoid rate limiting
-    let dispatched = 0;
-    for (const t of triggered) {
-      setTimeout(() => {
-        fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${invokeKey}`,
-            'apikey': invokeKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
-        }).then(res => {
+    // Dispatch all refills — fire the fetch but only await the initial HTTP response (not the full refill)
+    // Each fetch resolves as soon as pool-refill ACKs (HTTP 200), not when the refill completes
+    const dispatched = triggered.length;
+    await Promise.all(
+      triggered.map(async (t) => {
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${invokeKey}`,
+              'apikey': invokeKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
+            signal: AbortSignal.timeout(5000), // Only wait 5s for the HTTP connection, refill runs async
+          });
           console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${res.status}`);
-        }).catch(err => {
-          console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
-        });
-      }, dispatched * 500);
-      dispatched++;
-    }
+        } catch (err) {
+          // Timeout is expected — pool-refill takes 30-60s but we only wait 5s for ACK
+          const msg = err instanceof Error ? err.message : 'unknown';
+          if (msg.includes('abort') || msg.includes('timeout')) {
+            console.log(`[pool-scheduler] Refill ${t.preset}: dispatched (timeout ACK — refill running in background)`);
+          } else {
+            console.error(`[pool-scheduler] dispatch error ${t.preset}:`, msg);
+          }
+        }
+      })
+    );
 
     return new Response(
       JSON.stringify({
