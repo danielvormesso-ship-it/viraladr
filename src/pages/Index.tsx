@@ -1185,10 +1185,11 @@ const Index = () => {
         try {
           const userId = (await supabase.auth.getUser()).data.user?.id;
           if (userId) {
-            const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, targetCount);
+            const poolRequest = Math.ceil(targetCount * 1.15); // +15% to compensate dedup losses
+            const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest);
             if (poolResult.served >= targetCount) {
               // Pool satisfied 100% — instant results
-              const poolApproved = poolResult.videos.slice(0, targetCount);
+              const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("strict");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
@@ -1198,7 +1199,7 @@ const Index = () => {
               return;
             } else if (poolResult.served > 0) {
               // Pool partial — show what we have, continue with live for deficit
-              const poolApproved = poolResult.videos;
+              const poolApproved = dedupeVideos(poolResult.videos);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("strict");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
@@ -1361,7 +1362,7 @@ const Index = () => {
         if (poolRequests.length > 0) {
           addLog(`⚡ Tentando pool para ${poolRequests.map(r => r.groupKey).join(', ')}...`);
           const poolResults = await Promise.all(
-            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, r.qty))
+            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, Math.ceil(r.qty * 1.15)))
           );
 
           const poolVideos: TikTokVideo[] = [];
