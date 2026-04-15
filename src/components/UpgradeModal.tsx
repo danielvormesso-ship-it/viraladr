@@ -1,5 +1,12 @@
 import { Lock, Zap, Crown, Rocket } from 'lucide-react';
 
+// TODO: substituir pelos links reais da Hotmart
+const PLAN_LINKS: Record<string, string> = {
+  Starter: 'https://pay.hotmart.com/placeholder',
+  Pro: 'https://pay.hotmart.com/placeholder',
+  Agency: 'https://pay.hotmart.com/placeholder',
+};
+
 const plans = [
   {
     name: 'Starter',
@@ -140,6 +147,7 @@ export function UpgradeModal() {
                   </ul>
 
                   <button
+                    onClick={() => window.open(PLAN_LINKS[plan.name], '_blank')}
                     className={`upgrade-btn-shimmer w-full h-10 rounded-xl text-white text-sm font-bold transition-all duration-300 hover:brightness-110 active:scale-[0.97]`}
                     style={{
                       backgroundImage: `linear-gradient(90deg, var(--from), var(--to), var(--from))`,

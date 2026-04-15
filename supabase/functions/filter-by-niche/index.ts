@@ -128,21 +128,21 @@ Vídeos:
 ${videoList}`;
 
   try {
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", { signal: AbortSignal.timeout(30000),
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.0-flash",
         messages: [{ role: "user", content: prompt }],
       }),
     });
 
     if (!response.ok) {
-      console.warn(`AI niche filter failed (${response.status}), auto-approving batch`);
-      return batch.map(v => v.id);
+      console.warn(`AI niche filter failed (${response.status}), rejecting batch`);
+      return [];
     }
 
     const data = await response.json();
@@ -155,8 +155,8 @@ ${videoList}`;
     }
     return batch.map(v => v.id);
   } catch (err) {
-    console.warn("Niche filter batch error, auto-approving:", err);
-    return batch.map(v => v.id);
+    console.warn("Niche filter batch error, rejecting:", err);
+    return [];
   }
 }
 
@@ -200,14 +200,20 @@ serve(async (req) => {
       batches.push(needsAI.slice(i, i + BATCH_SIZE));
     }
 
-    // Run ALL batches in PARALLEL for maximum speed
+    // Run batches: parallel if ≤3, sequential chunks of 3 if more (avoid Gemini rate limits)
     const group = getGroupFromKeywords(nicheKeywords, nicheDescription);
     const rejectList = NICHE_REJECT_MAP[group] || NICHE_REJECT_MAP.viral;
     const nicheInstructions = NICHE_INSTRUCTIONS[group] || NICHE_INSTRUCTIONS.viral;
-    console.log(`Niche filter: group=${group}, instructions=${nicheInstructions.slice(0, 60)}...`);
-    const results = await Promise.all(
-      batches.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY, rejectList, nicheInstructions))
-    );
+    console.log(`Niche filter: group=${group}, batches=${batches.length}, instructions=${nicheInstructions.slice(0, 60)}...`);
+    const results: string[][] = [];
+    const PARALLEL_LIMIT = 3;
+    for (let i = 0; i < batches.length; i += PARALLEL_LIMIT) {
+      const chunk = batches.slice(i, i + PARALLEL_LIMIT);
+      const chunkResults = await Promise.all(
+        chunk.map(batch => filterBatch(batch, nicheDescription, nicheKeywords, GEMINI_API_KEY, rejectList, nicheInstructions))
+      );
+      results.push(...chunkResults);
+    }
 
     const approvedIds = new Set<string>(autoApproved);
     results.forEach(ids => ids.forEach(id => approvedIds.add(id)));

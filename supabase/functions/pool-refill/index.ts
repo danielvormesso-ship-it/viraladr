@@ -160,7 +160,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag_group, target = 200 } = await req.json();
+    const body = await req.json();
+    const hashtag_group = body.hashtag_group;
+    const target = Math.min(Math.max(Number(body.target) || 200, 50), 1000);
 
     if (!hashtag_group || typeof hashtag_group !== 'string') {
       return new Response(
@@ -225,7 +227,7 @@ Deno.serve(async (req) => {
       const results = await Promise.all(
         batch.map(async (tag) => {
           try {
-            const res = await fetch(`${supabaseUrl}/functions/v1/scrape-tiktok-apify`, {
+            const res = await fetch(`${supabaseUrl}/functions/v1/scrape-tiktok-apify`, { signal: AbortSignal.timeout(60000),
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${serviceKey}`,
@@ -313,7 +315,7 @@ Deno.serve(async (req) => {
 
         const nicheDescription = `Vídeos do TikTok brasileiro sobre: ${hashtag_group}. Hashtags: ${preset.tags.slice(0, 8).map(t => '#' + t).join(', ')}`;
 
-        const nicheRes = await fetch(`${supabaseUrl}/functions/v1/filter-by-niche`, {
+        const nicheRes = await fetch(`${supabaseUrl}/functions/v1/filter-by-niche`, { signal: AbortSignal.timeout(60000),
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${serviceKey}`,

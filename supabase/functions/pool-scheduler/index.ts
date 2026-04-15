@@ -6,14 +6,14 @@ const corsHeaders = {
 };
 
 const DEFAULT_PRESETS: Record<string, string[]> = {
-  humor:      ['pegadinha', 'humor', 'memes', 'zoeira', 'fail', 'trollagem', 'risada'],
-  viral:      ['viral', 'fyp', 'trending', 'viraltiktok'],
-  lifestyle:  ['dancinha', 'novelinha', 'satisfying', 'rotina'],
-  ia_novela:  ['ia transforma', 'novela antiga', 'cenas icônicas'],
-  novelas:    ['frutinovela', 'mininovela', 'cortesdenovela', 'novelaglobo', 'dramabr', 'frutasia', 'novelinha'],
+  humor:      ['pegadinha', 'humor', 'comédia', 'memes', 'zoeira', 'fail', 'trollagem', 'risada'],
+  viral:      ['viral', 'fyp', 'trending', 'storytime', 'parati', 'viraltiktok'],
+  lifestyle:  ['dancinha', 'novelinha', 'satisfying', 'rotina', 'viagem', 'música'],
+  ia_novela:  ['ia transforma', 'filtro ia', 'novela ia', 'frutas ia', 'novela antiga', 'cenas icônicas', 'animalia ia'],
+  novelas:    ['frutinovela', 'mininovela', 'cortesdenovela', 'novelaglobo'],
   casa:       ['organização', 'unboxing', 'decoração', 'reforma', 'faxina', 'diarista'],
-  dicas:      ['receita', 'dica', 'curiosidade', 'motivação', 'fitness'],
-  hook:       ['react', 'desafio', 'chocante', 'exposed', 'transformação'],
+  dicas:      ['receita', 'dica', 'curiosidade', 'motivação', 'fitness', 'saúde', 'hack', 'tutorial'],
+  hook:       ['react', 'desafio', 'chocante', 'exposed', 'transformação', 'antes e depois', 'polêmico', 'ninguém esperava'],
   satisfying: ['oddly satisfying', 'relaxante', 'você sabia?', 'fato curioso'],
 };
 
@@ -121,14 +121,33 @@ Deno.serve(async (req) => {
       }
 
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
-      fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${serviceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
-      }).catch(err => console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err));
+    }
+
+    // Dispatch all refills in parallel and collect results
+    const dispatchResults = await Promise.all(
+      triggered.map(async (t) => {
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${serviceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
+          });
+          const status = res.status;
+          console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${status}`);
+          return { preset: t.preset, status, ok: res.ok };
+        } catch (err) {
+          console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
+          return { preset: t.preset, status: 0, ok: false, error: err instanceof Error ? err.message : 'fetch failed' };
+        }
+      })
+    );
+
+    const failed = dispatchResults.filter(r => !r.ok);
+    if (failed.length > 0) {
+      console.warn(`[pool-scheduler] ${failed.length} refills failed: ${failed.map(f => f.preset).join(', ')}`);
     }
 
     return new Response(
@@ -137,6 +156,8 @@ Deno.serve(async (req) => {
         total_presets: allPresets.length,
         triggered_count: triggered.length,
         sufficient_count: sufficient.length,
+        dispatched: dispatchResults,
+        failed_count: failed.length,
         triggered: triggered.map(t => ({ preset: t.preset, fresh: t.fresh, threshold: t.threshold, target: t.target, searches: t.searches })),
         sufficient,
       }),
