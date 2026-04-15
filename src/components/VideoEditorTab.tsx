@@ -856,8 +856,15 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
               const directUrl = video.video_url;
               const isCdn = directUrl && /tiktokcdn|tiktokcdn-eu|v\d+-webapp|tikwm\.com\/video|muscdn\.com/i.test(directUrl);
 
-              // If we already have a CDN URL, use it directly — no edge function needed
-              if (isCdn) {
+              // Check if CDN URL is expired by reading hex timestamp in path
+              const isCdnExpired = (url: string): boolean => {
+                const match = url.match(/tiktokcdn[^/]*\/([0-9a-f]{8})\//i);
+                if (!match) return false;
+                return parseInt(match[1], 16) < Math.floor(Date.now() / 1000) + 300;
+              };
+
+              // If we have a fresh CDN URL, use it directly — no edge function needed
+              if (isCdn && !isCdnExpired(directUrl!)) {
                 urlCount++;
                 setProcessingStatus(`URLs obtidas: ${urlCount}/${videosToProcess.length}...`);
                 return { id: video.id, title: video.title || 'video', downloadUrl: directUrl, sourceUrl: video.source_url || directUrl };
