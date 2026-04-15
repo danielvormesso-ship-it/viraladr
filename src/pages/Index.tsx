@@ -1209,6 +1209,7 @@ const Index = () => {
       // ── Pool: try serving from pre-built pool first ──
       const preset = PRESET_HASHTAGS.find(p => p.tag.split(',').some(t => t.trim() === mainTag) || p.tag === tag);
       const poolGroupKey = preset?.label?.toLowerCase() || null;
+      console.log('[pool] groupKey:', poolGroupKey, 'tag:', tag, 'mainTag:', mainTag);
 
       if (poolGroupKey && !forceRefresh) {
         try {
