@@ -15,8 +15,8 @@ const TMP_DIR = '/app/tmp';
 const UPLOAD_DIR = path.join(TMP_DIR, 'uploads');
 const OUTPUT_DIR = path.join(TMP_DIR, 'outputs');
 const EFFECTS_DIR = path.join(TMP_DIR, 'effects');
-const MAX_CONCURRENT_FFMPEG = 12; // Railway Pro 24vCPU: 12 jobs x 2 threads = 24 threads
-const FFMPEG_THREADS = 2; // 2 threads per job — 12x2=24 threads saturates all vCPUs
+const MAX_CONCURRENT_FFMPEG = 6; // Railway Pro: 6 jobs x 2 threads = 12 threads (avoids pthread_create failures)
+const FFMPEG_THREADS = 2; // 2 threads per job
 const DEFAULT_FFMPEG_TIMEOUT_MS = Math.max(120000, Number(process.env.FFMPEG_TIMEOUT_MS || 8 * 60 * 1000));
 const FFMPEG_QUEUE_WAIT_TIMEOUT_MS = Math.max(15000, Number(process.env.FFMPEG_QUEUE_WAIT_TIMEOUT_MS || 5 * 60 * 1000));
 const JOB_HEARTBEAT_INTERVAL_MS = Math.max(5000, Number(process.env.JOB_HEARTBEAT_INTERVAL_MS || 15000));
