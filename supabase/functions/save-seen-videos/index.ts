@@ -11,27 +11,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify authenticated user from JWT
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const authClient = createClient(supabaseUrl, anonKey);
-    const { data: { user }, error: authError } = await authClient.auth.getUser(authHeader.replace('Bearer ', ''));
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-    const user_id = user.id;
+    const { tiktok_ids, table = 'seen_videos', user_id } = await req.json();
 
-    const { tiktok_ids, table = 'seen_videos' } = await req.json();
+    if (!user_id || typeof user_id !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'user_id required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     if (!tiktok_ids || !Array.isArray(tiktok_ids) || tiktok_ids.length === 0) {
       return new Response(
