@@ -496,6 +496,7 @@ const Index = () => {
   };
 
   const filteredVideos = useMemo(() => {
+    console.log('[filteredVideos] entrada: videos.length=', videos.length, 'mode=', resultFilterMode, 'filters=', JSON.stringify(filters));
     const step1_views = videos.filter(v => v.views >= filters.minViews);
     const step2_likes = step1_views.filter(v => v.likes >= filters.minLikes);
     const step3_shares = step2_likes.filter(v => v.shares >= filters.minShares);
@@ -1236,7 +1237,10 @@ const Index = () => {
               console.log('[pool] após dedup:', poolApproved.length);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("ai");
-              addVideosToUI(rankByBrazilianContent(poolApproved), true);
+              const ranked = rankByBrazilianContent(poolApproved);
+              console.log('[pool] antes de addVideosToUI:', ranked.length);
+              addVideosToUI(ranked, true);
+              console.log('[pool] após addVideosToUI, videosRef:', videosRef.current.length);
               setCurrentIndex(0);
               poolServedCount = poolApproved.length;
 
