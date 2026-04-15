@@ -1871,7 +1871,8 @@ const Index = () => {
           return true;
         }).filter(v => !isForeignContent(v)).slice(0, deficit);
         if (deficitFiltered.length > 0) {
-          unique = [...unique, ...deficitFiltered];
+          const maxLive = originalTarget - poolServedCount;
+          unique = dedupeVideos([...unique, ...deficitFiltered]).slice(0, maxLive);
           addLog(`  ✅ Complemento: +${deficitFiltered.length} vídeos (total: ${poolServedCount + unique.length}/${originalTarget})`);
         }
       } catch (err) {
