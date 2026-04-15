@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag_group, user_id, limit = 50, min_views, min_duration } = await req.json();
+    const { hashtag_group, user_id, limit = 50, min_views } = await req.json();
 
     if (!user_id || typeof user_id !== 'string') {
       return new Response(
@@ -110,18 +110,8 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Filter out seen/used by tiktok_id only ──
-    const parseDur = (d: string | null): number => {
-      if (!d) return 0;
-      const parts = d.split(':');
-      return parts.length === 2 ? parseInt(parts[0]) * 60 + parseInt(parts[1]) : parseInt(d) || 0;
-    };
-    const minDurSec = min_duration ? Number(min_duration) : 0;
     const served = (poolRows || [])
-      .filter(v => {
-        if (excludeIds.has(v.tiktok_id)) return false;
-        if (minDurSec > 0 && parseDur(v.duration) < minDurSec) return false;
-        return true;
-      })
+      .filter(v => !excludeIds.has(v.tiktok_id))
       .slice(0, safeLimit);
 
     // ── 4. Format as TikTokVideo (same shape frontend expects) ──
