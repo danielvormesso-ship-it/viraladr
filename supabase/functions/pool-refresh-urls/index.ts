@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
       .eq('niche_approved', true)
       .lt('fetched_at', staleCutoff)
       .order('fetched_at', { ascending: true })
-      .limit(200);
+      .limit(500);
 
     if (fetchErr) {
       console.error('[pool-refresh-urls] fetch error:', fetchErr);
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     let retried = 0;
     let deleted = 0;
     let errors = 0;
-    const BATCH = 10;
+    const BATCH = 25;
     const retryThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30min ago = already retried
 
     for (let i = 0; i < staleVideos.length; i += BATCH) {
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
                 'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
               },
               body: `url=${encodeURIComponent(video.source_url || `https://www.tiktok.com/@${video.author || 'user'}/video/${video.tiktok_id}`)}`,
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(6000),
             });
 
             if (!res.ok) return { id: video.id, status: 'error' as const };
