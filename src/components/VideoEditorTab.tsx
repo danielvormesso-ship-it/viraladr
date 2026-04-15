@@ -1484,7 +1484,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
         const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
-        setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
+        setProcessingStatus(`✅ Edição concluída! ${typeof successCount === 'number' ? successCount : 0} vídeos em ${timeStr}`);
         setProcessStartTime(null);
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
       }
