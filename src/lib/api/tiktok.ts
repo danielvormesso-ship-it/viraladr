@@ -46,7 +46,7 @@ export function getVideoMeta(video: TikTokVideo): string {
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 30);
+    .slice(0, 60);
   const dur = video.duration || '';
   return `${author}|${rawTitle}|${dur}`;
 }
@@ -66,11 +66,14 @@ export function dedupeVideos(videos: TikTokVideo[]): TikTokVideo[] {
   return videos.filter((video) => {
     const key = getVideoKey(video);
     if (seenKeys.has(key)) return false;
-    // Secondary dedup by content signature (catches reposts with different tiktok_ids)
-    const meta = getVideoMeta(video);
-    if (meta !== '||' && seenMeta.has(meta)) return false;
     seenKeys.add(key);
-    seenMeta.add(meta);
+    // Secondary dedup by meta only for videos WITHOUT tiktok_id (fallback)
+    // Videos with tiktok_id are unique by definition — never remove by meta
+    if (!video.tiktok_id) {
+      const meta = getVideoMeta(video);
+      if (meta !== '||' && seenMeta.has(meta)) return false;
+      seenMeta.add(meta);
+    }
     return true;
   });
 }
