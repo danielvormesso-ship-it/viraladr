@@ -1453,6 +1453,7 @@ const Index = () => {
           }
 
           poolServedCount = poolVideos.length;
+          addLog(`🔍 Pool: ${poolResults.map((r:any,i:number) => `${poolRequests[i]?.groupKey}=${r.served}`).join(', ')} | poolVideos=${poolVideos.length} | target=${originalTarget}`);
 
           if (poolServedCount >= originalTarget) {
             // Pool satisfied 100%
