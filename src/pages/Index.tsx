@@ -758,7 +758,7 @@ const Index = () => {
     });
   };
 
-  const maxQty = credits.isUnlimited ? 500 : Math.min(500, credits.creditsRemaining);
+  const maxQty = 500;
   const setTagQty = (tag: string, qty: number) => {
     setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(maxQty, qty)) }));
   };
@@ -1159,10 +1159,6 @@ const Index = () => {
 
   const executeSingleScrape = async (tag: string, forceRefresh = false, targetCount = 50) => {
     if (!(await requireCredits())) return;
-    if (!credits.isUnlimited && credits.creditsRemaining < targetCount) {
-      targetCount = credits.creditsRemaining;
-      toast({ title: "Créditos limitados", description: `Busca limitada a ${targetCount} vídeos (seus créditos restantes).` });
-    }
     setIsScraping(true);
     setActiveTag(tag);
     setCacheStatus(null);
@@ -1324,16 +1320,6 @@ const Index = () => {
     }
 
     let originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
-    if (!credits.isUnlimited && credits.creditsRemaining < originalTarget) {
-      const capped = credits.creditsRemaining;
-      // Scale down each tag proportionally
-      const ratio = capped / originalTarget;
-      for (const key of Object.keys(expandedQty)) {
-        expandedQty[key] = Math.max(1, Math.round(expandedQty[key] * ratio));
-      }
-      originalTarget = capped;
-      toast({ title: "Créditos limitados", description: `Busca limitada a ${capped} vídeos (seus créditos restantes).` });
-    }
     let totalTarget = originalTarget;
     const startTime = performance.now();
     const logs: string[] = [];
@@ -2620,7 +2606,7 @@ const Index = () => {
                 <span className="text-[10px] text-muted-foreground/50 font-semibold uppercase tracking-wider">Qty</span>
                 <div className="flex gap-1">
                   {[50, 100, 200, 300, 500].map(qty => {
-                    const locked = !credits.isUnlimited && qty > credits.creditsRemaining;
+                    const locked = false; // Credits deducted on download, not search
                     return (
                       <button
                         key={qty}
