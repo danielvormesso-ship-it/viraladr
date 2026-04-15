@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Download, ChevronUp, ChevronDown, Eye, Heart, MessageCircle, Share2, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
+import { Download, ChevronUp, ChevronDown, Eye, Heart, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1367,7 +1367,7 @@ const Index = () => {
 
     // Check if ALL selected presets belong to generic groups (skip niche filter)
     const allGeneric = selectedTags.every(tagStr => {
-      const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+      const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr || p.tag.split(',').some(t => t.trim() === tagStr.trim()) || p.label.toLowerCase() === tagStr.toLowerCase());
       return preset ? GENERIC_GROUPS.has(preset.group) : false;
     });
 
@@ -1719,7 +1719,7 @@ const Index = () => {
       }
     } else {
       const groupLabels = selectedTags.map(tagStr => {
-        const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr);
+        const preset = PRESET_HASHTAGS.find(p => p.tag === tagStr || p.tag.split(',').some(t => t.trim() === tagStr.trim()) || p.label.toLowerCase() === tagStr.toLowerCase());
         return preset ? preset.label : null;
       }).filter(Boolean);
       const mergeNicheDescription = groupLabels.length > 0
@@ -2063,7 +2063,7 @@ const Index = () => {
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
-        if (currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
+        if (!isDev && currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
         await credits.deductCredits(1);
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
@@ -2359,7 +2359,7 @@ const Index = () => {
 
     // Mark downloaded videos as used (persisted in Supabase)
     const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
-    await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
+    if (!isDev) await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
 
     // Deduct credits for downloaded videos
     if (successCount > 0) {
