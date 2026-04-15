@@ -1230,8 +1230,10 @@ const Index = () => {
             const poolRequest = Math.ceil(targetCount + Math.min(targetCount * 0.5, 200)); // +50% extra (max 200)
             const poolOpts = { min_views: filters.minViews || undefined, min_duration: filters.minDuration || undefined };
             const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest, poolOpts);
+            console.log('[pool] recebidos:', poolResult.videos.length, 'served:', poolResult.served);
             if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
+              console.log('[pool] após dedup:', poolApproved.length);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("ai");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
