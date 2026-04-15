@@ -133,12 +133,16 @@ const BR_POSITIVE_CHARS = /[ãáàâéêíóôõúüç]/;
 // Flags of non-BR countries that share Portuguese/Spanish vocab: 🇦🇴🇵🇹🇪🇸🇦🇷🇨🇴🇲🇽🇨🇱🇵🇪🇻🇪🇪🇨🇺🇾
 const FOREIGN_FLAG_PATTERN = /🇦🇴|🇵🇹|🇪🇸|🇦🇷|🇨🇴|🇲🇽|🇨🇱|🇵🇪|🇻🇪|🇪🇨|🇺🇾/g;
 
+const EMPTY_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
+
 function isForeignContent(v: TikTokVideo): boolean {
   const title = (v.title || '').toLowerCase();
   const author = (v.author || '').toLowerCase();
   const rawTitle = v.title || '';
   const text = `${title} ${author}`;
-  // Reject if foreign country flags present (🇦🇴🇵🇹🇪🇸🇦🇷🇨🇴🇲🇽🇨🇱🇵🇪)
+  // Reject empty/generic titles
+  if (EMPTY_TITLE_RE.test(title.trim())) return true;
+  // Reject if foreign country flags present
   const foreignFlags = rawTitle.match(FOREIGN_FLAG_PATTERN);
   if (foreignFlags && foreignFlags.length >= 1) return true;
   // Reject non-BR author patterns

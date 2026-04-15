@@ -101,12 +101,17 @@ interface PoolVideo {
   source_url: string | null;
 }
 
+const EMPTY_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
+
 // Returns true if content is NOT Brazilian (should be rejected)
 function isForeignContent(v: PoolVideo): boolean {
   const title = (v.title || '').toLowerCase();
   const rawTitle = v.title || '';
   const author = (v.author || '').toLowerCase();
   const text = `${title} ${author}`;
+
+  // Reject empty/generic titles
+  if (EMPTY_TITLE_RE.test(title.trim())) return true;
 
   // Reject if foreign country flags present
   if (FOREIGN_FLAG_PATTERN.test(rawTitle)) return true;
