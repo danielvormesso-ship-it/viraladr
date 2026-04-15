@@ -120,6 +120,19 @@ const AdminPanel = () => {
     setPlanDropdown(null);
   };
 
+  const handleResetHistory = async (userId: string, username: string) => {
+    if (!confirm(`Resetar histórico de vídeos de ${username}? Ele voltará a ver todos os vídeos disponíveis.`)) return;
+    const [seenRes, usedRes] = await Promise.all([
+      (supabase.from('seen_videos') as any).delete().eq('user_id', userId),
+      (supabase.from('used_videos') as any).delete().eq('user_id', userId),
+    ]);
+    if (seenRes.error || usedRes.error) {
+      toast({ title: 'Erro', description: seenRes.error?.message || usedRes.error?.message, variant: 'destructive' });
+    } else {
+      toast({ title: `Histórico de ${username} resetado`, description: 'Vídeos vistos e usados foram liberados.' });
+    }
+  };
+
   const formatDate = (d: string) => {
     const date = new Date(d);
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -325,6 +338,14 @@ const AdminPanel = () => {
                           </div>
                         )}
                       </div>
+                      <button
+                        onClick={() => handleResetHistory(editor.id, editor.username)}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs bg-secondary/30 hover:bg-orange-500/20 hover:text-orange-400 transition-all"
+                        title="Resetar histórico de vídeos vistos"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Reset
+                      </button>
                     </div>
                   </div>
                 </div>
