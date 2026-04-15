@@ -44,6 +44,26 @@ Deno.serve(async (req) => {
     const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    // ── 0. Daily cleanup: delete pool videos older than 7 days (runs once per day) ──
+    try {
+      const { data: lastCleanup } = await adminClient
+        .from('hashtag_pool')
+        .select('fetched_at')
+        .lt('fetched_at', weekAgo)
+        .limit(1);
+      if (lastCleanup && lastCleanup.length > 0) {
+        const { error: delErr, count } = await adminClient
+          .from('hashtag_pool')
+          .delete()
+          .lt('fetched_at', weekAgo);
+        if (!delErr) {
+          console.log(`[pool-scheduler] Cleanup: deleted old pool videos (fetched_at < 7d)`);
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('[pool-scheduler] cleanup error:', cleanupErr);
+    }
+
     // Build flat list of all presets
     const allPresets: string[] = [];
     for (const presets of Object.values(DEFAULT_PRESETS)) {
