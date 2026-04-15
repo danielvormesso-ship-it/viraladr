@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { hashtag_group, user_id, limit = 50 } = await req.json();
+    const { hashtag_group, user_id, limit = 50, min_views, min_duration } = await req.json();
 
     if (!user_id || typeof user_id !== 'string') {
       return new Response(
@@ -110,12 +110,14 @@ Deno.serve(async (req) => {
     // Only serve videos with fresh CDN URLs (fetched within last 4 hours)
     const freshCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + excludeMetas.size + 200, 8000);
-    const { data: poolRows, error: poolErr } = await adminClient
+    let poolQuery = adminClient
       .from('hashtag_pool')
       .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
       .eq('hashtag_group', groupKey)
       .eq('niche_approved', true)
-      .gte('fetched_at', freshCutoff)
+      .gte('fetched_at', freshCutoff);
+    if (min_views && Number(min_views) > 0) poolQuery = poolQuery.gte('views', Number(min_views));
+    const { data: poolRows, error: poolErr } = await poolQuery
       .order('br_score', { ascending: false })
       .order('views', { ascending: false })
       .limit(overfetch);
@@ -129,11 +131,18 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Filter out seen/used by tiktok_id AND by meta (catches reposts) ──
+    const parseDur = (d: string | null): number => {
+      if (!d) return 0;
+      const parts = d.split(':');
+      return parts.length === 2 ? parseInt(parts[0]) * 60 + parseInt(parts[1]) : parseInt(d) || 0;
+    };
+    const minDurSec = min_duration ? Number(min_duration) : 0;
     const served = (poolRows || [])
       .filter(v => {
         if (excludeIds.has(v.tiktok_id)) return false;
         const meta = getVideoMeta(v);
         if (meta !== '||' && excludeMetas.has(meta)) return false;
+        if (minDurSec > 0 && parseDur(v.duration) < minDurSec) return false;
         return true;
       })
       .slice(0, safeLimit);

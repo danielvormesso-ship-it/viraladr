@@ -306,11 +306,12 @@ export const tiktokApi = {
   async serveFromPool(
     hashtagGroup: string,
     userId: string,
-    limit = 50
+    limit = 50,
+    opts?: { min_views?: number; min_duration?: number }
   ): Promise<{ videos: TikTokVideo[]; served: number; pool_available: number; hit_rate: number }> {
     try {
       const { data, error } = await supabase.functions.invoke('pool-serve', {
-        body: { hashtag_group: hashtagGroup, user_id: userId, limit },
+        body: { hashtag_group: hashtagGroup, user_id: userId, limit, ...opts },
       });
       if (error) throw error;
       const videos = ((data?.videos || []) as TikTokVideo[]).map(v => ({

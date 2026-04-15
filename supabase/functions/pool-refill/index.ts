@@ -265,8 +265,7 @@ Deno.serve(async (req) => {
     // Layer 1: Popular (sort_type=1, no cursor) — viral hits
     console.log(`[pool-refill] Layer 1: Popular for ${groupKey} (${topTags.length} tags)`);
     const layer1 = await scrapeTags(topTags, { sortType: 1, limit: 200 });
-    const layer1Popular = layer1.videos.filter(v => v.views >= 1_000_000);
-    for (const v of layer1Popular) {
+    for (const v of layer1.videos) {
       if (!existingIds.has(v.tiktok_id)) allVideos.push(v);
     }
     // Refresh URLs for already-approved videos (no Gemini cost)
