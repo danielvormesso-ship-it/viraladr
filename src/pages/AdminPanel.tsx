@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getPlanLimits, ALL_PLANS, type PlanType } from '@/lib/plans';
 
 interface EditorProfile {
@@ -55,6 +56,7 @@ const AdminPanel = () => {
   const [tab, setTab] = useState<'editors' | 'activity'>('editors');
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [planDropdown, setPlanDropdown] = useState<string | null>(null);
+  const [resetDialog, setResetDialog] = useState<{ open: boolean; userId: string; username: string }>({ open: false, userId: '', username: '' });
 
   useEffect(() => {
     if (role !== 'admin') {
@@ -120,8 +122,9 @@ const AdminPanel = () => {
     setPlanDropdown(null);
   };
 
-  const handleResetHistory = async (userId: string, username: string) => {
-    if (!confirm(`Resetar histórico de vídeos de ${username}? Ele voltará a ver todos os vídeos disponíveis.`)) return;
+  const handleResetHistoryConfirm = async () => {
+    const { userId, username } = resetDialog;
+    setResetDialog(prev => ({ ...prev, open: false }));
     const [seenRes, usedRes] = await Promise.all([
       (supabase.from('seen_videos') as any).delete().eq('user_id', userId),
       (supabase.from('used_videos') as any).delete().eq('user_id', userId),
@@ -339,7 +342,7 @@ const AdminPanel = () => {
                         )}
                       </div>
                       <button
-                        onClick={() => handleResetHistory(editor.id, editor.username)}
+                        onClick={() => setResetDialog({ open: true, userId: editor.id, username: editor.username })}
                         className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs bg-secondary/30 hover:bg-orange-500/20 hover:text-orange-400 transition-all"
                         title="Resetar histórico de vídeos vistos"
                       >
@@ -435,6 +438,27 @@ const AdminPanel = () => {
           )}
         </div>
       </main>
+      <AlertDialog open={resetDialog.open} onOpenChange={(open) => setResetDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-orange-500" />
+              Resetar Histórico
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Resetar histórico de vídeos de <strong>{resetDialog.username}</strong>?
+              <br />
+              <span className="text-muted-foreground">Ele voltará a ver todos os vídeos disponíveis no pool.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetHistoryConfirm} className="bg-orange-500 hover:bg-orange-600 text-white">
+              Resetar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
