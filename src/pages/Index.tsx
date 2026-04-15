@@ -1185,7 +1185,7 @@ const Index = () => {
         try {
           const userId = (await supabase.auth.getUser()).data.user?.id;
           if (userId) {
-            const poolRequest = Math.ceil(targetCount * 1.15); // +15% to compensate dedup losses
+            const poolRequest = Math.ceil(targetCount + Math.min(targetCount * 0.5, 200)); // +50% extra (max 200)
             const poolResult = await tiktokApi.serveFromPool(poolGroupKey, userId, poolRequest);
             if (poolResult.served >= targetCount) {
               // Pool satisfied 100% — instant results
@@ -1362,7 +1362,7 @@ const Index = () => {
         if (poolRequests.length > 0) {
           addLog(`⚡ Tentando pool para ${poolRequests.map(r => r.groupKey).join(', ')}...`);
           const poolResults = await Promise.all(
-            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, Math.ceil(r.qty * 1.15)))
+            poolRequests.map(r => tiktokApi.serveFromPool(r.groupKey, userId, Math.ceil(r.qty + Math.min(r.qty * 0.5, 200))))
           );
 
           const poolVideos: TikTokVideo[] = [];
