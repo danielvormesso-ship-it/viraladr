@@ -1224,7 +1224,7 @@ const Index = () => {
             if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
               tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
-              setResultFilterMode("strict");
+              setResultFilterMode("ai");
               addVideosToUI(rankByBrazilianContent(poolApproved), true);
               setCurrentIndex(0);
               poolServedCount = poolApproved.length;
@@ -1305,23 +1305,30 @@ const Index = () => {
       }
       if (approved.length > liveTarget) approved = approved.slice(0, liveTarget);
 
-      // Deficit fill: if pool + live didn't reach target, try again (with or without cursor)
-      if (poolServedCount + approved.length < targetCount) {
+      // Deficit fill: loop up to 3 times until target reached or sources exhausted
+      let deficitCursor: string | undefined = retryCursor || undefined;
+      for (let deficitRound = 0; deficitRound < 3 && poolServedCount + approved.length < targetCount; deficitRound++) {
         const deficit = targetCount - poolServedCount - approved.length;
-        // If cursor exhausted, reset and fetch from page 0
-        const deficitCursor = retryCursor || undefined;
-        if (!deficitCursor) {
+        if (!deficitCursor && deficitRound === 0) {
           singleScrapeCursorRef.current.cursor = null;
           try { localStorage.removeItem(`cursor_${mainTag}`); } catch {}
         }
-        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 3, undefined, true, true, deficitCursor);
-        if (deficitResult.next_cursor) { singleScrapeCursorRef.current.cursor = deficitResult.next_cursor; saveCursor(mainTag, deficitResult.next_cursor); }
+        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 4, undefined, true, true, deficitCursor);
+        if (deficitResult.next_cursor) {
+          deficitCursor = deficitResult.next_cursor;
+          singleScrapeCursorRef.current.cursor = deficitResult.next_cursor;
+          saveCursor(mainTag, deficitResult.next_cursor);
+        } else {
+          deficitCursor = undefined;
+        }
         const deficitUnseen = (deficitResult.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
+        if (deficitUnseen.length === 0) break; // no new videos available
         const deficitNiche = await applyNicheTitleFilter(deficitUnseen, nicheDesc, nicheKeywords);
         const deficitApproved = deficitNiche.filter(v => !isForeignContent(v)).slice(0, deficit);
         if (deficitApproved.length > 0) {
           approved = dedupeVideos([...approved, ...deficitApproved]).slice(0, liveTarget);
         }
+        if (!deficitCursor) break; // cursor exhausted
       }
 
       tiktokApi.markVideosSeen(approved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
@@ -1329,11 +1336,11 @@ const Index = () => {
       const totalApproved = poolServedCount + approved.length;
 
       if (approved.length > 0) {
-        setResultFilterMode("strict");
+        setResultFilterMode("ai");
         addVideosToUI(rankByBrazilianContent(approved), poolServedCount === 0);
         if (poolServedCount === 0) setCurrentIndex(0);
       } else if (poolServedCount === 0) {
-        setResultFilterMode("strict");
+        setResultFilterMode("ai");
         setVideos([]);
         videosInUIRef.current = { keys: new Set(), metas: new Set() };
         setCurrentIndex(0);
