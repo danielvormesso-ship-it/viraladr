@@ -899,9 +899,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           return;
         }
 
-        // Pre-check codec compatibility before processing
-        addLog('🔍 Verificando compatibilidade de codec dos vídeos...', 'info');
-        setProcessingStatus('Verificando codecs...');
+        // Pre-check codec compatibility before processing (server also probes, but this avoids wasting job slots on incompatible videos)
+        addLog('🔍 Filtrando vídeos incompatíveis...', 'info');
+        setProcessingStatus('Filtrando incompatíveis...');
         const compatibleTargets: typeof processTargets = [];
         const incompatibleVideos: { title: string; codec: string }[] = [];
 
@@ -911,11 +911,11 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             try {
               const probe = await probeVideoCodec(serverConfig.url, serverConfig.apiKey, video.downloadUrl);
               probeCount++;
-              setProcessingStatus(`Verificando codecs: ${probeCount}/${processTargets.length}...`);
+              setProcessingStatus(`Filtrando: ${probeCount}/${processTargets.length}...`);
               return { video, probe, error: false };
             } catch {
               probeCount++;
-              setProcessingStatus(`Verificando codecs: ${probeCount}/${processTargets.length}...`);
+              setProcessingStatus(`Filtrando: ${probeCount}/${processTargets.length}...`);
               return { video, probe: null, error: true };
             }
           })
@@ -1002,7 +1002,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         const statusLabels: Record<string, string> = {
           queued: '⏳ Na fila',
           downloading: '⬇️ Baixando vídeo',
-          probing: '🔍 Analisando codec',
+          probing: '⬇️ Preparando vídeo',
           processing: '⚙️ Processando FFmpeg',
           done: '✅ Concluído',
           failed: '❌ Falhou',
