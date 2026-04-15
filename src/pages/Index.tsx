@@ -1166,6 +1166,11 @@ const Index = () => {
 
   const executeSingleScrape = async (tag: string, forceRefresh = false, targetCount = 50) => {
     if (!(await requireCredits())) return;
+    // Cap search to credits remaining (no point fetching more than you can download)
+    if (!credits.isUnlimited && credits.creditsRemaining < targetCount) {
+      targetCount = credits.creditsRemaining;
+      toast({ title: "Busca limitada", description: `Limitado a ${targetCount} vídeos (seus créditos disponíveis).` });
+    }
     setIsScraping(true);
     setActiveTag(tag);
     setCacheStatus(null);
@@ -1356,6 +1361,16 @@ const Index = () => {
     }
 
     let originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+    // Cap total to credits remaining
+    if (!credits.isUnlimited && credits.creditsRemaining < originalTarget) {
+      const capped = credits.creditsRemaining;
+      const ratio = capped / originalTarget;
+      for (const key of Object.keys(expandedQty)) {
+        expandedQty[key] = Math.max(1, Math.round(expandedQty[key] * ratio));
+      }
+      originalTarget = Object.values(expandedQty).reduce((sum, q) => sum + q, 0);
+      toast({ title: "Busca limitada", description: `Limitado a ${originalTarget} vídeos (seus créditos disponíveis).` });
+    }
     let totalTarget = originalTarget;
     const startTime = performance.now();
     const logs: string[] = [];
