@@ -503,7 +503,7 @@ const Index = () => {
       if (v.comments < filters.minComments) return false;
       const dur = parseDuration(v.duration);
       if (filters.minDuration > 0 && dur > 0 && dur < filters.minDuration) return false;
-      if (dur > (resultFilterMode === "ai" ? 120 : 45)) return false;
+      if (dur > 120) return false;
       if (resultFilterMode !== "ai" && !isBrazilianContent(v)) return false;
       if (resultFilterMode !== "ai" && !passesAiContentFilter(v)) return false;
       return true;
