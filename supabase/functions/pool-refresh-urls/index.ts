@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     let deleted = 0;
     let errors = 0;
     const BATCH = 10;
-    const retryThreshold = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(); // 5h ago = already retried
+    const retryThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30min ago = already retried
 
     for (let i = 0; i < staleVideos.length; i += BATCH) {
       const batch = staleVideos.slice(i, i + BATCH);
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
 
             // First failure — set fetched_at to 3h ago for retry in ~1h
             await adminClient.from('hashtag_pool').update({
-              fetched_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+              fetched_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
             }).eq('id', video.id);
             return { id: video.id, status: 'retry' as const };
           } catch {
