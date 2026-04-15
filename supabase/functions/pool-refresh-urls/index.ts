@@ -49,14 +49,20 @@ Deno.serve(async (req) => {
     console.log(`[pool-refresh-urls] Found ${staleVideos.length} stale videos to refresh`);
 
     // ── 2. Refresh URLs via TikWM ──
+    // Strategy: if TikWM returns code:-1, the video is deleted/private.
+    // First failure: set fetched_at to 3h ago (retry in ~1h).
+    // Second failure (fetched_at already < staleCutoff - 1h): delete from pool.
     let refreshed = 0;
-    let failed = 0;
+    let retried = 0;
+    let deleted = 0;
+    let errors = 0;
     const BATCH = 10;
+    const retryThreshold = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(); // 5h ago = already retried
 
     for (let i = 0; i < staleVideos.length; i += BATCH) {
       const batch = staleVideos.slice(i, i + BATCH);
       const results = await Promise.all(
-        batch.map(async (video) => {
+        batch.map(async (video: any) => {
           try {
             const res = await fetch('https://www.tikwm.com/api/', {
               method: 'POST',
@@ -68,44 +74,52 @@ Deno.serve(async (req) => {
               signal: AbortSignal.timeout(10000),
             });
 
-            if (!res.ok) return { id: video.id, success: false };
+            if (!res.ok) return { id: video.id, status: 'error' as const };
 
             const data = await res.json();
-            const newUrl = data?.data?.play || data?.data?.hdplay || null;
+            const code = data?.code;
+            const newUrl = data?.data?.play || null;
 
-            if (!newUrl) return { id: video.id, success: false };
-
-            // Update video_url and fetched_at
-            const { error: updateErr } = await adminClient
-              .from('hashtag_pool')
-              .update({
+            if (code === 0 && newUrl) {
+              // Success — update URL and timestamp
+              await adminClient.from('hashtag_pool').update({
                 video_url: newUrl,
                 fetched_at: new Date().toISOString(),
-              })
-              .eq('id', video.id);
-
-            if (updateErr) {
-              console.warn(`[pool-refresh-urls] update error for ${video.tiktok_id}:`, updateErr.message);
-              return { id: video.id, success: false };
+              }).eq('id', video.id);
+              return { id: video.id, status: 'refreshed' as const };
             }
 
-            return { id: video.id, success: true };
-          } catch (err) {
-            return { id: video.id, success: false };
+            // Video unavailable (code:-1 or no play URL)
+            const isSecondFailure = video.fetched_at < retryThreshold;
+            if (isSecondFailure) {
+              // Already failed before — delete from pool
+              await adminClient.from('hashtag_pool').delete().eq('id', video.id);
+              return { id: video.id, status: 'deleted' as const };
+            }
+
+            // First failure — set fetched_at to 3h ago for retry in ~1h
+            await adminClient.from('hashtag_pool').update({
+              fetched_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+            }).eq('id', video.id);
+            return { id: video.id, status: 'retry' as const };
+          } catch {
+            return { id: video.id, status: 'error' as const };
           }
         })
       );
 
       for (const r of results) {
-        if (r.success) refreshed++;
-        else failed++;
+        if (r.status === 'refreshed') refreshed++;
+        else if (r.status === 'deleted') deleted++;
+        else if (r.status === 'retry') retried++;
+        else errors++;
       }
     }
 
-    console.log(`[pool-refresh-urls] Done: ${refreshed} refreshed, ${failed} failed out of ${staleVideos.length}`);
+    console.log(`[pool-refresh-urls] Done: ${refreshed} refreshed, ${retried} retried, ${deleted} deleted, ${errors} errors (total ${staleVideos.length})`);
 
     return new Response(
-      JSON.stringify({ success: true, refreshed, failed, total: staleVideos.length }),
+      JSON.stringify({ success: true, refreshed, retried, deleted, errors, total: staleVideos.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
