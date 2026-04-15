@@ -1974,7 +1974,7 @@ const Index = () => {
     }
 
     // Mark seen so this user won't get the same videos again
-    await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
+    if (!isDev) await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
     const grandTotal = poolServedCount + unique.length;
