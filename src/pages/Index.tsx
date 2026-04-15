@@ -2494,7 +2494,7 @@ const Index = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => { setFilters(prev => ({ ...prev, minViews: 0, minDuration: 0 })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minViews: 0, minDuration: 0 })); } catch {} }}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmAction}>
               Confirmar busca
             </AlertDialogAction>
@@ -3127,15 +3127,18 @@ const Index = () => {
                 )}
               </div>
             )}
-            {/* Active filters badge */}
+            {/* Active filters badge — prominent warning */}
             {(filters.minViews > 0 || filters.minDuration > 0) && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/5 border border-primary/10">
-                <Filter className="h-3 w-3 text-primary/60" />
-                <div className="flex gap-1.5">
-                  {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold">{tiktokApi.formatNumber(filters.minViews)}+ views</span>}
-                  {filters.minDuration > 0 && <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold">{filters.minDuration}s+ duração</span>}
+              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30 animate-pulse-slow">
+                <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-bold text-orange-400">Filtro ativo — pode reduzir resultados</span>
+                  <div className="flex gap-1.5">
+                    {filters.minViews > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-[10px] font-semibold">{tiktokApi.formatNumber(filters.minViews)}+ views</span>}
+                    {filters.minDuration > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-[10px] font-semibold">{filters.minDuration}s+ duração</span>}
+                  </div>
                 </div>
-                <button onClick={() => setFilters(prev => ({ ...prev, minViews: 0, minDuration: 0 }))} className="text-[10px] text-muted-foreground/50 hover:text-foreground ml-auto">✕</button>
+                <button onClick={() => { setFilters(prev => ({ ...prev, minViews: 0, minDuration: 0 })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minViews: 0, minDuration: 0 })); } catch {} }} className="text-xs text-orange-400/60 hover:text-orange-300 ml-auto font-semibold">Limpar</button>
               </div>
             )}
 
