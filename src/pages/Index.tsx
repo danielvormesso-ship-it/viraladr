@@ -98,8 +98,8 @@ const PRESET_HASHTAGS = [
 function rankByBrazilianContent(vids: TikTokVideo[]): TikTokVideo[] {
   if (vids.length === 0) return vids;
 
-  // Remove foreign videos completely
-  const filtered = vids.filter(v => !isForeignContent(v));
+  // Pool and live scrape already filter foreign content — just rank here
+  const filtered = vids;
 
   const BR_HASHTAGS = new Set(['brasil', 'br', 'brasileiros', 'brasileiro', 'tiktokviral🇧🇷', 'fyp🇧🇷', 'tiktoker']);
   const PT_WORDS = new Set(['kkk', 'né', 'tô', 'pra', 'vc', 'rsrs', 'mds', 'caramba', 'mano', 'cara', 'nossa', 'brasil', 'brasileiro', 'br', 'saudade', 'gente', 'aqui', 'também', 'então', 'muito', 'quando', 'porque']);
