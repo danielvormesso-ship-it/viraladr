@@ -2464,7 +2464,7 @@ const Index = () => {
                 <div className="space-y-1">
                   <p className="text-[10px] text-muted-foreground/60 font-medium flex items-center gap-1"><Eye className="h-2.5 w-2.5" /> Views mínimas</p>
                   <div className="flex flex-wrap gap-1">
-                    {[0, 100000, 500000, 1000000, 5000000].map(val => (
+                    {[0, 100000, 500000, 1000000].map(val => (
                       <button key={val} onClick={() => { setFilters(prev => ({ ...prev, minViews: val })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minViews: val })); } catch {} }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 ${filters.minViews === val ? 'bg-primary/15 text-primary border border-primary/20' : 'bg-secondary/30 text-foreground/40 hover:bg-secondary/50'}`}>
                         {val === 0 ? 'Todos' : tiktokApi.formatNumber(val) + '+'}
@@ -2475,7 +2475,7 @@ const Index = () => {
                 <div className="space-y-1">
                   <p className="text-[10px] text-muted-foreground/60 font-medium flex items-center gap-1"><Film className="h-2.5 w-2.5" /> Duração mínima</p>
                   <div className="flex flex-wrap gap-1">
-                    {[0, 15, 30, 60].map(val => (
+                    {[0, 5, 15, 30].map(val => (
                       <button key={val} onClick={() => { setFilters(prev => ({ ...prev, minDuration: val })); try { localStorage.setItem('viraladr_filters', JSON.stringify({ ...filters, minDuration: val })); } catch {} }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 ${filters.minDuration === val ? 'bg-primary/15 text-primary border border-primary/20' : 'bg-secondary/30 text-foreground/40 hover:bg-secondary/50'}`}>
                         {val === 0 ? 'Todos' : `${val}s+`}
