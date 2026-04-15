@@ -10,6 +10,10 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 ];
 
+const VIDEOS_PER_GROUP = 2;
+const MAX_VIDEOS = 60;
+const DELAY_MS = 1050;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -22,14 +26,12 @@ Deno.serve(async (req) => {
 
     const staleCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
 
-    // ── 1. Fetch stale videos (approved but URLs expired) ──
+    // ── 1. Fetch 2 stale videos per hashtag_group (balanced distribution) ──
     const { data: staleVideos, error: fetchErr } = await adminClient
-      .from('hashtag_pool')
-      .select('id, tiktok_id, source_url, author, hashtag_group')
-      .eq('niche_approved', true)
-      .lt('fetched_at', staleCutoff)
-      .order('fetched_at', { ascending: true })
-      .limit(500);
+      .rpc('pool_stale_per_group', {
+        stale_cutoff: staleCutoff,
+        per_group: VIDEOS_PER_GROUP,
+      });
 
     if (fetchErr) {
       console.error('[pool-refresh-urls] fetch error:', fetchErr);
@@ -39,90 +41,79 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!staleVideos || staleVideos.length === 0) {
+    const videos = staleVideos?.slice(0, MAX_VIDEOS) ?? [];
+
+    if (videos.length === 0) {
       return new Response(
         JSON.stringify({ success: true, refreshed: 0, message: 'No stale videos found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    console.log(`[pool-refresh-urls] Found ${staleVideos.length} stale videos to refresh`);
+    console.log(`[pool-refresh-urls] Found ${videos.length} stale videos across groups`);
 
-    // ── 2. Refresh URLs via TikWM ──
-    // Strategy: if TikWM returns code:-1, the video is deleted/private.
-    // First failure: set fetched_at to 3h ago (retry in ~1h).
-    // Second failure (fetched_at already < staleCutoff - 1h): delete from pool.
+    // ── 2. Refresh URLs via TikWM — SEQUENTIAL (1 req/1.1s to respect rate limit) ──
     let refreshed = 0;
     let retried = 0;
     let deleted = 0;
     let errors = 0;
-    const BATCH = 15;
-    const retryThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30min ago = already retried
+    const retryThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
-    for (let i = 0; i < staleVideos.length; i += BATCH) {
-      const batch = staleVideos.slice(i, i + BATCH);
-      const results = await Promise.all(
-        batch.map(async (video: any) => {
-          try {
-            const res = await fetch('https://www.tikwm.com/api/', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
-              },
-              body: `url=${encodeURIComponent(video.source_url || `https://www.tiktok.com/@${video.author || 'user'}/video/${video.tiktok_id}`)}`,
-              signal: AbortSignal.timeout(8000),
-            });
+    for (let i = 0; i < videos.length; i++) {
+      const video = videos[i] as any;
 
-            if (!res.ok) return { id: video.id, status: 'error' as const };
+      try {
+        const res = await fetch('https://www.tikwm.com/api/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+          },
+          body: `url=${encodeURIComponent(video.source_url || `https://www.tiktok.com/@${video.author || 'user'}/video/${video.tiktok_id}`)}`,
+          signal: AbortSignal.timeout(8000),
+        });
 
-            const data = await res.json();
-            const code = data?.code;
-            const newUrl = data?.data?.play || null;
+        if (!res.ok) {
+          errors++;
+        } else {
+          const data = await res.json();
+          const code = data?.code;
+          const newUrl = data?.data?.play || null;
 
-            if (code === 0 && newUrl) {
-              // Success — update URL and timestamp
-              await adminClient.from('hashtag_pool').update({
-                video_url: newUrl,
-                fetched_at: new Date().toISOString(),
-              }).eq('id', video.id);
-              return { id: video.id, status: 'refreshed' as const };
-            }
-
+          if (code === 0 && newUrl) {
+            await adminClient.from('hashtag_pool').update({
+              video_url: newUrl,
+              fetched_at: new Date().toISOString(),
+            }).eq('id', video.id);
+            refreshed++;
+          } else {
             // Video unavailable (code:-1 or no play URL)
             const isSecondFailure = video.fetched_at < retryThreshold;
             if (isSecondFailure) {
-              // Already failed before — delete from pool
               await adminClient.from('hashtag_pool').delete().eq('id', video.id);
-              return { id: video.id, status: 'deleted' as const };
+              deleted++;
+            } else {
+              await adminClient.from('hashtag_pool').update({
+                fetched_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+              }).eq('id', video.id);
+              retried++;
             }
-
-            // First failure — set fetched_at to 3h ago for retry in ~1h
-            await adminClient.from('hashtag_pool').update({
-              fetched_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            }).eq('id', video.id);
-            return { id: video.id, status: 'retry' as const };
-          } catch {
-            return { id: video.id, status: 'error' as const };
           }
-        })
-      );
+        }
+      } catch {
+        errors++;
+      }
 
-      // 200ms delay between batches to avoid TikWM rate limits
-      if (i + BATCH < staleVideos.length) await new Promise(r => setTimeout(r, 200));
-
-      for (const r of results) {
-        if (r.status === 'refreshed') refreshed++;
-        else if (r.status === 'deleted') deleted++;
-        else if (r.status === 'retry') retried++;
-        else errors++;
+      // 1.1s delay between requests to respect TikWM 1 req/s limit
+      if (i < videos.length - 1) {
+        await new Promise(r => setTimeout(r, DELAY_MS));
       }
     }
 
-    console.log(`[pool-refresh-urls] Done: ${refreshed} refreshed, ${retried} retried, ${deleted} deleted, ${errors} errors (total ${staleVideos.length})`);
+    console.log(`[pool-refresh-urls] Done: ${refreshed} refreshed, ${retried} retried, ${deleted} deleted, ${errors} errors (total ${videos.length})`);
 
     return new Response(
-      JSON.stringify({ success: true, refreshed, retried, deleted, errors, total: staleVideos.length }),
+      JSON.stringify({ success: true, refreshed, retried, deleted, errors, total: videos.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
