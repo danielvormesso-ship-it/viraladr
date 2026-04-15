@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     // ── 1. Fetch stale videos (approved but URLs expired) ──
     const { data: staleVideos, error: fetchErr } = await adminClient
       .from('hashtag_pool')
-      .select('id, tiktok_id, hashtag_group')
+      .select('id, tiktok_id, source_url, author, hashtag_group')
       .eq('niche_approved', true)
       .lt('fetched_at', staleCutoff)
       .order('fetched_at', { ascending: true })
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
               },
-              body: `url=https://www.tiktok.com/@user/video/${video.tiktok_id}`,
+              body: `url=${encodeURIComponent(video.source_url || `https://www.tiktok.com/@${video.author || 'user'}/video/${video.tiktok_id}`)}`,
               signal: AbortSignal.timeout(10000),
             });
 
