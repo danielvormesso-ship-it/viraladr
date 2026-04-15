@@ -57,6 +57,7 @@ const AdminPanel = () => {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [planDropdown, setPlanDropdown] = useState<string | null>(null);
   const [resetDialog, setResetDialog] = useState<{ open: boolean; userId: string; username: string }>({ open: false, userId: '', username: '' });
+  const [resettingUser, setResettingUser] = useState<string | null>(null);
 
   useEffect(() => {
     if (role !== 'admin') {
@@ -125,6 +126,7 @@ const AdminPanel = () => {
   const handleResetHistoryConfirm = async () => {
     const { userId, username } = resetDialog;
     setResetDialog(prev => ({ ...prev, open: false }));
+    setResettingUser(userId);
     const [seenRes, usedRes] = await Promise.all([
       (supabase.from('seen_videos') as any).delete().eq('user_id', userId),
       (supabase.from('used_videos') as any).delete().eq('user_id', userId),
@@ -134,6 +136,7 @@ const AdminPanel = () => {
     } else {
       toast({ title: `Histórico de ${username} resetado`, description: 'Vídeos vistos e usados foram liberados.' });
     }
+    setResettingUser(null);
   };
 
   const formatDate = (d: string) => {
@@ -343,11 +346,12 @@ const AdminPanel = () => {
                       </div>
                       <button
                         onClick={() => setResetDialog({ open: true, userId: editor.id, username: editor.username })}
-                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs bg-secondary/30 hover:bg-orange-500/20 hover:text-orange-400 transition-all"
+                        disabled={resettingUser === editor.id}
+                        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-all ${resettingUser === editor.id ? 'bg-orange-500/20 text-orange-400 cursor-wait' : 'bg-secondary/30 hover:bg-orange-500/20 hover:text-orange-400'}`}
                         title="Resetar histórico de vídeos vistos"
                       >
-                        <RefreshCw className="h-3 w-3" />
-                        Reset
+                        {resettingUser === editor.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        {resettingUser === editor.id ? 'Resetando...' : 'Reset'}
                       </button>
                     </div>
                   </div>
