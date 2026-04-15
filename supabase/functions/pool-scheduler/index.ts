@@ -125,38 +125,26 @@ Deno.serve(async (req) => {
       console.log(`[pool-scheduler] Dispatching refill: ${t.preset} (fresh=${t.fresh}, threshold=${t.threshold}, target=${t.target}, searches=${t.searches})`);
     }
 
-    // Dispatch refills in sequential chunks of 5 to avoid rate limiting
-    const DISPATCH_CHUNK = 5;
-    const dispatchResults: { preset: string; status: number; ok: boolean; error?: string }[] = [];
-    for (let i = 0; i < triggered.length; i += DISPATCH_CHUNK) {
-      const chunk = triggered.slice(i, i + DISPATCH_CHUNK);
-      const chunkResults = await Promise.all(
-        chunk.map(async (t) => {
-          try {
-            const res = await fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${invokeKey}`,
-                'apikey': invokeKey,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
-            });
-            const status = res.status;
-            console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${status}`);
-            return { preset: t.preset, status, ok: res.ok };
-          } catch (err) {
-            console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
-            return { preset: t.preset, status: 0, ok: false, error: err instanceof Error ? err.message : 'fetch failed' };
-          }
-        })
-      );
-      dispatchResults.push(...chunkResults);
-    }
-
-    const failed = dispatchResults.filter(r => !r.ok);
-    if (failed.length > 0) {
-      console.warn(`[pool-scheduler] ${failed.length} refills failed: ${failed.map(f => f.preset).join(', ')}`);
+    // Fire-and-forget refills — don't await (each refill takes 30-60s, would exceed function timeout)
+    // Stagger dispatches with 500ms delay between each to avoid rate limiting
+    let dispatched = 0;
+    for (const t of triggered) {
+      setTimeout(() => {
+        fetch(`${supabaseUrl}/functions/v1/pool-refill`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${invokeKey}`,
+            'apikey': invokeKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ hashtag_group: t.preset, target: t.target }),
+        }).then(res => {
+          console.log(`[pool-scheduler] Refill ${t.preset}: HTTP ${res.status}`);
+        }).catch(err => {
+          console.error(`[pool-scheduler] dispatch error ${t.preset}:`, err);
+        });
+      }, dispatched * 500);
+      dispatched++;
     }
 
     return new Response(
@@ -165,8 +153,7 @@ Deno.serve(async (req) => {
         total_presets: allPresets.length,
         triggered_count: triggered.length,
         sufficient_count: sufficient.length,
-        dispatched: dispatchResults,
-        failed_count: failed.length,
+        dispatched_count: dispatched,
         triggered: triggered.map(t => ({ preset: t.preset, fresh: t.fresh, threshold: t.threshold, target: t.target, searches: t.searches })),
         sufficient,
       }),
