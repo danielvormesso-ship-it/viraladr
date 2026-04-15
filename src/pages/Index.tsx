@@ -194,6 +194,8 @@ const BR_HASHTAGS_PATTERN = /#(parati|dancinha|novelinha|tiktokbr|brasilvibes|br
 const Index = () => {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const videosRef = useRef<TikTokVideo[]>([]);
+  // Dev environment: don't save seen history (dev--criativosai.netlify.app)
+  const isDev = window.location.hostname.includes('dev--');
   // Keep ref in sync with state so async closures always read latest
   useEffect(() => { videosRef.current = videos; }, [videos]);
   // Backstop dedup: tracks all keys+metas currently in the UI
@@ -1166,7 +1168,7 @@ const Index = () => {
       const unique = approvedVideos.slice(0, totalTarget);
 
       // Mark seen so this user won't get the same videos again
-      await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
+      if (!isDev) await tiktokApi.markVideosSeen(unique.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
 
@@ -1235,7 +1237,7 @@ const Index = () => {
             if (poolResult.served > 0) {
               const poolApproved = dedupeVideos(poolResult.videos).slice(0, targetCount);
               console.log('[pool] após dedup:', poolApproved.length);
-              tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
+              if (!isDev) tiktokApi.markVideosSeen(poolApproved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
               setResultFilterMode("ai");
               const ranked = rankByBrazilianContent(poolApproved);
               console.log('[pool] antes de addVideosToUI:', ranked.length);
@@ -1346,7 +1348,7 @@ const Index = () => {
         if (!deficitCursor) break; // cursor exhausted
       }
 
-      tiktokApi.markVideosSeen(approved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
+      if (!isDev) tiktokApi.markVideosSeen(approved.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       const totalApproved = poolServedCount + approved.length;
 
@@ -1476,7 +1478,7 @@ const Index = () => {
           if (poolServedCount >= originalTarget) {
             // Pool satisfied 100%
             const trimmed = dedupeVideos(poolVideos).slice(0, originalTarget);
-            tiktokApi.markVideosSeen(trimmed.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
+            if (!isDev) tiktokApi.markVideosSeen(trimmed.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
             addLog(`🏁 Pool completo: ${trimmed.length}/${originalTarget} em ${elapsed}s`);
             setResultFilterMode("ai");
@@ -1493,7 +1495,7 @@ const Index = () => {
           if (poolServedCount > 0) {
             // Pool partial — show immediately, reduce quotas for live
             const deduped = dedupeVideos(poolVideos);
-            tiktokApi.markVideosSeen(deduped.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
+            if (!isDev) tiktokApi.markVideosSeen(deduped.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(() => {});
             addVideosToUI(rankByBrazilianContent(deduped), true);
             setCurrentIndex(0);
             addLog(`📦 Pool parcial: ${deduped.length} exibidos, buscando ${originalTarget - deduped.length} ao vivo...`);
@@ -2034,7 +2036,7 @@ const Index = () => {
       for (const id of usedIds) seenIds.add(id);
 
       const unseenVideos = (result.videos || []).filter(v => v.tiktok_id && !seenIds.has(v.tiktok_id));
-      tiktokApi.markVideosSeen(unseenVideos.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
+      if (!isDev) tiktokApi.markVideosSeen(unseenVideos.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }))).catch(err => console.error('[markVideosSeen] erro:', err));
 
       if (unseenVideos.length > 0) {
         setResultFilterMode("strict");
