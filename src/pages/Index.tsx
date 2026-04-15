@@ -2141,7 +2141,7 @@ const Index = () => {
 
     // Check if a TikTok CDN URL is expired by reading the hex timestamp in the path
     const isCdnUrlExpired = (url: string): boolean => {
-      const match = url.match(/tiktokcdn[^/]*\/([0-9a-f]{8})\//i);
+      const match = url.match(/tiktokcdn[^/]*\/[0-9a-f]{32}\/([0-9a-f]{8})\//i);
       if (!match) return false;
       const expiresAt = parseInt(match[1], 16);
       return expiresAt < Math.floor(Date.now() / 1000) + 300; // expired or <5min left

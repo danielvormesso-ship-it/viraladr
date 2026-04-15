@@ -858,7 +858,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
               // Check if CDN URL is expired by reading hex timestamp in path
               const isCdnExpired = (url: string): boolean => {
-                const match = url.match(/tiktokcdn[^/]*\/([0-9a-f]{8})\//i);
+                const match = url.match(/tiktokcdn[^/]*\/[0-9a-f]{32}\/([0-9a-f]{8})\//i);
                 if (!match) return false;
                 return parseInt(match[1], 16) < Math.floor(Date.now() / 1000) + 300;
               };
