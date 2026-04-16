@@ -686,7 +686,8 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
       } catch (e) { console.warn('localStorage error:', e); }
       setBatchResumeData(null);
     }
-    setProcessStartTime(Date.now());
+    const processStartMs = Date.now();
+    setProcessStartTime(processStartMs);
     setElapsedTime(0);
     setProcessingStatus('');
     setProcessLogs([]);
@@ -1499,11 +1500,13 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         addLog(`Erro geral no servidor: ${String(err).slice(0, 160)}`, 'error');
         toast({ title: "Erro no servidor", description: String(err), variant: "destructive" });
       } finally {
-        // Show result to user IMMEDIATELY — before any async cleanup
-        const elapsedMs = processStartTime ? Date.now() - processStartTime : 0;
+        // Calculate elapsed time from LOCAL variable (closure-safe)
+        const elapsedMs = Date.now() - processStartMs;
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
         const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
+
+        // Show result to user IMMEDIATELY — before any async cleanup
         setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
         setProcessStartTime(null);
         setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
