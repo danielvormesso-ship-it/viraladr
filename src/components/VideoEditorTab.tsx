@@ -1499,18 +1499,19 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         addLog(`Erro geral no servidor: ${String(err).slice(0, 160)}`, 'error');
         toast({ title: "Erro no servidor", description: String(err), variant: "destructive" });
       } finally {
-        if (sessionId) await cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
-        try { localStorage.removeItem('viraladr_batch_v1'); } catch (e) { console.warn('localStorage error:', e); }
-        // Clear progress FIRST so React doesn't flash stale polling values
-        setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
-        setProcessStartTime(null);
-        // Show final summary — set status BEFORE setProcessing(false) so React batches both
+        // Show result to user IMMEDIATELY — before any async cleanup
         const elapsedMs = processStartTime ? Date.now() - processStartTime : 0;
         const mins = Math.floor(elapsedMs / 60000);
         const secs = Math.floor((elapsedMs % 60000) / 1000);
         const timeStr = mins > 0 ? `${mins}min ${secs}s` : `${secs}s`;
+        setProcessProgress({ current: 0, total: 0, videoProgress: 0, activeWorkers: 0 });
+        setProcessStartTime(null);
         setProcessingStatus(`✅ Edição concluída! ${successCount} vídeos em ${timeStr}`);
         setProcessing(false);
+
+        // Cleanup in background (fire-and-forget)
+        if (sessionId) cleanupServerSession(serverConfig.url, serverConfig.apiKey, sessionId).catch(() => {});
+        try { localStorage.removeItem('viraladr_batch_v1'); } catch {}
       }
       return;
     }
