@@ -214,6 +214,12 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 | agency | 8000 | mes | amber |
 | unlimited | Infinito | - | emerald |
 
+**IMPORTANTE — Plano "unlimited"**:
+- NAO e vendavel. E atribuido manualmente pelo admin via AdminPanel.
+- NUNCA aparece em UI publica (WelcomeModal, pagina /upgrade, links de checkout).
+- So aparece no AdminPanel (dropdown de atribuicao de plano) e no header como badge "Ilimitado".
+- Definido em `ALL_PLANS` (para AdminPanel) mas NAO em `SELLABLE_PLANS`.
+
 ### Precos (Hotmart)
 - Starter: R$97/mes
 - Pro: R$197/mes
@@ -237,7 +243,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 - `deductCredits(amount)`: Decrementa apos download bem-sucedido.
 - Para plano `unlimited`: sempre retorna true, nunca deduz.
 - Para plano `free`: creditos sao lifetime (30 total, sem reset mensal).
-- Quando creditos esgotam: exibe `UpgradeModal` com links para Hotmart.
+- Quando creditos esgotam: exibe banner inline (nao-bloqueante) com link para `/upgrade`.
 
 ### RLS Policies relevantes
 - `profiles`: usuarios leem todos, atualizam apenas o proprio. Admins atualizam qualquer um.
@@ -245,6 +251,40 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 - `hashtag_pool`: apenas service_role tem acesso (edge functions).
 - `webhook_logs`: service_role full access + admins podem ler.
 - `pending_plans`: apenas service_role.
+
+### Sistema de Upgrade (UX)
+
+O antigo `UpgradeModal` (modal full-screen bloqueante) foi substituido por uma abordagem inline nao-invasiva.
+
+**Pagina dedicada `/upgrade`** (`src/pages/Upgrade.tsx`):
+- Comparativo lado a lado dos 4 planos vendaveis (free, starter, pro, agency)
+- Destaca o plano atual do usuario
+- Botoes "Assinar" levam ao checkout Hotmart
+- Plano unlimited NAO aparece nesta pagina
+
+**Acesso ao upgrade**:
+- Badge de creditos no header (clicavel → navega para `/upgrade`)
+- Botao "Upgrade" no header (visivel apenas para free/starter/pro)
+- Banner inline quando creditos esgotam (dismissable, nao bloqueia a tela)
+- WelcomeModal com link "Ver planos e precos" → `/upgrade`
+
+**Comportamento por plano**:
+| Plano | Badge header | Botao Upgrade | Banner creditos=0 |
+|-------|-------------|---------------|-------------------|
+| free | Free (cinza) | Sim | Sim |
+| starter | Starter (azul) | Sim | Sim |
+| pro | Pro (roxo) | Sim | Sim |
+| agency | Agency (ambar) | Nao | Nao |
+| unlimited | Ilimitado (esmeralda) | Nao | Nao |
+
+**Animacao de alerta**: Botao Upgrade pulsa em ambar quando creditos restantes < 10% do total.
+
+**Arquivo legado**: `src/components/UpgradeModal.tsx` ainda existe mas nao e mais importado/usado. Pode ser deletado.
+
+**Constantes centralizadas** em `src/lib/plans.ts`:
+- `SELLABLE_PLANS`: 4 planos vendaveis com precos e URLs Hotmart
+- `canUpgrade(plan)`: retorna true para free/starter/pro
+- `ALL_PLANS`: inclui unlimited (usado apenas no AdminPanel)
 
 ---
 
@@ -656,6 +696,10 @@ curl https://ffmpeg-api-production-b226.up.railway.app/api/tts/voices
 4. **Erro de delete**: `undefined` video IDs apos download
 5. **Console.log de debug**: Varios `console.log` espalhados pelo codigo que precisam ser removidos
 
+### Bugs Corrigidos (2026-04-23)
+- **profiles.email NULL**: Todos os usuarios tinham `profiles.email = NULL`, impedindo o webhook Hotmart de encontrar usuarios existentes. Corrigido via backfill (`UPDATE profiles SET email = au.email FROM auth.users au`). O trigger `handle_new_user` ja salvava email para novos usuarios — o problema era apenas dados historicos.
+- **Webhooks Hotmart testados e funcionando**: 3 eventos validados via cURL — PURCHASE_APPROVED (novo usuario → pending_plan), PURCHASE_APPROVED (usuario existente → upgrade de plano), PURCHASE_CANCELED (downgrade para free). Match por email funciona apos backfill.
+
 ### Debito Tecnico
 - **Arquivos muito grandes**: `Index.tsx` (2818 linhas), `VideoEditorTab.tsx` (2429 linhas) - precisam ser refatorados em componentes menores
 - **Seguranca relaxada**: Todas as Edge Functions com `verify_jwt = false`
@@ -685,6 +729,7 @@ viraladr/
 │   │   ├── Index.tsx                    # Dashboard principal (busca + editor)
 │   │   ├── Login.tsx                    # Registro/login de editores
 │   │   ├── AdminPanel.tsx               # Painel admin (editores, atividade, assinaturas)
+│   │   ├── Upgrade.tsx                  # Pagina de planos e upgrade (/upgrade)
 │   │   ├── PendingApproval.tsx          # Tela de espera de aprovacao
 │   │   └── NotFound.tsx                 # 404
 │   ├── components/
