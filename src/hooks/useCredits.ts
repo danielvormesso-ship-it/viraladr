@@ -20,13 +20,8 @@ export function useCredits() {
 
     const resetAt = profile.credits_reset_at;
     if (resetAt && new Date(resetAt) < new Date()) {
-      // Monthly reset needed
-      await (supabase.from('profiles') as any)
-        .update({
-          credits_used: 0,
-          credits_reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        })
-        .eq('id', profile.id);
+      // Monthly reset needed (via RPC to bypass RLS on credits fields)
+      await supabase.rpc('reset_monthly_credits', { p_user_id: profile.id });
       await refreshProfile();
       return true; // credits reset, user can proceed
     }
