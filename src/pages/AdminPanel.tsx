@@ -80,8 +80,6 @@ const AdminPanel = () => {
   const [resettingUser, setResettingUser] = useState<string | null>(null);
   const [creditDialog, setCreditDialog] = useState<{ open: boolean; userId: string; username: string; currentUsed: number }>({ open: false, userId: '', username: '', currentUsed: 0 });
   const [creditAmount, setCreditAmount] = useState('');
-  const [approveDialog, setApproveDialog] = useState<{ open: boolean; userId: string; username: string }>({ open: false, userId: '', username: '' });
-  const [approvePlan, setApprovePlan] = useState<PlanType>('free');
 
   useEffect(() => {
     if (role !== 'admin') {
@@ -106,51 +104,18 @@ const AdminPanel = () => {
     setLoading(false);
   };
 
-  const handleRevoke = async (userId: string) => {
+  const handleApprove = async (userId: string, approve: boolean) => {
     const { error } = await supabase
       .from('profiles')
-      .update({ approved: false } as any)
+      .update({ approved: approve } as any)
       .eq('id', userId);
 
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: 'Revogado', description: 'Acesso revogado.' });
-      setEditors(prev => prev.map(e => e.id === userId ? { ...e, approved: false } : e));
+      toast({ title: approve ? 'Aprovado!' : 'Revogado', description: approve ? 'Editor pode acessar o sistema.' : 'Acesso revogado.' });
+      setEditors(prev => prev.map(e => e.id === userId ? { ...e, approved: approve } : e));
     }
-  };
-
-  const handleApproveWithPlan = async () => {
-    const { userId } = approveDialog;
-    const plan = approvePlan;
-
-    const updates: any = { approved: true, plan };
-    if (plan === 'free') {
-      updates.credits_used = 0;
-      updates.credits_reset_at = null;
-    } else if (plan === 'unlimited') {
-      updates.credits_used = 0;
-      updates.plan_expires_at = null;
-    } else {
-      updates.credits_used = 0;
-      updates.plan_expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      updates.credits_reset_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    }
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId);
-
-    if (error) {
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    } else {
-      const planInfo = getPlanLimits(plan);
-      toast({ title: 'Aprovado!', description: `Editor aprovado com plano ${planInfo.label}.` });
-      setEditors(prev => prev.map(e => e.id === userId ? { ...e, ...updates } : e));
-    }
-    setApproveDialog({ open: false, userId: '', username: '' });
-    setApprovePlan('free');
   };
 
   const handlePlanChange = async (userId: string, newPlan: PlanType) => {
@@ -420,12 +385,12 @@ const AdminPanel = () => {
                     <div className="flex gap-1.5 items-center">
                       {editor.id !== profile?.id && (
                         !editor.approved ? (
-                          <Button size="sm" onClick={() => { setApproveDialog({ open: true, userId: editor.id, username: editor.username }); setApprovePlan('free'); }} className="h-8 gap-1.5 text-xs">
+                          <Button size="sm" onClick={() => handleApprove(editor.id, true)} className="h-8 gap-1.5 text-xs">
                             <CheckCircle className="h-3.5 w-3.5" />
                             Aprovar
                           </Button>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => handleRevoke(editor.id)} className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive">
+                          <Button size="sm" variant="outline" onClick={() => handleApprove(editor.id, false)} className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive">
                             <XCircle className="h-3.5 w-3.5" />
                             Revogar
                           </Button>
@@ -734,55 +699,6 @@ const AdminPanel = () => {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleAddCredits} className="bg-green-500 hover:bg-green-600 text-white">
               Adicionar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={approveDialog.open} onOpenChange={(open) => setApproveDialog(prev => ({ ...prev, open }))}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              Aprovar Editor
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>
-                <p>Aprovar <strong>{approveDialog.username}</strong> e definir plano inicial:</p>
-                <div className="mt-3 space-y-1.5">
-                  {ALL_PLANS.filter(p => p !== 'unlimited').map(plan => {
-                    const info = getPlanLimits(plan);
-                    const isSelected = approvePlan === plan;
-                    return (
-                      <button
-                        key={plan}
-                        onClick={() => setApprovePlan(plan)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all flex items-center justify-between border ${isSelected ? 'border-primary bg-primary/10' : 'border-border hover:bg-secondary/50'}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`h-2 w-2 rounded-full ${isSelected ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-                          <span className={`font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}>{info.label}</span>
-                          <span className="text-muted-foreground">
-                            {info.credits === Infinity ? 'ilimitado' : `${info.credits} créditos/${info.period === 'month' ? 'mês' : 'total'}`}
-                          </span>
-                        </div>
-                        {isSelected && <CheckCircle className="h-3.5 w-3.5 text-primary" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                {approvePlan === 'free' && (
-                  <div className="mt-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-[11px] text-yellow-400 flex items-start gap-2">
-                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                    <span>Plano Free: apenas 30 créditos no total. Após usar, o editor verá a tela de upgrade e não poderá continuar sem assinar.</span>
-                  </div>
-                )}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleApproveWithPlan} className="bg-green-500 hover:bg-green-600 text-white">
-              Aprovar com {getPlanLimits(approvePlan).label}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
