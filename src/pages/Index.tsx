@@ -10,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
-import { UpgradeModal } from "@/components/UpgradeModal";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { useCredits } from "@/hooks/useCredits";
+import { getPlanLimits, canUpgrade } from "@/lib/plans";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertDialog,
@@ -279,16 +279,18 @@ const Index = () => {
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const credits = useCredits();
-  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!profile) return false;
     if (!profile.approved || profile.plan !== 'free' || profile.credits_used !== 0) return false;
     return !localStorage.getItem(`welcome_shown_${profile.id}`);
   });
+  const planLimits = getPlanLimits(profile?.plan || 'free');
+  const showUpgradeButton = canUpgrade(profile?.plan || 'free');
 
   const requireCredits = async (): Promise<boolean> => {
     const ok = await credits.canUseCredits();
-    if (!ok) setShowUpgrade(true);
+    if (!ok) setShowUpgradeBanner(true);
     return ok;
   };
 
@@ -2099,7 +2101,7 @@ const Index = () => {
 
     // Cap download to remaining credits
     const maxAllowed = credits.isUnlimited ? requestedCount : Math.min(requestedCount, credits.creditsRemaining);
-    if (maxAllowed <= 0) { setShowUpgrade(true); return; }
+    if (maxAllowed <= 0) { setShowUpgradeBanner(true); return; }
 
     // Always slice from 0 since downloaded videos are removed from the list
     const videosToDownloadRaw = filteredVideos.slice(0, maxAllowed);
@@ -2483,10 +2485,10 @@ const Index = () => {
           if (profile) localStorage.setItem(`welcome_shown_${profile.id}`, 'true');
           setShowWelcome(false);
         }}
+        onViewPlans={() => navigate('/upgrade')}
       />
 
-      {/* Upgrade Modal — blocks everything when credits exhausted */}
-      {showUpgrade && <UpgradeModal />}
+      {/* UpgradeModal removed — replaced by inline banner + /upgrade page */}
 
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
@@ -2554,29 +2556,66 @@ const Index = () => {
       {/* Gradient line top */}
       <div className="h-[1px] gradient-line w-full flex-shrink-0" />
 
+      {/* Upgrade banner — non-blocking, shown when credits exhausted */}
+      {showUpgradeBanner && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 flex-shrink-0 flex items-center justify-center gap-3 z-50">
+          <span className="text-xs text-amber-400 font-medium">Seus creditos acabaram.</span>
+          <Button size="sm" className="h-7 text-xs px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg" onClick={() => navigate('/upgrade')}>
+            Fazer upgrade
+          </Button>
+          <button onClick={() => setShowUpgradeBanner(false)} className="text-amber-400/60 hover:text-amber-400 ml-1">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-border/15 px-6 py-2.5 flex-shrink-0 glass-strong sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
-          {/* Credits badge */}
+          {/* Plan badge */}
+          <span className={`px-2 py-1 rounded-lg text-[11px] font-bold border border-transparent ${planLimits.color}`}>
+            {planLimits.label}
+          </span>
+
+          {/* Credits badge — clickable, navigates to /upgrade */}
           {credits.isUnlimited ? (
-            <span className="px-2 py-1 rounded-lg bg-accent/15 text-accent text-[11px] font-bold border border-accent/20">
+            <span className="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-[11px] font-bold border border-emerald-500/20">
               Ilimitado
             </span>
           ) : (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className={`text-[11px] font-bold ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'text-red-400' : 'text-muted-foreground'}`}>
-                  {credits.creditsUsed}/{credits.creditsTotal}
-                </span>
-                <div className="w-16 h-1.5 rounded-full bg-secondary/50 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'bg-red-500' : 'bg-orange-500'}`}
-                    style={{ width: `${Math.min(100, (credits.creditsUsed / credits.creditsTotal) * 100)}%` }}
-                  />
-                </div>
+            <button
+              onClick={() => navigate('/upgrade')}
+              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+              title="Ver planos"
+            >
+              <span className={`text-[11px] font-bold ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                {credits.creditsRemaining}/{credits.creditsTotal}
+              </span>
+              <div className="w-16 h-1.5 rounded-full bg-secondary/50 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${credits.creditsUsed >= credits.creditsTotal * 0.9 ? 'bg-red-500' : 'bg-orange-500'}`}
+                  style={{ width: `${Math.min(100, (credits.creditsUsed / credits.creditsTotal) * 100)}%` }}
+                />
               </div>
-            </div>
+            </button>
           )}
+
+          {/* Upgrade button — only for free/starter/pro */}
+          {showUpgradeButton && (
+            <Button
+              size="sm"
+              onClick={() => navigate('/upgrade')}
+              className={`gap-1 h-7 text-[11px] px-2.5 rounded-lg font-bold transition-all duration-300 ${
+                !credits.isUnlimited && credits.creditsRemaining <= credits.creditsTotal * 0.1
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse'
+                  : 'bg-primary/15 hover:bg-primary/25 text-primary border border-primary/20'
+              }`}
+            >
+              <Zap className="h-3 w-3" />
+              Upgrade
+            </Button>
+          )}
+
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground leading-tight tracking-tight">{profile?.display_name || profile?.username || 'Editor'}</p>
             <div className="flex items-center justify-end gap-1.5 mt-0.5">
