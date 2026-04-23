@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
 import { UpgradeModal } from "@/components/UpgradeModal";
+import { WelcomeModal } from "@/components/WelcomeModal";
 import { useCredits } from "@/hooks/useCredits";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -279,6 +280,11 @@ const Index = () => {
   const navigate = useNavigate();
   const credits = useCredits();
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (!profile) return false;
+    if (!profile.approved || profile.plan !== 'free' || profile.credits_used !== 0) return false;
+    return !localStorage.getItem(`welcome_shown_${profile.id}`);
+  });
 
   const requireCredits = async (): Promise<boolean> => {
     const ok = await credits.canUseCredits();
@@ -2470,6 +2476,15 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Welcome Modal — shown once for new approved users */}
+      <WelcomeModal
+        isOpen={showWelcome}
+        onClose={() => {
+          if (profile) localStorage.setItem(`welcome_shown_${profile.id}`, 'true');
+          setShowWelcome(false);
+        }}
+      />
+
       {/* Upgrade Modal — blocks everything when credits exhausted */}
       {showUpgrade && <UpgradeModal />}
 
