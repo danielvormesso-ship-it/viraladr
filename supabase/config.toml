@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.refresh-video-url]
 verify_jwt = false
+
+[functions.hotmart-webhook]
+verify_jwt = false

@@ -1,10 +1,9 @@
 import { Lock, Zap, Crown, Rocket } from 'lucide-react';
 
-// TODO: substituir pelos links reais da Hotmart
 const PLAN_LINKS: Record<string, string> = {
-  Starter: 'https://pay.hotmart.com/placeholder',
-  Pro: 'https://pay.hotmart.com/placeholder',
-  Agency: 'https://pay.hotmart.com/placeholder',
+  Starter: 'https://pay.hotmart.com/W105389576Q',
+  Pro: 'https://pay.hotmart.com/Q105389667Q',
+  Agency: 'https://pay.hotmart.com/X105389694R',
 };
 
 const plans = [
