@@ -163,7 +163,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 4. **Threshold viral**: Checa se ha 200+ videos com 1M+ views por grupo
 5. Dispara `pool-refill` para grupos abaixo do threshold (HTTP async, timeout 5s)
 
-**Cron**: A cada 15 minutos (`*/15 * * * *`)
+**Cron**: A cada 5 horas (`0 */5 * * *`)
 
 ### pool-refresh-urls (Edge Function)
 **O que faz**: Renovar URLs de video que expiraram (TikWM URLs duram ~4-8h).
@@ -177,7 +177,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
    - Falha na 2a tentativa: deleta o video do pool
 4. Retorna contadores: refreshed, retried, deleted, errors
 
-**Cron**: A cada 2 horas (`0 */2 * * *`)
+**Cron**: A cada 5 minutos (`*/5 * * * *`)
 
 ### Filtros BR e de Nicho
 **Filtro BR** (em pool-refill e scrape-tiktok-apify):
@@ -195,7 +195,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 
 ### Como URLs expiram e sao renovadas
 - URLs do TikWM (CDN ByteDance) expiram em ~4-8 horas
-- `pool-refresh-urls` roda a cada 2h para renovar URLs com >4h
+- `pool-refresh-urls` roda a cada 5min para renovar URLs com >4h
 - `refresh-video-url` permite refresh on-demand durante playback
 - Videos com URL expirada nao sao servidos pelo `pool-serve` (filtro `fetched_at > now() - 8h`)
 - Apos 2 falhas de refresh, o video e deletado do pool
@@ -377,42 +377,42 @@ O editor permite adicionar efeitos visuais (popup, overlay, particulas) e audio 
 ## 8. CRON JOBS
 
 ### pool-scheduler
-- **Cron**: `*/15 * * * *` (a cada 15 minutos)
-- **Nome no pg_cron**: `pool-scheduler-15min`
+- **Cron**: `0 */5 * * *` (a cada 5 horas)
+- **Nome no pg_cron**: `pool-scheduler-5h`
 - **O que faz**: Verifica estoque do pool por grupo, dispara `pool-refill` para grupos abaixo do threshold
 - **URL chamada**: `https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-scheduler`
 
 ### pool-refresh-urls
-- **Cron**: `0 */2 * * *` (a cada 2 horas)
-- **Nome no pg_cron**: `pool-refresh-urls-2h`
+- **Cron**: `*/5 * * * *` (a cada 5 minutos)
+- **Nome no pg_cron**: `pool-refresh-urls-5min`
 - **O que faz**: Renova URLs expiradas (>4h) no pool, processando 60 videos sequencialmente (1 req/1.05s)
 - **URL chamada**: `https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-refresh-urls`
 
 ### Como Pausar
 ```sql
 -- Pausar scheduler
-SELECT cron.unschedule('pool-scheduler-15min');
+SELECT cron.unschedule('pool-scheduler-5h');
 
 -- Pausar refresh
-SELECT cron.unschedule('pool-refresh-urls-2h');
+SELECT cron.unschedule('pool-refresh-urls-5min');
 ```
 
 ### Como Reativar
 ```sql
--- Reativar scheduler (a cada 15 min)
+-- Reativar scheduler (a cada 5h)
 SELECT cron.schedule(
-  'pool-scheduler-15min',
-  '*/15 * * * *',
+  'pool-scheduler-5h',
+  '0 */5 * * *',
   $$SELECT net.http_post(
     url := 'https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-scheduler',
     headers := '{"Authorization": "Bearer <ANON_KEY>"}'::jsonb
   )$$
 );
 
--- Reativar refresh (a cada 2h)
+-- Reativar refresh (a cada 5min)
 SELECT cron.schedule(
-  'pool-refresh-urls-2h',
-  '0 */2 * * *',
+  'pool-refresh-urls-5min',
+  '*/5 * * * *',
   $$SELECT net.http_post(
     url := 'https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-refresh-urls',
     headers := '{"Authorization": "Bearer <ANON_KEY>"}'::jsonb
