@@ -39,21 +39,25 @@ AS $$
 DECLARE
   v_pending RECORD;
 BEGIN
-  SELECT * INTO v_pending
-    FROM pending_plans
-   WHERE email = NEW.email
-   ORDER BY created_at DESC
-   LIMIT 1;
+  BEGIN
+    SELECT * INTO v_pending
+      FROM pending_plans
+     WHERE email = NEW.email
+     ORDER BY created_at DESC
+     LIMIT 1;
 
-  IF FOUND THEN
-    UPDATE profiles
-       SET plan = v_pending.plan,
-           credits_used = 0,
-           credits_reset_at = now() + INTERVAL '30 days'
-     WHERE id = NEW.id;
+    IF FOUND THEN
+      UPDATE profiles
+         SET plan = v_pending.plan,
+             credits_used = 0,
+             credits_reset_at = now() + INTERVAL '30 days'
+       WHERE id = NEW.id;
 
-    DELETE FROM pending_plans WHERE email = NEW.email;
-  END IF;
+      DELETE FROM pending_plans WHERE email = NEW.email;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE LOG 'activate_pending_plan ERRO: % % email=%', SQLERRM, SQLSTATE, NEW.email;
+  END;
 
   RETURN NEW;
 END;
