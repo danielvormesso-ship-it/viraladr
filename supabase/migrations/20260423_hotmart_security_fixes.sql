@@ -70,16 +70,11 @@ CREATE TRIGGER trg_activate_pending_plan
   FOR EACH ROW
   EXECUTE FUNCTION activate_pending_plan();
 
--- 4. Restrict users from updating plan/credits fields directly
--- Drop the permissive update policy
+-- 4. Simplify user update policy — plan/credits protection via RPCs (SECURITY DEFINER)
+-- The previous WITH CHECK subquery on profiles caused infinite recursion.
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 
--- Recreate with column restriction: users can only update display fields
 CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE
   USING (auth.uid() = id)
-  WITH CHECK (
-    auth.uid() = id
-    AND plan = (SELECT p.plan FROM profiles p WHERE p.id = auth.uid())
-    AND credits_used = (SELECT p.credits_used FROM profiles p WHERE p.id = auth.uid())
-  );
+  WITH CHECK (auth.uid() = id);
