@@ -208,7 +208,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 
 | Plano | Creditos | Periodo | Cor (Tailwind) |
 |-------|----------|---------|----------------|
-| free | 30 | total (lifetime) | gray |
+| free | 10 | total (lifetime) | gray |
 | starter | 300 | mes | blue |
 | pro | 1000 | mes | purple |
 | agency | 8000 | mes | amber |
@@ -219,6 +219,23 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 - NUNCA aparece em UI publica (WelcomeModal, pagina /upgrade, links de checkout).
 - So aparece no AdminPanel (dropdown de atribuicao de plano) e no header como badge "Ilimitado".
 - Definido em `ALL_PLANS` (para AdminPanel) mas NAO em `SELLABLE_PLANS`.
+
+### Bloqueio Obrigatorio de Plano (plan_selected)
+
+Coluna `profiles.plan_selected` (boolean, default false) controla se o usuario ja escolheu um plano. Novos usuarios entram com `plan_selected=false` e sao bloqueados ate escolher.
+
+**Fluxo de acesso**:
+1. `approved=false` → Tela PendingApproval (aguardando admin)
+2. `approved=true`, `plan_selected=false` → Tela PlanSelection (obrigatoria, sem fechar)
+3. `approved=true`, `plan_selected=true` → App normal (rotas liberadas)
+
+**Componente**: `src/components/PlanSelection.tsx` — exibe 4 planos vendaveis (free/starter/pro/agency) sem botao fechar nem voltar.
+- Botao "Comecar Gratis": chama RPC `activate_free_plan(p_user_id)` → seta `plan_selected=true`, `plan='free'`, `credits_used=0`
+- Botoes pagos: abrem Hotmart com `?sck={userId}` → webhook seta `plan_selected=true` ao ativar
+
+**RPC `activate_free_plan(p_user_id UUID)`**: SECURITY DEFINER, valida `auth.uid() = p_user_id`.
+
+**Usuarios existentes**: Todos receberam `plan_selected=true` no backfill — nao sao afetados.
 
 ### Precos (Hotmart)
 - Starter: R$97/mes
@@ -302,11 +319,26 @@ O antigo `UpgradeModal` (modal full-screen bloqueante) foi substituido por uma a
 7565365 -> agency
 ```
 
+### Sistema UTM/SCK (Rastreamento de Compra)
+
+Links de checkout Hotmart incluem `?sck={userId}` (campo nativo de tracking). Isso permite identificar o comprador pelo UUID do profile, independente do email usado no Hotmart.
+
+**Prioridade de identificacao no webhook**:
+1. **SCK** (`data.purchase.tracking.source_sck` ou `data.purchase.tracking.source`): se presente e UUID valido (regex), busca `profiles.id = sck`
+2. **Email** (fallback): busca `profiles.email = buyerEmail`
+3. **Pending plan**: se nenhum match, cria `pending_plans` para ativar no registro
+
+**Validacao**: SCK e validado com regex UUID (`/^[0-9a-f]{8}-...-[0-9a-f]{12}$/i`) para prevenir injection. SCK invalido e descartado silenciosamente.
+
+**Logs**: `webhook_logs.detail` inclui `matched_by_sck` ou `matched_by_email` para auditoria.
+
+**Frontend**: `Upgrade.tsx` e `PlanSelection.tsx` geram URLs com `?sck={user.id}` automaticamente.
+
 ### Eventos Tratados
 
 | Evento | Acao |
 |--------|------|
-| `PURCHASE_APPROVED` | Se usuario existe: atualiza plano + reseta creditos. Se nao existe: cria `pending_plan` para ativar no registro. |
+| `PURCHASE_APPROVED` | Se usuario existe (via SCK ou email): atualiza plano + reseta creditos + seta plan_selected=true. Se nao existe: cria `pending_plan`. |
 | `PURCHASE_CANCELED` | Downgrade para `free` (so se product_id bate com plano atual) |
 | `PURCHASE_REFUNDED` | Downgrade para `free` (so se product_id bate com plano atual) |
 | `PURCHASE_SUBSCRIPTION_CANCELING` | Apenas loga (mantem plano ate fim do periodo) |
@@ -699,6 +731,8 @@ curl https://ffmpeg-api-production-b226.up.railway.app/api/tts/voices
 ### Bugs Corrigidos (2026-04-23)
 - **profiles.email NULL**: Todos os usuarios tinham `profiles.email = NULL`, impedindo o webhook Hotmart de encontrar usuarios existentes. Corrigido via backfill (`UPDATE profiles SET email = au.email FROM auth.users au`). O trigger `handle_new_user` ja salvava email para novos usuarios — o problema era apenas dados historicos.
 - **Webhooks Hotmart testados e funcionando**: 3 eventos validados via cURL — PURCHASE_APPROVED (novo usuario → pending_plan), PURCHASE_APPROVED (usuario existente → upgrade de plano), PURCHASE_CANCELED (downgrade para free). Match por email funciona apos backfill.
+- **UTM/SCK implementado**: Links Hotmart com `?sck={userId}` para rastreamento. Webhook prioriza SCK (UUID) sobre email. Testado 3/3: SCK valido, SCK invalido (fallback email), sem SCK (pending_plan).
+- **Bloqueio obrigatorio de plano**: Novos usuarios devem escolher plano (PlanSelection) antes de acessar o app. Free reduzido de 30 para 10 creditos.
 
 ### Debito Tecnico
 - **Arquivos muito grandes**: `Index.tsx` (2818 linhas), `VideoEditorTab.tsx` (2429 linhas) - precisam ser refatorados em componentes menores
@@ -737,6 +771,7 @@ viraladr/
 │   │   ├── VideoCard.tsx                # Card de video individual
 │   │   ├── EffectsPreview.tsx           # Preview de efeitos visuais
 │   │   ├── PopupPreviewEditor.tsx       # Editor drag-drop de popup (9:16)
+│   │   ├── PlanSelection.tsx            # Tela obrigatoria de selecao de plano
 │   │   ├── TemplateManager.tsx          # CRUD de templates
 │   │   ├── UpgradeModal.tsx             # Modal de upgrade (creditos esgotados)
 │   │   ├── WelcomeModal.tsx             # Modal de boas-vindas (selecao de plano)
