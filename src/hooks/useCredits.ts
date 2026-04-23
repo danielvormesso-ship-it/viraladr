@@ -39,12 +39,13 @@ export function useCredits() {
     return await checkAndResetCredits();
   };
 
-  /** Deduct credits after successful download */
+  /** Deduct credits after successful download (atomic via RPC) */
   const deductCredits = async (amount: number) => {
     if (!profile || isUnlimited) return;
-    await (supabase.from('profiles') as any)
-      .update({ credits_used: creditsUsed + amount })
-      .eq('id', profile.id);
+    await supabase.rpc('deduct_credits', {
+      p_user_id: profile.id,
+      p_amount: amount,
+    });
     await refreshProfile();
   };
 

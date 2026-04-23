@@ -5,12 +5,33 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-/** Map Hotmart product offer to our plan type */
-function offerToPlan(productName: string): 'starter' | 'pro' | 'agency' {
+/**
+ * Map Hotmart product to our plan type.
+ * Primary: match by product ID (stable). Fallback: match by product name.
+ * To find your product IDs: Hotmart webhook payload → data.product.id
+ */
+const PRODUCT_ID_MAP: Record<string, 'starter' | 'pro' | 'agency'> = {
+  // TODO: replace with real Hotmart product IDs from your dashboard
+  // '1234567': 'starter',
+  // '1234568': 'pro',
+  // '1234569': 'agency',
+};
+
+function offerToPlan(productId: string | number | undefined, productName: string): 'starter' | 'pro' | 'agency' | null {
+  // 1. Try by product ID (most reliable)
+  if (productId) {
+    const id = String(productId);
+    if (PRODUCT_ID_MAP[id]) return PRODUCT_ID_MAP[id];
+  }
+
+  // 2. Fallback to product name
   const name = productName.toLowerCase();
   if (name.includes('agency')) return 'agency';
   if (name.includes('pro')) return 'pro';
-  return 'starter';
+  if (name.includes('starter')) return 'starter';
+
+  // 3. Unknown product — do not default blindly
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -22,12 +43,12 @@ Deno.serve(async (req) => {
   try {
     // 1. Validate webhook secret via hottok header
     const secret = Deno.env.get('HOTMART_WEBHOOK_SECRET');
-    const hottok = req.headers.get('x-hotmart-hottok');
+    const hottok = req.headers.get('hottok');
 
     if (!secret || hottok !== secret) {
       console.error('[hotmart-webhook] Invalid hottok');
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 200, // Hotmart requires 200 even on auth failure
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -54,7 +75,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // 4. Find user by email
+    // 4. Resolve plan from product
+    const productId = body.data?.product?.id;
+    const productName: string = body.data?.product?.name ?? '';
+    const transactionId: string = body.data?.purchase?.transaction ?? '';
+    const plan = offerToPlan(productId, productName);
+
+    // 5. Find user by email
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id, plan')
@@ -69,23 +96,37 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!profile) {
-      console.error(`[hotmart-webhook] No profile found for ${buyerEmail}`);
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 5. Handle events
-    const productName: string = body.data?.product?.name ?? '';
-
+    // 6. Handle events
     switch (event) {
       case 'PURCHASE_APPROVED': {
-        const plan = offerToPlan(productName);
+        if (!plan) {
+          console.error(`[hotmart-webhook] Unknown product: id=${productId} name=${productName}`);
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (!profile) {
+          // User paid but has no account yet — save for activation on signup
+          console.log(`[hotmart-webhook] No profile for ${buyerEmail}, saving pending plan=${plan}`);
+          await supabase.from('pending_plans').upsert(
+            { email: buyerEmail, plan, transaction_id: transactionId, product_id: String(productId ?? '') },
+            { onConflict: 'email' },
+          );
+          return new Response(JSON.stringify({ ok: true, pending: true }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         const { error } = await supabase
           .from('profiles')
-          .update({ plan, credits_used: 0 })
+          .update({
+            plan,
+            credits_used: 0,
+            credits_reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          })
           .eq('id', profile.id);
         if (error) console.error('[hotmart-webhook] Update error:', error.message);
         else console.log(`[hotmart-webhook] Activated plan=${plan} for ${buyerEmail}`);
@@ -94,6 +135,22 @@ Deno.serve(async (req) => {
 
       case 'PURCHASE_CANCELED':
       case 'PURCHASE_REFUNDED': {
+        if (!profile) {
+          // No account — just clean up any pending plan
+          await supabase.from('pending_plans').delete().eq('email', buyerEmail);
+          console.log(`[hotmart-webhook] Cleaned pending plan for ${buyerEmail}`);
+          break;
+        }
+
+        // Only downgrade if the cancelled plan matches the user's current plan
+        const cancelledPlan = plan; // plan derived from the product in this event
+        if (cancelledPlan && cancelledPlan !== profile.plan) {
+          console.log(
+            `[hotmart-webhook] Skipping downgrade: user has plan=${profile.plan} but cancelled=${cancelledPlan}`,
+          );
+          break;
+        }
+
         const { error } = await supabase
           .from('profiles')
           .update({ plan: 'free', credits_used: 0 })
