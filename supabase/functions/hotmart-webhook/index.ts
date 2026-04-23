@@ -11,10 +11,9 @@ const corsHeaders = {
  * To find your product IDs: Hotmart webhook payload → data.product.id
  */
 const PRODUCT_ID_MAP: Record<string, 'starter' | 'pro' | 'agency'> = {
-  // TODO: replace with real Hotmart product IDs from your dashboard
-  // '1234567': 'starter',
-  // '1234568': 'pro',
-  // '1234569': 'agency',
+  '7565314': 'starter',
+  '7565350': 'pro',
+  '7565365': 'agency',
 };
 
 function offerToPlan(productId: string | number | undefined, productName: string): 'starter' | 'pro' | 'agency' | null {
