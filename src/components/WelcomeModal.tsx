@@ -1,4 +1,4 @@
-import { X, Zap, Crown, Rocket, Gift } from 'lucide-react';
+import { Zap, Crown, Rocket, Gift } from 'lucide-react';
 
 const PLAN_LINKS: Record<string, string> = {
   Starter: 'https://pay.hotmart.com/W105389576Q',
@@ -70,11 +70,10 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
   if (!isOpen) return null;
 
   const handleClick = (planName: string) => {
-    if (planName === 'Free') {
-      onClose();
-    } else {
+    if (planName !== 'Free') {
       window.open(PLAN_LINKS[planName], '_blank');
     }
+    onClose();
   };
 
   return (
@@ -96,20 +95,12 @@ export function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
           className="w-full max-w-4xl space-y-6 relative"
           style={{ animation: 'welcomeIn 0.4s cubic-bezier(0.16,1,0.3,1) both' }}
         >
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute -top-2 -right-2 z-10 h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-          >
-            <X className="h-4 w-4 text-white/70" />
-          </button>
-
           {/* Header */}
           <div className="text-center space-y-2">
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
               Bem-vindo ao CriativosIA!
             </h1>
-            <p className="text-sm text-white/50">Escolha como quer comecar</p>
+            <p className="text-sm text-white/50">Para continuar, escolha seu plano</p>
           </div>
 
           {/* Plan cards */}
