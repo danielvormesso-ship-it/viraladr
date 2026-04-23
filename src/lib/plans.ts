@@ -8,7 +8,7 @@ export interface PlanLimits {
 }
 
 const PLAN_MAP: Record<PlanType, PlanLimits> = {
-  free:      { label: 'Free',      credits: 30,       period: 'total', color: 'bg-muted text-muted-foreground' },
+  free:      { label: 'Free',      credits: 10,       period: 'total', color: 'bg-muted text-muted-foreground' },
   starter:   { label: 'Starter',   credits: 300,      period: 'month', color: 'bg-blue-500/20 text-blue-400' },
   pro:       { label: 'Pro',       credits: 1000,     period: 'month', color: 'bg-purple-500/20 text-purple-400' },
   agency:    { label: 'Agency',    credits: 8000,     period: 'month', color: 'bg-amber-500/20 text-amber-400' },
@@ -34,7 +34,7 @@ export interface SellablePlan {
 }
 
 export const SELLABLE_PLANS: SellablePlan[] = [
-  { key: 'free', name: 'Free', price: 0, credits: 30, period: 'total', hotmartUrl: null, features: ['30 downloads total', 'Pool de videos', 'Filtro por nicho'] },
+  { key: 'free', name: 'Free', price: 0, credits: 10, period: 'total', hotmartUrl: null, features: ['10 downloads total', 'Pool de videos', 'Filtro por nicho'] },
   { key: 'starter', name: 'Starter', price: 97, credits: 300, period: '/mes', hotmartUrl: 'https://pay.hotmart.com/W105389576Q', features: ['300 downloads/mes', 'Pool de videos', 'Filtro por nicho'] },
   { key: 'pro', name: 'Pro', price: 197, credits: 1000, period: '/mes', hotmartUrl: 'https://pay.hotmart.com/Q105389667Q', features: ['1.000 downloads/mes', 'Tudo do Starter', 'Prioridade no pool'] },
   { key: 'agency', name: 'Agency', price: 497, credits: 8000, period: '/mes', hotmartUrl: 'https://pay.hotmart.com/X105389694R', features: ['8.000 downloads/mes', 'Tudo do Pro', 'Suporte prioritario'] },

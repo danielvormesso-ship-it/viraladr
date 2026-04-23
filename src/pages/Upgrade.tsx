@@ -21,7 +21,7 @@ const PLAN_GRADIENTS: Record<string, { from: string; to: string }> = {
 
 export default function Upgrade() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const credits = useCredits();
   const currentPlan = profile?.plan || 'free';
   const currentLimits = getPlanLimits(currentPlan);
@@ -162,7 +162,11 @@ export default function Upgrade() {
                   </button>
                 ) : plan.hotmartUrl ? (
                   <button
-                    onClick={() => window.open(plan.hotmartUrl!, '_blank')}
+                    onClick={() => {
+                      const sck = user?.id || '';
+                      const url = sck ? `${plan.hotmartUrl}?sck=${sck}` : plan.hotmartUrl!;
+                      window.open(url, '_blank');
+                    }}
                     className="w-full h-10 rounded-xl text-white text-sm font-bold transition-all duration-300 hover:brightness-110 active:scale-[0.97]"
                     style={{ background: `linear-gradient(135deg, ${grad.from}, ${grad.to})` }}
                   >

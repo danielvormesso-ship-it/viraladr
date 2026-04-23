@@ -10,6 +10,7 @@ import AdminPanel from "./pages/AdminPanel.tsx";
 import Upgrade from "./pages/Upgrade.tsx";
 import PendingApproval from "./pages/PendingApproval.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import { PlanSelection } from "./components/PlanSelection.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Check approval (profile might still be loading)
   if (profile && !profile.approved) return <PendingApproval />;
+
+  // Force plan selection before accessing app
+  if (profile && profile.approved && !profile.plan_selected) return <PlanSelection />;
 
   return <>{children}</>;
 };

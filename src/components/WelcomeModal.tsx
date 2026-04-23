@@ -37,7 +37,7 @@ export function WelcomeModal({ isOpen, onClose, onViewPlans }: WelcomeModalProps
               Bem-vindo ao CriativosIA!
             </h1>
             <p className="text-sm text-white/50 leading-relaxed">
-              Sua conta esta pronta com <strong className="text-emerald-400">30 creditos gratuitos</strong> para voce explorar a plataforma.
+              Sua conta esta pronta com <strong className="text-emerald-400">10 creditos gratuitos</strong> para voce explorar a plataforma.
             </p>
           </div>
 
