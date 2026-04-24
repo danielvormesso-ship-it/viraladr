@@ -205,7 +205,7 @@ const Index = () => {
   const singleScrapeCursorRef = useRef<{ tag: string; cursor: string | null }>({ tag: '', cursor: null });
 
   // Persist cursors in localStorage (survives F5/browser close, TTL 24h)
-  const CURSOR_TTL = 24 * 60 * 60 * 1000;
+  const CURSOR_TTL = 2 * 60 * 60 * 1000;
   const saveCursor = useCallback((tag: string, cursor: string) => {
     try { localStorage.setItem(`cursor_${tag}`, JSON.stringify({ cursor, updatedAt: Date.now() })); } catch {}
   }, []);
@@ -941,6 +941,7 @@ const Index = () => {
 
       // F: fetchCandidates — parallel batches of 5 hashtags at a time
       const PARALLEL_BATCH_SIZE = 5;
+      const errorCount = new Map<string, number>();
       const fetchCandidates = async (targetCount: number, forceRefresh: boolean) => {
         const freshVideos: TikTokVideo[] = [];
         const pendingTags = allTags.filter(tag => !exhaustedTags.has(tag));
@@ -965,16 +966,26 @@ const Index = () => {
                     saveCursor(tag, result.next_cursor);
                   } else {
                     exhaustedTags.add(tag);
+                    try { localStorage.removeItem(`cursor_${tag}`); } catch {}
+                    cursorMap.delete(tag);
                   }
                   addLog(`  ✅ #${tag}: ${filtered.length} válidos (${result.videos.length} brutos, ${result.videos.length - filtered.length} filtrados-applyFilters, ${_dbgForeign} foreign)${exhaustedTags.has(tag) ? ' [esgotada]' : ''} cursor=${result.next_cursor ? 'sim' : 'NÃO'}`);
                   return filtered;
                 } else {
                   exhaustedTags.add(tag);
+                  try { localStorage.removeItem(`cursor_${tag}`); } catch {}
+                  cursorMap.delete(tag);
                   return [];
                 }
               } catch {
-                addLog(`  ❌ #${tag}: falhou`);
-                exhaustedTags.add(tag);
+                const count = (errorCount.get(tag) || 0) + 1;
+                errorCount.set(tag, count);
+                if (count >= 3) {
+                  exhaustedTags.add(tag);
+                  addLog(`  ❌ #${tag}: esgotada após 3 erros consecutivos`);
+                } else {
+                  addLog(`  ⚠️ #${tag}: erro tentativa ${count}/3, será retry`);
+                }
                 return [];
               }
             })
@@ -1536,7 +1547,7 @@ const Index = () => {
     // Track TikWM cursor per hashtag so each round fetches new pages
     const cursorMap = new Map<string, string>();
     // Seed cursorMap from localStorage (12h TTL for merge cursors — faster expiry = more diversity)
-    const MERGE_CURSOR_TTL = 12 * 60 * 60 * 1000;
+    const MERGE_CURSOR_TTL = 2 * 60 * 60 * 1000;
     const loadMergeCursor = (tag: string): string | null => {
       try {
         const raw = localStorage.getItem(`mcursor_${tag}`);
@@ -1568,6 +1579,7 @@ const Index = () => {
     // F: fetchCandidates — parallel batches of 5 hashtags at a time
     // When tagQuotas is provided, respect per-hashtag limits for balanced distribution
     const PARALLEL_BATCH_SIZE = 5;
+    const errorCount = new Map<string, number>();
     const fetchCandidates = async (targetCount: number, forceRefresh: boolean, tagQuotas?: Record<string, number>) => {
       const freshVideos: TikTokVideo[] = [];
       const tagFetchedCount: Record<string, number> = {};
@@ -1613,16 +1625,26 @@ const Index = () => {
                   saveMergeCursor(tag, result.next_cursor);
                 } else {
                   exhaustedTags.add(tag);
+                  try { localStorage.removeItem(`mcursor_${tag}`); } catch {}
+                  cursorMap.delete(tag);
                 }
                 addLog(`  ✅ #${tag}: ${limited.length}/${result.videos.length} válidos${tagQuotas?.[tag] ? ` (quota: ${tagQuotas[tag]})` : ''}${exhaustedTags.has(tag) ? ' [esgotada]' : ''}`);
                 return { tag, filtered: limited };
               } else {
                 exhaustedTags.add(tag);
+                try { localStorage.removeItem(`mcursor_${tag}`); } catch {}
+                cursorMap.delete(tag);
                 return { tag, filtered: [] as TikTokVideo[] };
               }
             } catch {
-              addLog(`  ❌ #${tag}: falhou`);
-              exhaustedTags.add(tag);
+              const count = (errorCount.get(tag) || 0) + 1;
+              errorCount.set(tag, count);
+              if (count >= 3) {
+                exhaustedTags.add(tag);
+                addLog(`  ❌ #${tag}: esgotada após 3 erros consecutivos`);
+              } else {
+                addLog(`  ⚠️ #${tag}: erro tentativa ${count}/3, será retry`);
+              }
               return { tag, filtered: [] as TikTokVideo[] };
             }
           })
