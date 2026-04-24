@@ -14,6 +14,7 @@ const VIDEOS_PER_GROUP = 2;
 const MAX_VIDEOS = 60;
 const DELAY_MS = 1050;
 
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -81,6 +82,9 @@ Deno.serve(async (req) => {
           const newUrl = data?.data?.play || null;
 
           if (code === 0 && newUrl) {
+            // NOTE: Individual TikWM API (/api/) returns cover at 300x400 (thumbnail preview),
+            // NOT the original video resolution. Aspect ratio measurement only works with
+            // feed/search covers. Measurement is done in pool-refill instead.
             await adminClient.from('hashtag_pool').update({
               video_url: newUrl,
               fetched_at: new Date().toISOString(),
