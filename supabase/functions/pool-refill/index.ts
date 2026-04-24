@@ -129,12 +129,22 @@ interface PoolVideo {
   source_url: string | null;
   video_width?: number;
   video_height?: number;
+  region?: string | null;
 }
 
 const EMPTY_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
 
 // Grupos visuais/sonoros — conteúdo universal, não precisa ser BR
 const VISUAL_SONIC_GROUPS = new Set(['relaxante', 'satisfying', 'oddly satisfying', 'asmr']);
+
+// Filtro primário por region (dado oficial do TikTok via TikWM)
+// Retorna: true=estrangeiro, false=BR, null=sem dado (usar fallback)
+function isForeignByRegion(v: PoolVideo): boolean | null {
+  const region = v.region?.toUpperCase();
+  if (!region) return null;
+  if (region === 'BR') return false;
+  return true;
+}
 
 // Soft check para grupos visuais — só rejeita lixo extremo (scripts não-latinos, kpop/anime)
 function isHardForeign(v: PoolVideo): boolean {
@@ -324,6 +334,7 @@ Deno.serve(async (req) => {
                 duration: v.duration || null, author: v.author || null,
                 video_url: v.video_url || null, source_url: v.source_url || null,
                 video_width: v.video_width || undefined, video_height: v.video_height || undefined,
+                region: v.region || undefined,
               }));
               return { tag, videos, nextCursor: data.next_cursor || null, exhausted: !data.next_cursor };
             } catch { return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true }; }
@@ -413,11 +424,18 @@ Deno.serve(async (req) => {
 
     // ── 5. Apply foreign content filter + calculate br_score ──
     const skipBrFilter = VISUAL_SONIC_GROUPS.has(groupKey);
+    let regionBrCount = 0, regionForeignCount = 0, fallbackCount = 0;
     const brFiltered = skipBrFilter
       ? deduped.filter(v => !isHardForeign(v))
-      : deduped.filter(v => !isForeignContent(v));
+      : deduped.filter(v => {
+          const byRegion = isForeignByRegion(v);
+          if (byRegion === true) { regionForeignCount++; return false; }
+          if (byRegion === false) { regionBrCount++; return true; }
+          fallbackCount++;
+          return !isForeignContent(v);
+        });
     const withScores = brFiltered.map(v => ({ ...v, br_score: calcBrScore(v) }));
-    console.log(`[pool-refill] After BR filter (${skipBrFilter ? 'soft' : 'strict'}): ${withScores.length}/${deduped.length} passed`);
+    console.log(`[pool-refill] BR filter (${skipBrFilter ? 'soft' : 'region+fallback'}): ${brFiltered.length}/${deduped.length} passed (region_br=${regionBrCount} region_foreign=${regionForeignCount} fallback=${fallbackCount})`);
 
     // ── 6. Call filter-by-niche ONLY for truly new videos (Gemini optimization) ──
     let nicheApprovedIds = new Set<string>();
@@ -486,6 +504,7 @@ Deno.serve(async (req) => {
       duration: v.duration, author: v.author, video_url: v.video_url, source_url: v.source_url,
       source_hashtag: v.source_hashtag, br_score: v.br_score,
       video_width: v.video_width || null, video_height: v.video_height || null,
+      video_region: v.region?.toUpperCase() || null,
       niche_approved: nicheRan ? nicheApprovedIds.has(v.tiktok_id) : true,
     }));
 

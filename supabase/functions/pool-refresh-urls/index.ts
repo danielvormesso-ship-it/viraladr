@@ -122,6 +122,11 @@ Deno.serve(async (req) => {
               fetched_at: new Date().toISOString(),
             };
 
+            // Save region (populates old videos progressively)
+            if (data?.data?.region) {
+              updateData.video_region = String(data.data.region).toUpperCase();
+            }
+
             // Measure via ai_dynamic_cover (WebP with correct ratio)
             // NOTE: cover is 300x400 preview (useless), but ai_dynamic_cover preserves real ratio
             const freshCover = data?.data?.ai_dynamic_cover;
