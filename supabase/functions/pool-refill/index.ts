@@ -5,6 +5,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── Measure thumbnail dimensions (JPEG/PNG header only, ~500 bytes) ──
+async function measureThumb(coverUrl: string): Promise<{ w: number; h: number } | null> {
+  if (!coverUrl) return null;
+  try {
+    const res = await fetch(coverUrl, {
+      headers: { 'Range': 'bytes=0-511' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok && res.status !== 206) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // JPEG SOF0 (0xFFC0) or SOF2 (0xFFC2)
+    for (let i = 0; i < bytes.length - 9; i++) {
+      if (bytes[i] === 0xFF && (bytes[i + 1] === 0xC0 || bytes[i + 1] === 0xC2)) {
+        const h = (bytes[i + 5] << 8) | bytes[i + 6];
+        const w = (bytes[i + 7] << 8) | bytes[i + 8];
+        if (w > 0 && h > 0) return { w, h };
+      }
+    }
+    // PNG IHDR
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      const w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+      const h = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+      if (w > 0 && h > 0) return { w, h };
+    }
+    return null;
+  } catch { return null; }
+}
+
 // ── PRESET_HASHTAGS: grupo → sub-hashtags (espelho do frontend) ──
 const PRESET_HASHTAGS: Record<string, { tags: string[]; group: string }> = {
   'pegadinha':        { tags: ['pegadinha','pegadinhas','pegadinhaviral','pegadinhadetiktok','pegadinhaengraçada','trollagempesada','pegadinhacaseira','pegadinhanorua','peganinguem','pegadinhasbrasileiras','pegadinhareal','armadilha','trote','trolei','trolagem','zuei','zoei','flagrante','pegadinhacomcriança','pegadinhacomnamorado','pegadinhacomamigo','pegadinhapesada','pegadinhacriativa'], group: 'humor' },
@@ -371,8 +399,35 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 7. Upsert into hashtag_pool ──
-    const rows = withScores.map(v => ({
+    // ── 7. Measure thumbnail aspect ratio in parallel (batches of 10) ──
+    const MEASURE_PARALLEL = 10;
+    let measuredCount = 0, verticalCount = 0, rejectedAspect = 0, measureFailed = 0;
+    for (let i = 0; i < withScores.length; i += MEASURE_PARALLEL) {
+      const batch = withScores.slice(i, i + MEASURE_PARALLEL);
+      const dims = await Promise.all(batch.map(v => measureThumb(v.thumbnail || '')));
+      for (let j = 0; j < batch.length; j++) {
+        const d = dims[j];
+        if (d) {
+          batch[j].video_width = d.w;
+          batch[j].video_height = d.h;
+          measuredCount++;
+          if (d.h >= d.w * 1.6) verticalCount++;
+        } else {
+          measureFailed++;
+        }
+      }
+    }
+    // Filter out non-vertical when dimensions are known
+    const verticalVideos = withScores.filter(v => {
+      const w = v.video_width || 0;
+      const h = v.video_height || 0;
+      if (w > 0 && h > 0 && h < w * 1.6) { rejectedAspect++; return false; }
+      return true;
+    });
+    console.log(`[pool-refill] Aspect: measured=${measuredCount} vertical=${verticalCount} rejected=${rejectedAspect} failed=${measureFailed} kept=${verticalVideos.length}/${withScores.length}`);
+
+    // ── 8. Upsert into hashtag_pool ──
+    const rows = verticalVideos.map(v => ({
       hashtag_group: groupKey, tiktok_id: v.tiktok_id, title: v.title, thumbnail: v.thumbnail,
       views: v.views, likes: v.likes, comments: v.comments, shares: v.shares,
       duration: v.duration, author: v.author, video_url: v.video_url, source_url: v.source_url,
