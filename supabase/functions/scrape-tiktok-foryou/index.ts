@@ -122,8 +122,7 @@ async function scrapeTikWMTrending(
 
           const w = item?.width || 0;
           const h = item?.height || 0;
-          if (w <= 0 || h <= 0) continue;
-          if (h < w * 1.6) continue;
+          if (w > 0 && h > 0 && h < w * 1.6) continue;
 
           const dur = item?.duration || 0;
           if (dur <= 0 || dur > 45) continue;
@@ -183,8 +182,7 @@ async function scrapeTikWMTrending(
               if (videos.length >= targetCount) break;
               const w2 = item?.width || 0;
               const h2 = item?.height || 0;
-              if (w2 <= 0 || h2 <= 0) continue;
-              if (h2 < w2 * 1.6) continue;
+              if (w2 > 0 && h2 > 0 && h2 < w2 * 1.6) continue;
               const dur2Check = item?.duration || 0;
               if (dur2Check <= 0 || dur2Check > 45) continue;
 

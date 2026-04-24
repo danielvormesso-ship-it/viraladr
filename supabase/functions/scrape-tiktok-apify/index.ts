@@ -96,10 +96,9 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
     const dur = item?.duration || 0;
     const w = item?.width || 0;
     const h = item?.height || 0;
-    // Reject non-vertical: require height >= width * 1.6 (covers 9:16, 4:5 portrait, etc.)
-    // Also reject when dimensions are missing (w=0 or h=0) — can't verify aspect ratio
-    if (w <= 0 || h <= 0) return;
-    if (h < w * 1.6) return;
+    // Se TikWM retornar dimensoes (raro): rejeitar se nao for vertical
+    // Se nao retornar (comum): aceitar — TikTok e vertical por padrao na maioria
+    if (w > 0 && h > 0 && h < w * 1.6) return;
     if (dur < 5 || dur > maxDuration) return;
     if (requireBrazilian && !isBrazilianContent(item)) return;
 
