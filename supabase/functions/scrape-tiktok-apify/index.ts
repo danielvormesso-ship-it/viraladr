@@ -58,25 +58,32 @@ const FOREIGN_SCRIPT_RE = /[\u3000-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF
 function isBrazilianContent(item: any): boolean {
   const text = `${item?.title || ''} ${item?.desc || ''} ${item?.text || ''}`.toLowerCase();
 
+  // ─── CHECK POR REGION (dado oficial do TikTok via TikWM) ───
+  const videoRegion = String(item?.region || '').toUpperCase();
+  if (videoRegion && videoRegion !== 'BR') return false;  // region existe e NÃO é BR → rejeita
+  if (videoRegion === 'BR') return true;                   // region é BR → aceita direto
+
+  // ─── FALLBACK: region vazio → heurísticas ───
+
   // Early reject: known foreign phrases and non-latin scripts
   if (FOREIGN_REJECT_RE.test(text)) return false;
   if (FOREIGN_SCRIPT_RE.test(text)) return false;
 
   const ptIndicators = [
     'kkk', 'kkkk', 'vc', 'pra', 'tbm', 'mds', 'slc', 'mano', 'cara',
-    'gente', 'muito', 'quando', 'porque', 'como', 'esse', 'essa', 'isso',
-    'aqui', 'voce', 'você', 'não', 'nao', 'sim', 'bem', 'dia', 'vida',
-    'amor', 'todo', 'uma', 'uns', 'das', 'dos', 'nas', 'nos', 'pela',
-    'pelo', 'com', 'sem', 'mais', 'mas', 'pois', 'que', 'quem',
+    'gente', 'muito', 'quando', 'porque', 'esse', 'essa', 'isso',
+    'aqui', 'voce', 'você', 'não', 'nao',
     'brasil', 'brasileir', 'tiktokbrasil', 'dancinha', 'novelinha',
     'pegadinha', 'zoeira', 'humor', 'risada', 'trollagem', 'comedia',
-    'engraçado', 'engracado', 'parati', 'fyp', 'foryou',
+    'engraçado', 'engracado',
     'ação', 'acao', 'reação', 'reacao', 'olha', 'veja', 'será',
     'então', 'entao', 'também', 'tambem', 'né', 'tá', 'fé',
-    'coisa', 'fazer', 'sabe', 'acho', 'tipo', 'bom', 'boa',
+    'coisa', 'fazer', 'sabe', 'acho', 'bora', 'eita', 'uai', 'oxe',
   ];
-  const hasPtChars = /[ãõáéíóúâêôçà]/.test(text);
-  if (hasPtChars) return true;
+
+  // Acentos exclusivos BR (ã, õ, ç) são sinal forte
+  const hasBrExclusive = /[ãõç]/.test(text);
+  if (hasBrExclusive) return true;
 
   const matchCount = ptIndicators.filter(w => {
     const regex = new RegExp(`\\b${w}`, 'i');
@@ -85,18 +92,17 @@ function isBrazilianContent(item: any): boolean {
 
   if (matchCount >= 2) return true;
 
-  const authorRegion = item?.author?.region || item?.authorMeta?.region || '';
-  if (authorRegion.toUpperCase() === 'BR') return true;
-
   const hashtags = (item?.challenges || item?.hashtags || []).map((h: any) => (h?.title || h?.name || h || '').toLowerCase());
-  const brHashtags = ['brasil', 'tiktokbrasil', 'br', 'parati', 'humor', 'dancinha', 'pegadinha', 'viral', 'fyp'];
+  const brHashtags = ['brasil', 'tiktokbrasil', 'br', 'dancinha', 'pegadinha', 'humor', 'zoeira', 'comedia', 'novelinha'];
   if (hashtags.some((h: string) => brHashtags.includes(h))) return true;
 
   const enIndicators = ['the', 'this', 'that', 'with', 'have', 'from', 'they', 'been', 'were', 'would', 'could', 'should', 'about', 'their', 'which', 'when', 'your', 'what'];
   const enCount = enIndicators.filter(w => new RegExp(`\\b${w}\\b`, 'i').test(text)).length;
   if (enCount >= 3 && matchCount === 0) return false;
 
-  if (text.trim().length < 10) return true;
+  // Título curto sem sinal BR → rejeitar (antes aceitava tudo < 10 chars)
+  const titleClean = text.replace(/#\w+/g, '').trim();
+  if (titleClean.length < 10 && matchCount === 0 && !hasBrExclusive) return false;
 
   return matchCount >= 1;
 }
