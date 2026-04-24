@@ -14,6 +14,41 @@ const VIDEOS_PER_GROUP = 2;
 const MAX_VIDEOS = 60;
 const DELAY_MS = 1050;
 
+async function measureAnyCover(coverUrl: string): Promise<{ w: number; h: number } | null> {
+  if (!coverUrl) return null;
+  try {
+    const res = await fetch(coverUrl, {
+      headers: { 'Range': 'bytes=0-255' },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok && res.status !== 206) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // WebP VP8X (ai_dynamic_cover)
+    for (let i = 12; i < bytes.length - 18; i++) {
+      if (bytes[i] === 0x56 && bytes[i+1] === 0x50 && bytes[i+2] === 0x38 && bytes[i+3] === 0x58) {
+        const w = 1 + (bytes[i+12] | (bytes[i+13] << 8) | (bytes[i+14] << 16));
+        const h = 1 + (bytes[i+15] | (bytes[i+16] << 8) | (bytes[i+17] << 16));
+        if (w > 0 && h > 0 && w < 10000 && h < 10000) return { w, h };
+      }
+    }
+    // PNG IHDR
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      const w = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+      const h = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+      if (w > 0 && h > 0 && w < 10000 && h < 10000) return { w, h };
+    }
+    // JPEG SOF0/SOF1 only (SOF2/SOF3 return garbage from progressive JPEGs)
+    for (let i = 0; i < bytes.length - 9; i++) {
+      if (bytes[i] === 0xFF && (bytes[i+1] === 0xC0 || bytes[i+1] === 0xC1)) {
+        const h = (bytes[i+5] << 8) | bytes[i+6];
+        const w = (bytes[i+7] << 8) | bytes[i+8];
+        if (w > 0 && h > 0 && w < 10000 && h < 10000) return { w, h };
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -82,13 +117,26 @@ Deno.serve(async (req) => {
           const newUrl = data?.data?.play || null;
 
           if (code === 0 && newUrl) {
-            // NOTE: Individual TikWM API (/api/) returns cover at 300x400 (thumbnail preview),
-            // NOT the original video resolution. Aspect ratio measurement only works with
-            // feed/search covers. Measurement is done in pool-refill instead.
-            await adminClient.from('hashtag_pool').update({
+            const updateData: Record<string, any> = {
               video_url: newUrl,
               fetched_at: new Date().toISOString(),
-            }).eq('id', video.id);
+            };
+
+            // Measure via ai_dynamic_cover (WebP with correct ratio)
+            // NOTE: cover is 300x400 preview (useless), but ai_dynamic_cover preserves real ratio
+            const freshCover = data?.data?.ai_dynamic_cover;
+            if (freshCover) {
+              const dims = await measureAnyCover(freshCover);
+              if (dims) {
+                updateData.video_width = dims.w;
+                updateData.video_height = dims.h;
+                if (dims.h < dims.w * 1.6) {
+                  updateData.niche_approved = false;
+                }
+              }
+            }
+
+            await adminClient.from('hashtag_pool').update(updateData).eq('id', video.id);
             refreshed++;
           } else {
             // Video unavailable (code:-1 or no play URL)
