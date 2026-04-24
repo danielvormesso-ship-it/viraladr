@@ -26,7 +26,7 @@ interface VideoResult {
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function getTikwmDownload(videoUrl: string, attempt = 1): Promise<{ success: boolean; download_url?: string; error?: string }> {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
   try {
     const res = await fetch('https://www.tikwm.com/api/', {
       method: 'POST',
@@ -42,7 +42,7 @@ async function getTikwmDownload(videoUrl: string, attempt = 1): Promise<{ succes
 
     if (res.status === 429 || res.status >= 500) {
       if (attempt < MAX_RETRIES) {
-        await delay(500 * attempt);
+        await delay(500 * Math.pow(2, attempt - 1));
         return getTikwmDownload(videoUrl, attempt + 1);
       }
       return { success: false, error: `tikwm status ${res.status} after ${attempt} attempts` };
@@ -55,7 +55,7 @@ async function getTikwmDownload(videoUrl: string, attempt = 1): Promise<{ succes
     
     if (!downloadUrl) {
       if (attempt < MAX_RETRIES) {
-        await delay(400);
+        await delay(500 * Math.pow(2, attempt - 1));
         return getTikwmDownload(videoUrl, attempt + 1);
       }
       return { success: false, error: 'No download URL' };
@@ -92,9 +92,9 @@ Deno.serve(async (req) => {
     const batch = videos.slice(0, 50);
     console.log(`Batch download: resolving ${batch.length} URLs`);
 
-    // Process in small concurrent groups of 3 with delay between groups
-    // to avoid tikwm rate limiting
-    const CONCURRENCY = 8;
+    // Process in concurrent groups of 3 with 300ms delay between groups
+    // to avoid tikwm silent rate limiting (returns code=0 but no play URL)
+    const CONCURRENCY = 3;
     const results: VideoResult[] = [];
 
     for (let i = 0; i < batch.length; i += CONCURRENCY) {
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
 
       // Small delay between groups to avoid rate limiting
       if (i + CONCURRENCY < batch.length) {
-        await delay(80);
+        await delay(300);
       }
     }
 
