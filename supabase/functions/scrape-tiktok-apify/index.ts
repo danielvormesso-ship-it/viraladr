@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
     if (light) {
       console.log(`[LIGHT] Scraping #${searchTerm}, limit=${requestedLimit}, cursor=${inputCursor ?? 'none'}, sort_type=${sortType ?? 'default'}`);
 
-      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), 10, false, 120, inputCursor, sortType);
+      const tikwmResult = await scrapeTikWM(searchTerm, Math.min(requestedLimit * 3, 1000), 10, true, 120, inputCursor, sortType);
 
       // Shuffle for variety
       const videos = tikwmResult.videos;
