@@ -13,8 +13,8 @@ interface VideoToFilter {
 }
 
 const NICHE_REJECT_MAP: Record<string, string> = {
-  humor: "dancinha coreografia sem humor, receita culinaria longa, tutorial tecnico longo, filme serie oficial promocao, politica eleicao, kpop drama coreano, cover musical sem humor",
-  viral: "receita detalhada longa, tutorial tecnico, politica eleicao, filme oficial promocao",
+  humor: "dancinha coreografia sem humor, receita culinaria longa, tutorial tecnico longo, filme serie oficial promocao, politica eleicao, kpop drama coreano, cover musical sem humor, conteudo sensual/sexualizado/biquini/adulto",
+  viral: "receita detalhada longa, tutorial tecnico, politica eleicao, filme oficial promocao, conteudo sensual/sexualizado/biquini/adulto",
   lifestyle_danca: "receita, tutorial tecnico, politica, filme, pegadinha principal",
   lifestyle_musica: "pegadinha, politica, fitness detalhado, receita",
   lifestyle_rotina: "pegadinha, dancinha, receita, filme",
@@ -37,8 +37,8 @@ const NICHE_REJECT_MAP: Record<string, string> = {
 };
 
 const NICHE_INSTRUCTIONS: Record<string, string> = {
-  humor: "APROVAR SE o titulo contém: pegadinha, trote (de rua/adulto/entre amigos), susto, armadilha, zoeira, zueira, trolagem, trolou, trolei, humor, piada, engraçado, engraçada, meme, comedia, fail, queda, rir, risada, kkkk, kkkkk, viral com contexto de reacao, fyp com humor. REJEITAR APENAS SE CLARAMENTE é: dancinha coreografica sem humor, receita culinaria, tutorial tecnico, review de produto, cena de filme/serie comercial, promocao Netflix/Disney/Prime, videoclipe musical oficial, vlog de viagem, politica/eleicao, trote de faculdade/terceirão/formatura/calouro/medicina/direito/engenharia (trote ACADEMICO nao serve para anuncios). NA DUVIDA: APROVAR.",
-  viral: "APROVAR SE tem sinais de conteudo viral brasileiro: trend, viral, BR, engajamento visivel, formato curto impactante, reacao genuina. REJEITAR APENAS SE: receita longa detalhada, tutorial tecnico, gameplay de partida completa, politica, filme promocao oficial. NA DUVIDA: APROVAR.",
+  humor: "APROVAR SE o titulo contém: pegadinha, trote (de rua/adulto/entre amigos), susto, armadilha, zoeira, zueira, trolagem, trolou, trolei, humor, piada, engraçado, engraçada, meme, comedia, fail, queda, rir, risada, kkkk, kkkkk, viral com contexto de reacao, fyp com humor. REJEITAR SEMPRE conteúdo sensual/sexualizado (sensual, biquíni, decote, sexy, gostosa, adulto) MESMO SE mencionar pegadinha. REJEITAR palavras ambíguas: 'pegar pegar' NÃO é pegadinha, 'toptop' NÃO é top qualidade, 'dana do momento' é dancinha NÃO é pegadinha. REJEITAR SE CLARAMENTE é: dancinha coreográfica sem humor (incluindo 'dana do momento'), receita culinária, tutorial técnico, review de produto, cena de filme/série comercial, promoção Netflix/Disney/Prime, videoclipe musical oficial, vlog de viagem, política/eleição, trote de faculdade/terceirão/formatura/calouro/medicina/direito/engenharia (trote ACADÊMICO não serve), exame médico/consulta/clínica real (contexto médico sério não é humor). NA DÚVIDA: APROVAR (exceto sensual/adulto que SEMPRE rejeita).",
+  viral: "APROVAR SE tem sinais de conteúdo viral brasileiro: trend, viral, BR, engajamento visível, formato curto impactante, reação genuína. REJEITAR SEMPRE conteúdo sensual/sexualizado (biquíni, sensual, decote, gostosa, sexy, adulto, bikini). REJEITAR SE: receita longa detalhada, tutorial técnico, gameplay de partida completa, política, filme promoção oficial. NA DÚVIDA: APROVAR (exceto sensual/adulto que SEMPRE rejeita).",
   lifestyle_danca: "APROVAR SE menciona danca, coreografia, passinho, dancinha, dance, dancando, bailando, funk dance, sertanejo com coreografia. REJEITAR APENAS SE: pegadinha principal, receita, filme, tutorial tecnico sem danca. NA DUVIDA: APROVAR.",
   lifestyle_musica: "APROVAR SE menciona: musica, cover, cantando, tocando, instrumento, show, performance, BR musical. REJEITAR APENAS SE: dancinha sem musica destacada, pegadinha, tutorial culinario, filme. NA DUVIDA: APROVAR.",
   lifestyle_rotina: "APROVAR SE menciona: rotina, dia a dia, morning, noite, GRWM, dayinmylife, dia na vida, produtividade, bastidores. REJEITAR APENAS SE: pegadinha, tutorial tecnico, filme completo, receita longa. NA DUVIDA: APROVAR.",
@@ -199,18 +199,36 @@ serve(async (req) => {
     // Reject videos with empty/generic titles — can't verify niche without title
     const NO_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
     const EMOJI_ONLY_RE = /^[\p{Emoji}\s#@]+$/u;
+
+    // Hard blocklist: sensual/adulto rejeitado independente do Gemini
+    const HARD_BLOCKLIST = /\b(sensual|sensualizando|sexy|gostosa|gostoso|gostosademais|biquini|biquíni|bikini|decote|nudez|pelada|pelado|nsfw|18 ?\+|conteudo adulto|provocante|insinuante|hot ?girl|hot ?boy|safad[oa]|atrevida|cavalona|rabuda|rab[aã]o|peit[ãa]o|siliconada|body ?positiv|lingerie|roupa intima|de calcinha|sem suti[aã]|biscoitando|biscoitar|novinhagosta|gostosademais|delicia|vamosbalançar)\b/i;
+    // Dancinha disfarçada de nicho
+    const DANCINHA_TRAP = /\b(dana do momento|dancinha do momento|coreografia do momento|passinho do momento|dance challenge|dance trend)\b/i;
+    // Spam/lixo genérico
+    const SPAM_TITLES = /^(toptop viralvideo|lixo de video|spam de viral|fake views)/i;
+
     const autoApproved: string[] = [];
     const autoRejected: string[] = [];
     const needsAI: VideoToFilter[] = [];
+    let blocklistedCount = 0;
     for (const v of videos) {
       const t = v.title.trim();
       if (!t || NO_TITLE_RE.test(t) || t.length < 5 || EMOJI_ONLY_RE.test(t)) {
         autoRejected.push(v.id);
+      } else if (HARD_BLOCKLIST.test(t)) {
+        autoRejected.push(v.id);
+        blocklistedCount++;
+      } else if (DANCINHA_TRAP.test(t)) {
+        autoRejected.push(v.id);
+        blocklistedCount++;
+      } else if (SPAM_TITLES.test(t)) {
+        autoRejected.push(v.id);
+        blocklistedCount++;
       } else {
         needsAI.push(v);
       }
     }
-    console.log(`[filter-by-niche] Auto-rejected ${autoRejected.length} videos with empty/generic titles`);
+    console.log(`[filter-by-niche] Auto-rejected ${autoRejected.length} videos (${blocklistedCount} blocklisted, ${autoRejected.length - blocklistedCount} empty/generic)`);
 
     const BATCH_SIZE = 60;
     const batches: VideoToFilter[][] = [];
