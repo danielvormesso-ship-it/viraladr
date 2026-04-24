@@ -14,7 +14,7 @@ interface VideoToFilter {
 
 const NICHE_REJECT_MAP: Record<string, string> = {
   // Humor & Entretenimento
-  humor: "kpop, k-pop, receita, culinária, cozinha, fitness, academia, treino, musculação, gameplay, jogo, gamer, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, eleição, governo, viagem, turismo, maquiagem, skincare, tutorial técnico, ASMR, unboxing, romance, casal, slideshow de foto, paisagem, decoração, organização, meditação, yoga, nutrição, dieta",
+  humor: "kpop, k-pop, drama coreano, k-drama, doramas, receita, culinária, cozinha, fitness, academia, treino, musculação, gameplay, jogo, gamer, notícia, tragédia, acidente, morte, crime, polícia, preso, vítima, política, eleição, governo, viagem, turismo, maquiagem, skincare, tutorial técnico, ASMR, unboxing, romance, casal, slideshow de foto, paisagem, decoração, organização, meditação, yoga, nutrição, dieta, spycam, câmera espiã, produto espião, review produto, passeio com animal, caminhada natureza, trilha, caça, pesca",
   // Trends & Viral
   viral: "receita detalhada, passo a passo culinário, tutorial técnico longo, fitness detalhado, série de exercícios, maquiagem tutorial, gameplay longo, partida completa, política, eleição, governo, kpop, k-pop",
   // Lifestyle — sub-grupos
@@ -197,17 +197,21 @@ serve(async (req) => {
     if (GEMINI_KEYS.length === 0) throw new Error("No GEMINI_API_KEY configured");
     const GEMINI_API_KEY = GEMINI_KEYS[Math.floor(Math.random() * GEMINI_KEYS.length)];
 
-    // Auto-approve videos with empty/generic titles (no useful signal for AI)
+    // Reject videos with empty/generic titles — can't verify niche without title
     const NO_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
+    const EMOJI_ONLY_RE = /^[\p{Emoji}\s#@]+$/u;
     const autoApproved: string[] = [];
+    const autoRejected: string[] = [];
     const needsAI: VideoToFilter[] = [];
     for (const v of videos) {
-      if (NO_TITLE_RE.test(v.title.trim())) {
-        autoApproved.push(v.id);
+      const t = v.title.trim();
+      if (!t || NO_TITLE_RE.test(t) || t.length < 5 || EMOJI_ONLY_RE.test(t)) {
+        autoRejected.push(v.id);
       } else {
         needsAI.push(v);
       }
     }
+    console.log(`[filter-by-niche] Auto-rejected ${autoRejected.length} videos with empty/generic titles`);
 
     const BATCH_SIZE = 60;
     const batches: VideoToFilter[][] = [];
@@ -232,7 +236,7 @@ serve(async (req) => {
 
     const approvedIds = new Set<string>(autoApproved);
     results.forEach(ids => ids.forEach(id => approvedIds.add(id)));
-    if (autoApproved.length > 0) console.log(`Niche filter: ${autoApproved.length} auto-approved (no title)`);
+    // autoApproved is intentionally empty — empty titles are now rejected, not approved
 
     console.log(`Niche filter: ${approvedIds.size}/${videos.length} approved for "${nicheDescription}"`);
 

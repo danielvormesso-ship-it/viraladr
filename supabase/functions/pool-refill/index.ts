@@ -7,7 +7,7 @@ const corsHeaders = {
 
 // ── PRESET_HASHTAGS: grupo → sub-hashtags (espelho do frontend) ──
 const PRESET_HASHTAGS: Record<string, { tags: string[]; group: string }> = {
-  'pegadinha':        { tags: ['pegadinha','pegadinhas','pegadinhaviral','pegadinhadetiktok','pegadinhaengraçada','trollagempesada','pegadinhacaseira','pegadinhanorua','peganinguem','pegadinhasbrasileiras','pegadinhareal','camerascondida','camaraescondida','armadilha','trote','trolei','trolagem','zuei','zoei','flagrante','pegadinhacomcriança','pegadinhacomnamorado','pegadinhacomamigo','pegadinhapesada','pegadinhacriativa'], group: 'humor' },
+  'pegadinha':        { tags: ['pegadinha','pegadinhas','pegadinhaviral','pegadinhadetiktok','pegadinhaengraçada','trollagempesada','pegadinhacaseira','pegadinhanorua','peganinguem','pegadinhasbrasileiras','pegadinhareal','armadilha','trote','trolei','trolagem','zuei','zoei','flagrante','pegadinhacomcriança','pegadinhacomnamorado','pegadinhacomamigo','pegadinhapesada','pegadinhacriativa'], group: 'humor' },
   'humor':            { tags: ['humor','humorbrasil','humorbr','engraçado','piada','piadas','coisasengraçadas','videoengraçado','humornegro','rir','humorbrasileiro','humornacional','comediabr','comediante','humoristabr','esquete','esquetedivertido','piadaboa','videocomedia','videohumor','risos','risonho','gracinha','humortiktok','humorbom'], group: 'humor' },
   'comédia':          { tags: ['comedia','comediante','standupbr','comediabrasil','esquete','standup','comediabrasileira','humorista','parodiabr','imitacao'], group: 'humor' },
   'memes':            { tags: ['memes','memesbr','memesbrasil','memestiktok','memeviral','meme','memesengracados','memebrasileiro','memezeiro','shitpost'], group: 'humor' },
@@ -99,6 +99,8 @@ interface PoolVideo {
   author: string | null;
   video_url: string | null;
   source_url: string | null;
+  video_width?: number;
+  video_height?: number;
 }
 
 const EMPTY_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
@@ -243,6 +245,7 @@ Deno.serve(async (req) => {
                 views: v.views || 0, likes: v.likes || 0, comments: v.comments || 0, shares: v.shares || 0,
                 duration: v.duration || null, author: v.author || null,
                 video_url: v.video_url || null, source_url: v.source_url || null,
+                video_width: v.video_width || undefined, video_height: v.video_height || undefined,
               }));
               return { tag, videos, nextCursor: data.next_cursor || null, exhausted: !data.next_cursor };
             } catch { return { tag, videos: [] as PoolVideo[], nextCursor: null, exhausted: true }; }
@@ -374,6 +377,7 @@ Deno.serve(async (req) => {
       views: v.views, likes: v.likes, comments: v.comments, shares: v.shares,
       duration: v.duration, author: v.author, video_url: v.video_url, source_url: v.source_url,
       source_hashtag: v.source_hashtag, br_score: v.br_score,
+      video_width: v.video_width || null, video_height: v.video_height || null,
       niche_approved: nicheRan ? nicheApprovedIds.has(v.tiktok_id) : true,
     }));
 

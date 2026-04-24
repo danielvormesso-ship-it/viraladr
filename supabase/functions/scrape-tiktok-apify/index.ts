@@ -28,11 +28,22 @@ interface VideoData {
   source_url: string;
   status: string;
   hashtag: string;
+  video_width: number;
+  video_height: number;
 }
 
 // ---- Brazilian content detection ----
+// Reject known foreign language patterns early
+const FOREIGN_REJECT_RE = /\b(broma|cámara oculta|camara oculta|segundo intento|chien|promenade|forêt|foret|hati hati|dimana|kamera|prank war|prank on|pranking|got pranked|best prank|pranked my|hidden camera|spy cam|spycam|segundo intento)\b/i;
+const FOREIGN_SCRIPT_RE = /[\u3000-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0E00-\u0E7F\u0900-\u097F]/;
+
 function isBrazilianContent(item: any): boolean {
   const text = `${item?.title || ''} ${item?.desc || ''} ${item?.text || ''}`.toLowerCase();
+
+  // Early reject: known foreign phrases and non-latin scripts
+  if (FOREIGN_REJECT_RE.test(text)) return false;
+  if (FOREIGN_SCRIPT_RE.test(text)) return false;
+
   const ptIndicators = [
     'kkk', 'kkkk', 'vc', 'pra', 'tbm', 'mds', 'slc', 'mano', 'cara',
     'gente', 'muito', 'quando', 'porque', 'como', 'esse', 'essa', 'isso',
@@ -85,7 +96,10 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
     const dur = item?.duration || 0;
     const w = item?.width || 0;
     const h = item?.height || 0;
-    if (w > 0 && h > 0 && h < w * 1.2) return;
+    // Reject non-vertical: require height >= width * 1.6 (covers 9:16, 4:5 portrait, etc.)
+    // Also reject when dimensions are missing (w=0 or h=0) — can't verify aspect ratio
+    if (w <= 0 || h <= 0) return;
+    if (h < w * 1.6) return;
     if (dur < 5 || dur > maxDuration) return;
     if (requireBrazilian && !isBrazilianContent(item)) return;
 
@@ -109,6 +123,8 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
       source_url: `https://www.tiktok.com/@${item?.author?.unique_id || 'user'}/video/${item?.video_id || item?.id || ''}`,
       status: 'pending',
       hashtag,
+      video_width: w,
+      video_height: h,
     };
 
     if (!vid.tiktok_id) {

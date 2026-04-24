@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
     const overfetch = Math.min(safeLimit + excludeIds.size + 200, 8000);
     let poolQuery = adminClient
       .from('hashtag_pool')
-      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url')
+      .select('tiktok_id, title, thumbnail, views, likes, comments, shares, duration, author, video_url, source_url, video_width, video_height')
       .eq('hashtag_group', groupKey)
       .eq('niche_approved', true)
       .gte('fetched_at', freshCutoff);
@@ -109,9 +109,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Filter out seen/used by tiktok_id only ──
+    // ── 3. Filter out seen/used + reject non-vertical when dimensions are known ──
     const served = (poolRows || [])
-      .filter(v => !excludeIds.has(v.tiktok_id))
+      .filter(v => {
+        if (excludeIds.has(v.tiktok_id)) return false;
+        // If dimensions are saved, enforce vertical (height >= width * 1.6)
+        const w = (v as any).video_width;
+        const h = (v as any).video_height;
+        if (w && h && w > 0 && h > 0 && h < w * 1.6) return false;
+        return true;
+      })
       .slice(0, safeLimit);
 
     // ── 4. Format as TikTokVideo (same shape frontend expects) ──
