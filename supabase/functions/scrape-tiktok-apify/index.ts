@@ -14,6 +14,23 @@ function randomUA() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
+// Global reject patterns — applied before any niche filter
+const GLOBAL_REJECT_PATTERNS = [
+  /\b(disponivel|disponível|estreia|estréia)\s+(na|no|em)\s+(netflix|prime|disney|hbo|max|globoplay|paramount|apple)/i,
+  /\b(netflix|prime\s*video|disney\+|hbo\s*max|globoplay)\b.*\b(filme|série|serie|trailer|oficial)\b/i,
+  /\b(filme|série|serie)\b.*\b(disponivel|disponível|assista|confira|estreia)\b/i,
+  /\b(trailer\s+oficial|teaser\s+oficial)\b/i,
+  /\b(link\s+na\s+bio|compre\s+agora|clique\s+aqui|garanta\s+o\s+seu|promocao\s+relampago)\b/i,
+  /\b(#ad|#publi|#publicidade|#patrocinado|#parceriapaga)\b/i,
+  /\b(afiliado|hotmart|monetizze|kiwify)\s+(link|codigo|código)/i,
+  /\b(prank|pranks|pranking|got\s+pranked|prank\s+wars?)\b/i,
+  /\b(hidden\s+cam|hidden\s+camera|caught\s+on\s+camera)\b/i,
+  /\b(broma|cámara\s+oculta|segundo\s+intento)\b/i,
+  /\b(chien|promenade|forêt|foret|dans\s+la)\b/i,
+  /\b(hati\s+hati|dimana|kamera\s+tersembunyi)\b/i,
+  /\b(papagaio|louro|cacatua)\s+(fal|imit|disse|respond|atend)/i,
+];
+
 interface VideoData {
   tiktok_id: string | null;
   title: string;
@@ -93,6 +110,9 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
 
   const addVideo = (item: any) => {
     if (item?.images && Array.isArray(item.images) && item.images.length > 0) return;
+    // Global reject patterns — spam, promos, foreign content
+    const rawTitle = item?.title || '';
+    for (const pat of GLOBAL_REJECT_PATTERNS) { if (pat.test(rawTitle)) return; }
     const dur = item?.duration || 0;
     const w = item?.width || 0;
     const h = item?.height || 0;
