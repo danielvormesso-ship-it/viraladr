@@ -47,6 +47,7 @@ interface VideoData {
   hashtag: string;
   video_width: number;
   video_height: number;
+  region: string | null;
 }
 
 // ---- Brazilian content detection ----
@@ -144,6 +145,7 @@ async function scrapeTikWM(hashtag: string, limit: number, maxPages = 10, requir
       hashtag,
       video_width: w,
       video_height: h,
+      region: item?.region ? String(item.region).toUpperCase() : null,
     };
 
     if (!vid.tiktok_id) {
