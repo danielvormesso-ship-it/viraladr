@@ -163,7 +163,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 4. **Threshold viral**: Checa se ha 200+ videos com 1M+ views por grupo
 5. Dispara `pool-refill` para grupos abaixo do threshold (HTTP async, timeout 5s)
 
-**Cron**: A cada 15 minutos (`*/15 * * * *`)
+**Cron**: A cada 5 horas (`0 */5 * * *`)
 
 ### pool-refresh-urls (Edge Function)
 **O que faz**: Renovar URLs de video que expiraram (TikWM URLs duram ~4-8h).
@@ -177,7 +177,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
    - Falha na 2a tentativa: deleta o video do pool
 4. Retorna contadores: refreshed, retried, deleted, errors
 
-**Cron**: A cada 2 horas (`0 */2 * * *`)
+**Cron**: A cada 5 minutos (`*/5 * * * *`)
 
 ### Filtros BR e de Nicho
 **Filtro BR** (em pool-refill e scrape-tiktok-apify):
@@ -195,7 +195,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 
 ### Como URLs expiram e sao renovadas
 - URLs do TikWM (CDN ByteDance) expiram em ~4-8 horas
-- `pool-refresh-urls` roda a cada 2h para renovar URLs com >4h
+- `pool-refresh-urls` roda a cada 5min para renovar URLs com >4h
 - `refresh-video-url` permite refresh on-demand durante playback
 - Videos com URL expirada nao sao servidos pelo `pool-serve` (filtro `fetched_at > now() - 8h`)
 - Apos 2 falhas de refresh, o video e deletado do pool
@@ -208,11 +208,34 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 
 | Plano | Creditos | Periodo | Cor (Tailwind) |
 |-------|----------|---------|----------------|
-| free | 30 | total (lifetime) | gray |
+| free | 10 | total (lifetime) | gray |
 | starter | 300 | mes | blue |
 | pro | 1000 | mes | purple |
 | agency | 8000 | mes | amber |
 | unlimited | Infinito | - | emerald |
+
+**IMPORTANTE — Plano "unlimited"**:
+- NAO e vendavel. E atribuido manualmente pelo admin via AdminPanel.
+- NUNCA aparece em UI publica (WelcomeModal, pagina /upgrade, links de checkout).
+- So aparece no AdminPanel (dropdown de atribuicao de plano) e no header como badge "Ilimitado".
+- Definido em `ALL_PLANS` (para AdminPanel) mas NAO em `SELLABLE_PLANS`.
+
+### Bloqueio Obrigatorio de Plano (plan_selected)
+
+Coluna `profiles.plan_selected` (boolean, default false) controla se o usuario ja escolheu um plano. Novos usuarios entram com `plan_selected=false` e sao bloqueados ate escolher.
+
+**Fluxo de acesso**:
+1. `approved=false` → Tela PendingApproval (aguardando admin)
+2. `approved=true`, `plan_selected=false` → Tela PlanSelection (obrigatoria, sem fechar)
+3. `approved=true`, `plan_selected=true` → App normal (rotas liberadas)
+
+**Componente**: `src/components/PlanSelection.tsx` — exibe 4 planos vendaveis (free/starter/pro/agency) sem botao fechar nem voltar.
+- Botao "Comecar Gratis": chama RPC `activate_free_plan(p_user_id)` → seta `plan_selected=true`, `plan='free'`, `credits_used=0`
+- Botoes pagos: abrem Hotmart com `?sck={userId}` → webhook seta `plan_selected=true` ao ativar
+
+**RPC `activate_free_plan(p_user_id UUID)`**: SECURITY DEFINER, valida `auth.uid() = p_user_id`.
+
+**Usuarios existentes**: Todos receberam `plan_selected=true` no backfill — nao sao afetados.
 
 ### Precos (Hotmart)
 - Starter: R$97/mes
@@ -237,7 +260,7 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 - `deductCredits(amount)`: Decrementa apos download bem-sucedido.
 - Para plano `unlimited`: sempre retorna true, nunca deduz.
 - Para plano `free`: creditos sao lifetime (30 total, sem reset mensal).
-- Quando creditos esgotam: exibe `UpgradeModal` com links para Hotmart.
+- Quando creditos esgotam: exibe banner inline (nao-bloqueante) com link para `/upgrade`.
 
 ### RLS Policies relevantes
 - `profiles`: usuarios leem todos, atualizam apenas o proprio. Admins atualizam qualquer um.
@@ -245,6 +268,40 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 - `hashtag_pool`: apenas service_role tem acesso (edge functions).
 - `webhook_logs`: service_role full access + admins podem ler.
 - `pending_plans`: apenas service_role.
+
+### Sistema de Upgrade (UX)
+
+O antigo `UpgradeModal` (modal full-screen bloqueante) foi substituido por uma abordagem inline nao-invasiva.
+
+**Pagina dedicada `/upgrade`** (`src/pages/Upgrade.tsx`):
+- Comparativo lado a lado dos 4 planos vendaveis (free, starter, pro, agency)
+- Destaca o plano atual do usuario
+- Botoes "Assinar" levam ao checkout Hotmart
+- Plano unlimited NAO aparece nesta pagina
+
+**Acesso ao upgrade**:
+- Badge de creditos no header (clicavel → navega para `/upgrade`)
+- Botao "Upgrade" no header (visivel apenas para free/starter/pro)
+- Banner inline quando creditos esgotam (dismissable, nao bloqueia a tela)
+- WelcomeModal com link "Ver planos e precos" → `/upgrade`
+
+**Comportamento por plano**:
+| Plano | Badge header | Botao Upgrade | Banner creditos=0 |
+|-------|-------------|---------------|-------------------|
+| free | Free (cinza) | Sim | Sim |
+| starter | Starter (azul) | Sim | Sim |
+| pro | Pro (roxo) | Sim | Sim |
+| agency | Agency (ambar) | Nao | Nao |
+| unlimited | Ilimitado (esmeralda) | Nao | Nao |
+
+**Animacao de alerta**: Botao Upgrade pulsa em ambar quando creditos restantes < 10% do total.
+
+**Arquivo legado**: `src/components/UpgradeModal.tsx` ainda existe mas nao e mais importado/usado. Pode ser deletado.
+
+**Constantes centralizadas** em `src/lib/plans.ts`:
+- `SELLABLE_PLANS`: 4 planos vendaveis com precos e URLs Hotmart
+- `canUpgrade(plan)`: retorna true para free/starter/pro
+- `ALL_PLANS`: inclui unlimited (usado apenas no AdminPanel)
 
 ---
 
@@ -262,11 +319,26 @@ O pool (`hashtag_pool`) e um estoque pre-carregado de videos virais brasileiros,
 7565365 -> agency
 ```
 
+### Sistema UTM/SCK (Rastreamento de Compra)
+
+Links de checkout Hotmart incluem `?sck={userId}` (campo nativo de tracking). Isso permite identificar o comprador pelo UUID do profile, independente do email usado no Hotmart.
+
+**Prioridade de identificacao no webhook**:
+1. **SCK** (`data.purchase.tracking.source_sck` ou `data.purchase.tracking.source`): se presente e UUID valido (regex), busca `profiles.id = sck`
+2. **Email** (fallback): busca `profiles.email = buyerEmail`
+3. **Pending plan**: se nenhum match, cria `pending_plans` para ativar no registro
+
+**Validacao**: SCK e validado com regex UUID (`/^[0-9a-f]{8}-...-[0-9a-f]{12}$/i`) para prevenir injection. SCK invalido e descartado silenciosamente.
+
+**Logs**: `webhook_logs.detail` inclui `matched_by_sck` ou `matched_by_email` para auditoria.
+
+**Frontend**: `Upgrade.tsx` e `PlanSelection.tsx` geram URLs com `?sck={user.id}` automaticamente.
+
 ### Eventos Tratados
 
 | Evento | Acao |
 |--------|------|
-| `PURCHASE_APPROVED` | Se usuario existe: atualiza plano + reseta creditos. Se nao existe: cria `pending_plan` para ativar no registro. |
+| `PURCHASE_APPROVED` | Se usuario existe (via SCK ou email): atualiza plano + reseta creditos + seta plan_selected=true. Se nao existe: cria `pending_plan`. |
 | `PURCHASE_CANCELED` | Downgrade para `free` (so se product_id bate com plano atual) |
 | `PURCHASE_REFUNDED` | Downgrade para `free` (so se product_id bate com plano atual) |
 | `PURCHASE_SUBSCRIPTION_CANCELING` | Apenas loga (mantem plano ate fim do periodo) |
@@ -377,42 +449,42 @@ O editor permite adicionar efeitos visuais (popup, overlay, particulas) e audio 
 ## 8. CRON JOBS
 
 ### pool-scheduler
-- **Cron**: `*/15 * * * *` (a cada 15 minutos)
-- **Nome no pg_cron**: `pool-scheduler-15min`
+- **Cron**: `0 */5 * * *` (a cada 5 horas)
+- **Nome no pg_cron**: `pool-scheduler-5h`
 - **O que faz**: Verifica estoque do pool por grupo, dispara `pool-refill` para grupos abaixo do threshold
 - **URL chamada**: `https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-scheduler`
 
 ### pool-refresh-urls
-- **Cron**: `0 */2 * * *` (a cada 2 horas)
-- **Nome no pg_cron**: `pool-refresh-urls-2h`
+- **Cron**: `*/5 * * * *` (a cada 5 minutos)
+- **Nome no pg_cron**: `pool-refresh-urls-5min`
 - **O que faz**: Renova URLs expiradas (>4h) no pool, processando 60 videos sequencialmente (1 req/1.05s)
 - **URL chamada**: `https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-refresh-urls`
 
 ### Como Pausar
 ```sql
 -- Pausar scheduler
-SELECT cron.unschedule('pool-scheduler-15min');
+SELECT cron.unschedule('pool-scheduler-5h');
 
 -- Pausar refresh
-SELECT cron.unschedule('pool-refresh-urls-2h');
+SELECT cron.unschedule('pool-refresh-urls-5min');
 ```
 
 ### Como Reativar
 ```sql
--- Reativar scheduler (a cada 15 min)
+-- Reativar scheduler (a cada 5h)
 SELECT cron.schedule(
-  'pool-scheduler-15min',
-  '*/15 * * * *',
+  'pool-scheduler-5h',
+  '0 */5 * * *',
   $$SELECT net.http_post(
     url := 'https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-scheduler',
     headers := '{"Authorization": "Bearer <ANON_KEY>"}'::jsonb
   )$$
 );
 
--- Reativar refresh (a cada 2h)
+-- Reativar refresh (a cada 5min)
 SELECT cron.schedule(
-  'pool-refresh-urls-2h',
-  '0 */2 * * *',
+  'pool-refresh-urls-5min',
+  '*/5 * * * *',
   $$SELECT net.http_post(
     url := 'https://fsgvvihcabhnkwandjic.supabase.co/functions/v1/pool-refresh-urls',
     headers := '{"Authorization": "Bearer <ANON_KEY>"}'::jsonb
@@ -656,6 +728,12 @@ curl https://ffmpeg-api-production-b226.up.railway.app/api/tts/voices
 4. **Erro de delete**: `undefined` video IDs apos download
 5. **Console.log de debug**: Varios `console.log` espalhados pelo codigo que precisam ser removidos
 
+### Bugs Corrigidos (2026-04-23)
+- **profiles.email NULL**: Todos os usuarios tinham `profiles.email = NULL`, impedindo o webhook Hotmart de encontrar usuarios existentes. Corrigido via backfill (`UPDATE profiles SET email = au.email FROM auth.users au`). O trigger `handle_new_user` ja salvava email para novos usuarios — o problema era apenas dados historicos.
+- **Webhooks Hotmart testados e funcionando**: 3 eventos validados via cURL — PURCHASE_APPROVED (novo usuario → pending_plan), PURCHASE_APPROVED (usuario existente → upgrade de plano), PURCHASE_CANCELED (downgrade para free). Match por email funciona apos backfill.
+- **UTM/SCK implementado**: Links Hotmart com `?sck={userId}` para rastreamento. Webhook prioriza SCK (UUID) sobre email. Testado 3/3: SCK valido, SCK invalido (fallback email), sem SCK (pending_plan).
+- **Bloqueio obrigatorio de plano**: Novos usuarios devem escolher plano (PlanSelection) antes de acessar o app. Free reduzido de 30 para 10 creditos.
+
 ### Debito Tecnico
 - **Arquivos muito grandes**: `Index.tsx` (2818 linhas), `VideoEditorTab.tsx` (2429 linhas) - precisam ser refatorados em componentes menores
 - **Seguranca relaxada**: Todas as Edge Functions com `verify_jwt = false`
@@ -685,6 +763,7 @@ viraladr/
 │   │   ├── Index.tsx                    # Dashboard principal (busca + editor)
 │   │   ├── Login.tsx                    # Registro/login de editores
 │   │   ├── AdminPanel.tsx               # Painel admin (editores, atividade, assinaturas)
+│   │   ├── Upgrade.tsx                  # Pagina de planos e upgrade (/upgrade)
 │   │   ├── PendingApproval.tsx          # Tela de espera de aprovacao
 │   │   └── NotFound.tsx                 # 404
 │   ├── components/
@@ -692,6 +771,7 @@ viraladr/
 │   │   ├── VideoCard.tsx                # Card de video individual
 │   │   ├── EffectsPreview.tsx           # Preview de efeitos visuais
 │   │   ├── PopupPreviewEditor.tsx       # Editor drag-drop de popup (9:16)
+│   │   ├── PlanSelection.tsx            # Tela obrigatoria de selecao de plano
 │   │   ├── TemplateManager.tsx          # CRUD de templates
 │   │   ├── UpgradeModal.tsx             # Modal de upgrade (creditos esgotados)
 │   │   ├── WelcomeModal.tsx             # Modal de boas-vindas (selecao de plano)
