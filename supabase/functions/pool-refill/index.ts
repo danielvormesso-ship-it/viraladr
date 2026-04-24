@@ -133,6 +133,25 @@ interface PoolVideo {
 
 const EMPTY_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
 
+// Grupos visuais/sonoros — conteúdo universal, não precisa ser BR
+const VISUAL_SONIC_GROUPS = new Set(['relaxante', 'satisfying', 'oddly satisfying', 'asmr']);
+
+// Soft check para grupos visuais — só rejeita lixo extremo (scripts não-latinos, kpop/anime)
+function isHardForeign(v: PoolVideo): boolean {
+  const title = (v.title || '').toLowerCase();
+  const author = (v.author || '').toLowerCase();
+  const text = `${title} ${author}`;
+
+  if (EMPTY_TITLE_RE.test(title.trim())) return true;
+  if (CJK_PATTERN.test(text)) return true;
+  if (CYRILLIC_PATTERN.test(text)) return true;
+  if (ARABIC_PATTERN.test(text)) return true;
+  if (OTHER_SCRIPT_PATTERN.test(text)) return true;
+  if (NON_BR_CONTENT_PATTERNS.test(text)) return true;
+
+  return false;
+}
+
 // Returns true if content is NOT Brazilian (should be rejected)
 function isForeignContent(v: PoolVideo): boolean {
   const title = (v.title || '').toLowerCase();
@@ -393,9 +412,12 @@ Deno.serve(async (req) => {
     });
 
     // ── 5. Apply foreign content filter + calculate br_score ──
-    const brFiltered = deduped.filter(v => !isForeignContent(v));
+    const skipBrFilter = VISUAL_SONIC_GROUPS.has(groupKey);
+    const brFiltered = skipBrFilter
+      ? deduped.filter(v => !isHardForeign(v))
+      : deduped.filter(v => !isForeignContent(v));
     const withScores = brFiltered.map(v => ({ ...v, br_score: calcBrScore(v) }));
-    console.log(`[pool-refill] After BR filter: ${withScores.length}/${deduped.length} passed`);
+    console.log(`[pool-refill] After BR filter (${skipBrFilter ? 'soft' : 'strict'}): ${withScores.length}/${deduped.length} passed`);
 
     // ── 6. Call filter-by-niche ONLY for truly new videos (Gemini optimization) ──
     let nicheApprovedIds = new Set<string>();
