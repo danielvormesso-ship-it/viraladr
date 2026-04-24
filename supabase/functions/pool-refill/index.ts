@@ -177,6 +177,10 @@ function isForeignContent(v: PoolVideo): boolean {
   const deCount = (text.match(FOREIGN_DE_WORDS) || []).length;
   if (enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2) return true;
 
+  // Reject English-dominant titles: 3+ English words without any Portuguese signal
+  const PORTUGUESE_WORDS = /\b(de|que|para|com|pelo|pela|eu|você|nós|ele|ela|não|sim|brasil|muito|tambem|também|aqui|agora|depois|antes|porque|por que|mas|isso|mesmo|mesma|meu|minha|seu|sua|esse|essa|nosso|nossa|fazer|como|onde|quando)\b/i;
+  if (enCount >= 3 && !PORTUGUESE_WORDS.test(text) && !BR_POSITIVE_CHARS.test(text)) return true;
+
   // Require at least one positive BR signal — no signal = reject
   if (BR_POSITIVE_CHARS.test(text)) return false;
   if (BR_POSITIVE_WORDS.test(text)) return false;
@@ -383,7 +387,7 @@ Deno.serve(async (req) => {
         const nicheRes = await fetch(`${supabaseUrl}/functions/v1/filter-by-niche`, { signal: AbortSignal.timeout(60000),
           method: 'POST',
           headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videos: nicheVideos, nicheDescription, nicheKeywords: preset.tags.slice(0, 10) }),
+          body: JSON.stringify({ videos: nicheVideos, nicheDescription, nicheKeywords: preset.tags.slice(0, 10), hashtag_group: groupKey }),
         });
 
         if (nicheRes.ok) {

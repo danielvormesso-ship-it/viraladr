@@ -12,6 +12,98 @@ interface VideoToFilter {
   author: string | null;
 }
 
+// ══════════════════════════════════════════════════════════════════
+// UNIVERSAL BLOCKLIST — aplica a TODOS os grupos, pré-Gemini
+// ══════════════════════════════════════════════════════════════════
+const UNIVERSAL_BLOCKLIST: Record<string, RegExp> = {
+  pornografia: /\b(onlyfans|privacy brasileira|conteudo privado|nsfw|pornhub|xvideos|conteudo adulto 18|nudez total|conteudo 18|pelada|pelado)\b/i,
+  politica: /\b(lula|bolsonaro|psol|pt partido|pl partido|eleicao 202[0-9]|congresso nacional|senado federal|deputado federal|vereador eleito|impeachment|cpi parlamentar|mst movimento|presidente da republica|stf supremo|alexandre de moraes)\b/i,
+  propaganda_pesada: /\b(hotmart|monetizze|eduzz|kiwify|braip|afiliado digital|mentoria paga|link na bio|compre agora|garanta o seu|ultimas vagas|curso online paga|meu curso|minha mentoria|promocao imperdivel|oferta limitada|ultimo lote|inscricoes abertas curso)\b/i,
+};
+
+// ══════════════════════════════════════════════════════════════════
+// GROUP BLOCKLIST — por hashtag_group real do banco
+// ══════════════════════════════════════════════════════════════════
+const SENSUAL_RE = /\b(sensual|sensualizando|sexy|gostosa|gostoso|gostosademais|biquini|biquíni|bikini|decote|lingerie|biscoitando|biscoitar|novinhagosta|delicia|vamosbalançar)\b/i;
+const SENSUAL_LIGHT_RE = /\b(sensual|sensualizando|sexy|biquini|biquíni|bikini|lingerie|biscoitando)\b/i;
+const DANCINHA_TRAP_RE = /\b(dana do momento|dancinha do momento|coreografia do momento|dance challenge)\b/i;
+const STREAMING_RE = /\b(disponivel na netflix|prime video|disney plus|hbo max|globoplay|paramount plus|trailer oficial|teaser oficial|filme oficial)\b/i;
+const SHEIN_AD_RE = /\b(shein|shopee)\b.*\b(link|compre|cupom|desconto)\b/i;
+const CONSPIRACAO_RE = /\b(terra plana|iluminati|illuminati|nibiru|reptiliano|nova ordem mundial|maçonaria secreta)\b/i;
+
+const GROUP_BLOCKLIST: Record<string, RegExp[]> = {
+  // HUMOR GROUP
+  pegadinha:    [SENSUAL_RE, DANCINHA_TRAP_RE],
+  humor:        [SENSUAL_RE, DANCINHA_TRAP_RE],
+  'comédia':    [SENSUAL_RE, DANCINHA_TRAP_RE],
+  memes:        [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  zoeira:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  risada:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  fail:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  trollagem:    [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  // VIRAL GROUP — sensual-soft OK
+  viral:        [STREAMING_RE],
+  fyp:          [STREAMING_RE],
+  trending:     [STREAMING_RE],
+  storytime:    [STREAMING_RE],
+  parati:       [STREAMING_RE],
+  viraltiktok:  [STREAMING_RE],
+  // LIFESTYLE — dancinha/música: sem bloqueio extra
+  dancinha:     [],
+  'música':     [],
+  // LIFESTYLE — novelinha: sem sensual explícito
+  novelinha:    [SENSUAL_LIGHT_RE],
+  // LIFESTYLE — satisfying/asmr
+  satisfying:   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  asmr:         [/\b(sensual asmr|sexy asmr|kiss asmr|mouth sounds sensual)\b/i],
+  // LIFESTYLE — rotina/viagem: sem sensual
+  rotina:       [SENSUAL_LIGHT_RE],
+  viagem:       [SENSUAL_LIGHT_RE],
+  // IA/NOVELA
+  'ia transforma': [SENSUAL_LIGHT_RE, STREAMING_RE],
+  'filtro ia':     [SENSUAL_LIGHT_RE],
+  'novela ia':     [SENSUAL_LIGHT_RE],
+  'frutas ia':     [SENSUAL_LIGHT_RE],
+  'novela antiga': [SENSUAL_LIGHT_RE, STREAMING_RE],
+  'cenas icônicas':[SENSUAL_LIGHT_RE, STREAMING_RE],
+  'animalia ia':   [SENSUAL_LIGHT_RE],
+  // NOVELAS
+  frutinovela:     [SENSUAL_LIGHT_RE],
+  mininovela:      [SENSUAL_LIGHT_RE],
+  cortesdenovela:  [SENSUAL_LIGHT_RE],
+  novelaglobo:     [SENSUAL_LIGHT_RE],
+  // CASA — unboxing: shein/shopee OK (é conteúdo), mas sem sensual
+  unboxing:        [SENSUAL_LIGHT_RE],
+  'organização':   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  'decoração':     [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  reforma:         [SENSUAL_LIGHT_RE],
+  faxina:          [SENSUAL_LIGHT_RE],
+  diarista:        [SENSUAL_LIGHT_RE],
+  // DICAS — fitness sem bloqueio sensual (é estético)
+  'motivação':     [SENSUAL_LIGHT_RE],
+  receita:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  dica:            [SENSUAL_LIGHT_RE],
+  curiosidade:     [SENSUAL_LIGHT_RE, CONSPIRACAO_RE],
+  fitness:         [],
+  'saúde':         [SENSUAL_LIGHT_RE],
+  hack:            [SENSUAL_LIGHT_RE],
+  tutorial:        [SENSUAL_LIGHT_RE],
+  // HOOK
+  react:           [SENSUAL_LIGHT_RE],
+  desafio:         [SENSUAL_LIGHT_RE],
+  'antes e depois':[SENSUAL_LIGHT_RE],
+  'transformação': [SENSUAL_LIGHT_RE],
+  chocante:        [SENSUAL_LIGHT_RE],
+  exposed:         [SENSUAL_LIGHT_RE],
+  'polêmico':      [SENSUAL_LIGHT_RE],
+  'ninguém esperava': [SENSUAL_LIGHT_RE],
+  // SATISFYING GROUP
+  'oddly satisfying': [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  relaxante:       [SENSUAL_LIGHT_RE],
+  'você sabia?':   [SENSUAL_LIGHT_RE],
+  'fato curioso':  [SENSUAL_LIGHT_RE],
+};
+
 const NICHE_REJECT_MAP: Record<string, string> = {
   humor: "dancinha coreografia sem humor, receita culinaria longa, tutorial tecnico longo, filme serie oficial promocao, politica eleicao, kpop drama coreano, cover musical sem humor, conteudo sensual/sexualizado/biquini/adulto",
   viral: "receita detalhada longa, tutorial tecnico, politica eleicao, filme oficial promocao, conteudo sensual/sexualizado/biquini/adulto",
@@ -175,10 +267,11 @@ serve(async (req) => {
   }
 
   try {
-    const { videos, nicheDescription, nicheKeywords } = await req.json() as {
+    const { videos, nicheDescription, nicheKeywords, hashtag_group } = await req.json() as {
       videos: VideoToFilter[];
       nicheDescription: string;
       nicheKeywords?: string[];
+      hashtag_group?: string;
     };
 
     if (!videos?.length || !nicheDescription) {
@@ -200,35 +293,54 @@ serve(async (req) => {
     const NO_TITLE_RE = /^(v[ií]deo\s*sem\s*t[ií]tulo|sem\s*t[ií]tulo|video\s*sem\s*titulo|)$/i;
     const EMOJI_ONLY_RE = /^[\p{Emoji}\s#@]+$/u;
 
-    // Hard blocklist: sensual/adulto rejeitado independente do Gemini
-    const HARD_BLOCKLIST = /\b(sensual|sensualizando|sexy|gostosa|gostoso|gostosademais|biquini|biquíni|bikini|decote|nudez|pelada|pelado|nsfw|18 ?\+|conteudo adulto|provocante|insinuante|hot ?girl|hot ?boy|safad[oa]|atrevida|cavalona|rabuda|rab[aã]o|peit[ãa]o|siliconada|body ?positiv|lingerie|roupa intima|de calcinha|sem suti[aã]|biscoitando|biscoitar|novinhagosta|gostosademais|delicia|vamosbalançar)\b/i;
-    // Dancinha disfarçada de nicho
-    const DANCINHA_TRAP = /\b(dana do momento|dancinha do momento|coreografia do momento|passinho do momento|dance challenge|dance trend)\b/i;
-    // Spam/lixo genérico
-    const SPAM_TITLES = /^(toptop viralvideo|lixo de video|spam de viral|fake views)/i;
+    const groupKey = hashtag_group?.toLowerCase() || '';
+    const groupRegexes = GROUP_BLOCKLIST[groupKey] || [];
 
     const autoApproved: string[] = [];
     const autoRejected: string[] = [];
     const needsAI: VideoToFilter[] = [];
-    let blocklistedCount = 0;
+    let emptyCount = 0;
+    let universalCount = 0;
+    let groupCount = 0;
+
     for (const v of videos) {
       const t = v.title.trim();
+
+      // 1. Empty/generic titles
       if (!t || NO_TITLE_RE.test(t) || t.length < 5 || EMOJI_ONLY_RE.test(t)) {
         autoRejected.push(v.id);
-      } else if (HARD_BLOCKLIST.test(t)) {
-        autoRejected.push(v.id);
-        blocklistedCount++;
-      } else if (DANCINHA_TRAP.test(t)) {
-        autoRejected.push(v.id);
-        blocklistedCount++;
-      } else if (SPAM_TITLES.test(t)) {
-        autoRejected.push(v.id);
-        blocklistedCount++;
-      } else {
-        needsAI.push(v);
+        emptyCount++;
+        continue;
       }
+
+      // 2. Universal blocklist (all groups)
+      let blocked = false;
+      for (const [tipo, regex] of Object.entries(UNIVERSAL_BLOCKLIST)) {
+        if (regex.test(t)) {
+          autoRejected.push(v.id);
+          universalCount++;
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+
+      // 3. Group-specific blocklist
+      let groupBlocked = false;
+      for (const regex of groupRegexes) {
+        if (regex.test(t)) {
+          autoRejected.push(v.id);
+          groupCount++;
+          groupBlocked = true;
+          break;
+        }
+      }
+      if (groupBlocked) continue;
+
+      // 4. Passes to Gemini
+      needsAI.push(v);
     }
-    console.log(`[filter-by-niche] Auto-rejected ${autoRejected.length} videos (${blocklistedCount} blocklisted, ${autoRejected.length - blocklistedCount} empty/generic)`);
+    console.log(`[filter-by-niche] group=${groupKey || '?'} rejected: ${emptyCount} empty, ${universalCount} universal, ${groupCount} group-specific, ${needsAI.length} → Gemini`);
 
     const BATCH_SIZE = 60;
     const batches: VideoToFilter[][] = [];
