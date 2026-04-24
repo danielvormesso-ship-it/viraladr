@@ -19,6 +19,8 @@ const UNIVERSAL_BLOCKLIST: Record<string, RegExp> = {
   pornografia: /\b(onlyfans|privacy brasileira|conteudo privado|nsfw|pornhub|xvideos|conteudo adulto 18|nudez total|conteudo 18|pelada|pelado)\b/i,
   politica: /\b(lula|bolsonaro|psol|pt partido|pl partido|eleicao 202[0-9]|congresso nacional|senado federal|deputado federal|vereador eleito|impeachment|cpi parlamentar|mst movimento|presidente da republica|stf supremo|alexandre de moraes)\b/i,
   propaganda_pesada: /\b(hotmart|monetizze|eduzz|kiwify|braip|afiliado digital|mentoria paga|link na bio|compre agora|garanta o seu|ultimas vagas|curso online paga|meu curso|minha mentoria|promocao imperdivel|oferta limitada|ultimo lote|inscricoes abertas curso)\b/i,
+  anime_manga: /\b(naruto fan|one piece fan|demon slayer|jujutsu kaisen|chainsaw man|dragon ball|attack on titan|my hero academia|anime edit|otaku|shonen|seinen|waifu|senpai|kawaii desu|anime hoje|animes de hoje)\b/i,
+  kpop: /\b(kpop|blackpink|bts army|jungkook|stray ?kids|ateez|twice|aespa|itzy|newjeans|seventeen|enhypen|nct dream|exo group|le ?sserafim|fancam|kpop stan|bias wrecker|aegyo|oppa bias)\b/i,
 };
 
 // ══════════════════════════════════════════════════════════════════
