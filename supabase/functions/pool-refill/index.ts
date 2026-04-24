@@ -165,26 +165,53 @@ function isForeignContent(v: PoolVideo): boolean {
   if (ARABIC_PATTERN.test(text)) return true;
   if (OTHER_SCRIPT_PATTERN.test(text)) return true;
 
-  // Reject high English density
+  // ── CRITÉRIO C — Palavras culinárias/culturais estrangeiras (rejeição imediata) ──
+  const FOREIGN_CULINARY = /\b(recette|magret|canard|patate douce|lavaş|tavuk|yemek|gastronomía|cocina casera|risotto fatto|plat du jour|cuisine terminé|recette facile|rapide à faire|ne yemek yapsam|ricetta italiana|pasta al dente)\b/i;
+  if (FOREIGN_CULINARY.test(text)) return true;
+
+  // ── CRITÉRIO D — Palavras fortes de outras línguas (rejeição imediata) ──
+  const FOREIGN_STRONG = /\b(couteau|chêne|promenade|forêt|bellissimo|bellissima|buonasera|buongiorno|andiamo|ragazzi|ragazza|perfetto|mangiare|magnifique|formidable|wunderbar|gemütlich|kindergarten|intelligenz|vergleich|incroyable|fantastique|merveilleux)\b/i;
+  if (FOREIGN_STRONG.test(text)) return true;
+
+  // Reject high English density (4+ words)
   const engMatches = text.match(ENG_WORDS_PATTERN);
   if (engMatches && engMatches.length >= 4) return true;
 
-  // Reject if 2+ words in any single foreign language
+  // Count foreign language words
   const enCount = (text.match(FOREIGN_EN_WORDS) || []).length;
   const esCount = (text.match(FOREIGN_ES_WORDS) || []).length;
   const frCount = (text.match(FOREIGN_FR_WORDS) || []).length;
   const itCount = (text.match(FOREIGN_IT_WORDS) || []).length;
   const deCount = (text.match(FOREIGN_DE_WORDS) || []).length;
+  const totalForeign = enCount + esCount + frCount + itCount + deCount;
+
+  // Reject if 2+ words in any single foreign language
   if (enCount >= 2 || esCount >= 2 || frCount >= 2 || itCount >= 2 || deCount >= 2) return true;
 
-  // Reject English-dominant titles: 3+ English words without any Portuguese signal
-  const PORTUGUESE_WORDS = /\b(de|que|para|com|pelo|pela|eu|você|nós|ele|ela|não|sim|brasil|muito|tambem|também|aqui|agora|depois|antes|porque|por que|mas|isso|mesmo|mesma|meu|minha|seu|sua|esse|essa|nosso|nossa|fazer|como|onde|quando)\b/i;
-  if (enCount >= 3 && !PORTUGUESE_WORDS.test(text) && !BR_POSITIVE_CHARS.test(text)) return true;
+  // ── Separação de acentos: ã/õ/ç são EXCLUSIVOS do português BR ──
+  const BR_EXCLUSIVE_CHARS = /[ãõç]/;
+  const hasBrExclusive = BR_EXCLUSIVE_CHARS.test(text);
+  const hasSharedAccent = /[áàâéêíóôúü]/.test(text);
+  const hasBrWord = BR_POSITIVE_WORDS.test(text);
+  const hasBrHashtag = BR_HASHTAGS_PATTERN.test(title);
 
-  // Require at least one positive BR signal — no signal = reject
-  if (BR_POSITIVE_CHARS.test(text)) return false;
-  if (BR_POSITIVE_WORDS.test(text)) return false;
-  if (BR_HASHTAGS_PATTERN.test(title)) return false;
+  // ── CRITÉRIO B — 1 palavra estrangeira + nenhum sinal BR exclusivo → rejeitar ──
+  if (totalForeign >= 1 && !hasBrWord && !hasBrHashtag && !hasBrExclusive) return true;
+
+  // Reject English-dominant: 3+ EN without Portuguese signal
+  const PORTUGUESE_WORDS = /\b(de|que|para|com|pelo|pela|eu|você|nós|ele|ela|não|sim|brasil|muito|tambem|também|aqui|agora|depois|antes|porque|por que|mas|isso|mesmo|mesma|meu|minha|seu|sua|esse|essa|nosso|nossa|fazer|como|onde|quando)\b/i;
+  if (enCount >= 3 && !PORTUGUESE_WORDS.test(text) && !hasBrExclusive) return true;
+
+  // ── CRITÉRIO E — Título curto sem sinal BR ──
+  const titleText = title.replace(/#\w+/g, '').replace(/[^\w\s]/g, '').trim();
+  if (titleText.length < 15 && !hasBrWord && !hasBrHashtag && !hasBrExclusive && !hasSharedAccent) return true;
+
+  // ── Positive signals ──
+  if (hasBrExclusive) return false;        // ã/õ/ç = BR exclusivo
+  if (hasBrWord) return false;              // kkk, mano, cara, etc.
+  if (hasBrHashtag) return false;           // #parati, #tiktokbr, etc.
+  // Acento compartilhado (à/é/ê/etc.) SÓ conta se NÃO tem palavra estrangeira
+  if (hasSharedAccent && totalForeign === 0) return false;
 
   // No positive signal → foreign
   return true;

@@ -83,7 +83,7 @@ const GROUP_BLOCKLIST: Record<string, RegExp[]> = {
   diarista:        [SENSUAL_LIGHT_RE],
   // DICAS — fitness sem bloqueio sensual (é estético)
   'motivação':     [SENSUAL_LIGHT_RE],
-  receita:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
+  receita:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, /\b(recette|cuisine|magret|canard|patate douce|lavaş|tavuk|yemek|gastronomía peruana|cocina casera|ricetta|risotto fatto|plat du jour|cuisine terminé|receta fácil|ne yemek yapsam|gastronomía mexicana|pasta al dente)\b/i],
   dica:            [SENSUAL_LIGHT_RE],
   curiosidade:     [SENSUAL_LIGHT_RE, CONSPIRACAO_RE],
   fitness:         [],
