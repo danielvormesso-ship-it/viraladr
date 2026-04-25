@@ -44,6 +44,19 @@ export function useCredits() {
     await refreshProfile();
   };
 
+  /** Filter out tiktok_ids already paid for (present in used_videos).
+   *  Returns only the IDs that have NOT been paid yet. */
+  const filterAlreadyPaid = async (tiktokIds: string[]): Promise<string[]> => {
+    if (!profile || isUnlimited || tiktokIds.length === 0) return tiktokIds;
+    const { data } = await supabase
+      .from('used_videos')
+      .select('tiktok_id')
+      .eq('user_id', profile.id)
+      .in('tiktok_id', tiktokIds);
+    const paidSet = new Set((data || []).map((r: any) => r.tiktok_id));
+    return tiktokIds.filter(id => !paidSet.has(id));
+  };
+
   return {
     plan,
     limits,
@@ -54,5 +67,6 @@ export function useCredits() {
     isExhausted,
     canUseCredits,
     deductCredits,
+    filterAlreadyPaid,
   };
 }
