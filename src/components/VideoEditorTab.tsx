@@ -1011,7 +1011,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         let completedCount = 0;
         let startedCount = 0;
         const successfulVideoIds = new Set<string>();
-        const SERVER_PARALLEL = 16; // Pipeline: enquanto job 1 processa, jobs 2-4 já baixam
+        const SERVER_PARALLEL = 12; // Pipeline: 16 saturou Railway (18% falha), 12 é o sweet spot
         const retryableFailedVideos: typeof finalTargets = [];
 
         const processQueue: typeof finalTargets = [];
