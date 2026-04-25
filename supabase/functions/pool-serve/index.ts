@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} seen=${seenTotal} used=${usedTotal}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
-    // Only serve videos with fresh CDN URLs (fetched within last 4 hours)
+    // Only serve videos with fresh CDN URLs (fetched within last 8 hours)
     const freshCutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + 200, 8000);
     let poolQuery = adminClient
@@ -109,17 +109,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Filter out seen/used + reject non-vertical when dimensions are known ──
-    const served = (poolRows || [])
-      .filter(v => {
-        if (excludeIds.has(v.tiktok_id)) return false;
-        // If dimensions are saved, enforce vertical (height >= width * 1.6)
-        const w = (v as any).video_width;
-        const h = (v as any).video_height;
-        if (w && h && w > 0 && h > 0 && h < w * 1.6) return false;
-        return true;
-      })
-      .slice(0, safeLimit);
+    // ── 3. Filter out seen/used, split into measured-vertical vs unmeasured ──
+    const measuredVertical: typeof poolRows = [];
+    const unmeasured: typeof poolRows = [];
+    for (const v of (poolRows || [])) {
+      if (excludeIds.has(v.tiktok_id)) continue;
+      const w = v.video_width as number | null;
+      const h = v.video_height as number | null;
+      if (w && h && w > 0 && h > 0) {
+        // Dimensions known: only keep vertical
+        if (h >= w * 1.6) measuredVertical.push(v);
+        // else: non-vertical → skip
+      } else {
+        // No dimensions: unmeasured
+        unmeasured.push(v);
+      }
+    }
+
+    // Prefer measured-vertical; fill with unmeasured only if needed
+    const served = measuredVertical.length >= safeLimit
+      ? measuredVertical.slice(0, safeLimit)
+      : [...measuredVertical, ...unmeasured].slice(0, safeLimit);
+
+    console.log(`[pool-serve] Split: ${measuredVertical.length} measured-vertical, ${unmeasured.length} unmeasured, serving ${served.length}`);
 
     // ── 4. Format as TikTokVideo (same shape frontend expects) ──
     const videos = served.map(v => ({
