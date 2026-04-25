@@ -2093,8 +2093,12 @@ const Index = () => {
     try {
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
+        // Deduct BEFORE marking as used (filterAlreadyPaid checks used_videos)
+        if (currentVideo.tiktok_id) {
+          const unpaid = await credits.filterAlreadyPaid([currentVideo.tiktok_id]);
+          if (unpaid.length > 0) await credits.deductCredits(1);
+        }
         if (!isDev && currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
-        await credits.deductCredits(1);
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
         // Remove downloaded video from preview and DB
@@ -2423,21 +2427,27 @@ const Index = () => {
     const totalTime = ((performance.now() - batchStartTime) / 1000).toFixed(1);
     console.log(`[Batch Download] ${successCount}/${batchCount} em ${totalTime}s | Direto: ${directUrlCount} | Edge Fn: ${edgeFnCount}`);
 
+    // Deduct credits BEFORE marking as used (so filterAlreadyPaid works correctly)
+    const successTiktokIds = videosToDownload.filter(v => v.tiktok_id).map(v => v.tiktok_id!);
+    if (successCount > 0) {
+      try {
+        const unpaidIds = await credits.filterAlreadyPaid(successTiktokIds);
+        if (unpaidIds.length > 0) {
+          await credits.deductCredits(unpaidIds.length);
+        }
+      } catch (err) { console.error('[deductCredits] erro:', err); }
+    }
+
     // Mark downloaded videos as used (persisted in Supabase)
     const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
     if (!isDev) await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
 
-    // Remove downloaded videos from preview and DB (before deductCredits to avoid stuck UI)
+    // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));
     setVideos(prev => prev.filter(v => !downloadedIds.has(v.id)));
     setCurrentIndex(0);
     setDownloadedCount((prev) => prev + requestedCount);
     tiktokApi.deleteVideos(Array.from(downloadedIds)).catch(err => console.error('Delete error:', err));
-
-    // Deduct credits for downloaded videos
-    if (successCount > 0) {
-      try { await credits.deductCredits(successCount); } catch (err) { console.error('[deductCredits] erro:', err); }
-    }
     setBatchProgress({ current: 0, total: 0, active: false });
     toast({
       title: successCount > 0 ? `ZIP pronto! ⚡ ${totalTime}s` : "Falha no download",

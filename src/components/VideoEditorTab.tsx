@@ -1461,8 +1461,15 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           addLog(`📦 [ZIP-DEBUG] ZIP gerado: ${zipName} — blob size=${(zipBlob.size / 1024 / 1024).toFixed(1)}MB, arquivos=${zipFileCount}`, 'success');
           
           // Deduct credits for successfully edited videos (not preview)
+          // Only charge for videos not already paid (prevents double-charge on download+edit)
           if (successCount > 0 && !isPreview) {
-            await credits.deductCredits(successCount);
+            const successTiktokIds = videosToProcess
+              .filter(v => successfulVideoIds.has(v.id) && v.tiktok_id)
+              .map(v => v.tiktok_id!);
+            const unpaidIds = await credits.filterAlreadyPaid(successTiktokIds);
+            if (unpaidIds.length > 0) {
+              await credits.deductCredits(unpaidIds.length);
+            }
           }
 
           // Remove processed videos from the list (never in preview mode)
