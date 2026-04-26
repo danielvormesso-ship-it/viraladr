@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2, ChevronLeft, ChevronRight, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -114,6 +115,13 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [rotationEvery, setRotationEvery] = useState(5);
   const [rotationPopups, setRotationPopups] = useState<File[]>([]);
   const [rotationAudios, setRotationAudios] = useState<File[]>([]);
+  // Pulse effect
+  const [pulseEnabled, setPulseEnabled] = useState(false);
+  const [pulseIntensity, setPulseIntensity] = useState(6);
+  const [pulseSpeed, setPulseSpeed] = useState(0.6);
+  // Rotation popup preview navigation
+  const [previewRotationIdx, setPreviewRotationIdx] = useState(0);
+  const rotationPreviewUrlRef = useRef<string | null>(null);
   const [rotationConfirmData, setRotationConfirmData] = useState<{
     totalVideos: number;
     totalSlots: number;
@@ -1848,10 +1856,37 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
 
         {/* Preview */}
         <div className="p-5">
+          {/* Navigation between rotation popups */}
+          {rotationEnabled && rotationPopups.length > 1 && (
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                onClick={() => setPreviewRotationIdx(i => Math.max(0, i - 1))}
+                disabled={previewRotationIdx === 0}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs font-medium text-muted-foreground">
+                Popup {previewRotationIdx + 1}/{rotationPopups.length}
+              </span>
+              <Button size="sm" variant="outline" className="h-7 w-7 p-0"
+                onClick={() => setPreviewRotationIdx(i => Math.min(rotationPopups.length - 1, i + 1))}
+                disabled={previewRotationIdx === rotationPopups.length - 1}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
           <PopupPreviewEditor
             videoSrc={previewVideoSrc}
             thumbnailSrc={previewThumbnailSrc}
-            popupMediaSrc={popupMediaPreview}
+            popupMediaSrc={(() => {
+              if (rotationEnabled && rotationPopups.length > 0) {
+                const idx = Math.min(previewRotationIdx, rotationPopups.length - 1);
+                if (rotationPreviewUrlRef.current) URL.revokeObjectURL(rotationPreviewUrlRef.current);
+                const url = URL.createObjectURL(rotationPopups[idx]);
+                rotationPreviewUrlRef.current = url;
+                return url;
+              }
+              return popupMediaPreview;
+            })()}
             popupAudioSrc={popupAudioPreview}
             popupMediaType={popupMediaType}
             popupFullscreen={popupFullscreen}
@@ -1864,6 +1899,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             popupAudioVolume={popupAudioVolume}
             videoVolumeAfterPopup={videoVolumeAfterPopup}
             effects={effects}
+            pulseEnabled={pulseEnabled}
+            pulseIntensity={pulseIntensity}
+            pulseSpeed={pulseSpeed}
           />
         </div>
       </div>
@@ -1976,6 +2014,54 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
               onCheckedChange={setMuteEntireAudio}
             />
           </div>
+
+          {/* Pulse effect */}
+          {editMode !== 'audio_only' && (
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium text-foreground">Pulsação</span>
+                  {pulseEnabled && <span className="text-[10px] text-primary font-bold">ON</span>}
+                </div>
+                <Switch checked={pulseEnabled} onCheckedChange={setPulseEnabled} />
+              </div>
+              {pulseEnabled && (
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Intensidade</label>
+                    <div className="flex gap-1.5">
+                      {[{ label: 'Sutil', value: 3 }, { label: 'Médio', value: 6 }, { label: 'Forte', value: 10 }].map(p => (
+                        <Button key={p.value} size="sm" variant={pulseIntensity === p.value ? 'default' : 'outline'}
+                          className="h-7 text-[10px] px-2.5" onClick={() => setPulseIntensity(p.value)}>
+                          {p.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Slider value={[pulseIntensity]} onValueChange={([v]) => setPulseIntensity(v)} min={1} max={15} step={1} className="flex-1" />
+                      <span className="text-[10px] text-muted-foreground font-mono w-8 text-right">{pulseIntensity}%</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Velocidade</label>
+                    <div className="flex gap-1.5">
+                      {[{ label: 'Lenta', value: 1.0 }, { label: 'Média', value: 0.6 }, { label: 'Rápida', value: 0.4 }].map(p => (
+                        <Button key={p.value} size="sm" variant={pulseSpeed === p.value ? 'default' : 'outline'}
+                          className="h-7 text-[10px] px-2.5" onClick={() => setPulseSpeed(p.value)}>
+                          {p.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Slider value={[pulseSpeed * 10]} onValueChange={([v]) => setPulseSpeed(v / 10)} min={3} max={20} step={1} className="flex-1" />
+                      <span className="text-[10px] text-muted-foreground font-mono w-8 text-right">{pulseSpeed.toFixed(1)}s</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Volume row */}
           <div className="grid grid-cols-2 gap-3">

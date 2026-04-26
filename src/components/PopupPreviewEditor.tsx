@@ -26,6 +26,9 @@ interface PopupPreviewEditorProps {
   popupAudioVolume: number;
   videoVolumeAfterPopup: number;
   effects?: VisualEffects;
+  pulseEnabled?: boolean;
+  pulseIntensity?: number;
+  pulseSpeed?: number;
 }
 
 type DragMode = 'move' | 'resize-br' | 'resize-bl' | 'resize-tr' | 'resize-tl' | 'rotate' | null;
@@ -46,6 +49,9 @@ export const PopupPreviewEditor = ({
   popupAudioVolume,
   videoVolumeAfterPopup,
   effects = defaultEffects,
+  pulseEnabled = false,
+  pulseIntensity = 6,
+  pulseSpeed = 0.6,
 }: PopupPreviewEditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -429,10 +435,27 @@ export const PopupPreviewEditor = ({
 
         {popupAudioSrc && <audio ref={popupAudioRef} src={popupAudioSrc} preload="auto" />}
 
+        {/* Pulse animation keyframes */}
+        {pulseEnabled && isPopupWindowActive && (
+          <style>{`
+            @keyframes popup-pulse {
+              0%, 100% { transform: scale(1) rotate(${popupFullscreen ? 0 : transform.rotation}deg); }
+              50% { transform: scale(${1 + pulseIntensity / 100}) rotate(${popupFullscreen ? 0 : transform.rotation}deg); }
+            }
+          `}</style>
+        )}
+
         {/* Popup overlay — ALWAYS on top of dark overlay and effects */}
         {popupMediaSrc && isPopupWindowActive && (
           <div
-            style={{ ...popupStyle, zIndex: 12 }}
+            style={{
+              ...popupStyle,
+              zIndex: 12,
+              ...(pulseEnabled ? {
+                animation: `popup-pulse ${pulseSpeed}s ease-in-out infinite`,
+                transform: undefined,
+              } : {}),
+            }}
             className={`${!popupFullscreen ? 'cursor-move' : ''} transition-shadow duration-200`}
             onPointerDown={!popupFullscreen ? (e) => handlePointerDown(e, 'move') : undefined}
           >
