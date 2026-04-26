@@ -1266,7 +1266,7 @@ const Index = () => {
         singleScrapeCursorRef.current = { tag: mainTag, cursor: loadCursor(mainTag) };
       }
       const [result, seenIds, usedIds] = await Promise.all([
-        tiktokApi.scrapeByHashtag(mainTag, liveTarget * 4, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
+        tiktokApi.scrapeByHashtag(mainTag, liveTarget * 8, undefined, forceRefresh, true, singleScrapeCursorRef.current.cursor),
         tiktokApi.getSeenVideoIds(),
         tiktokApi.getUsedVideoIds(),
       ]);
@@ -1291,7 +1291,7 @@ const Index = () => {
       if (unseenVideos.length === 0 && singleScrapeCursorRef.current.cursor) {
         singleScrapeCursorRef.current.cursor = null;
         try { localStorage.removeItem(`cursor_${mainTag}`); } catch {}
-        const freshResult = await tiktokApi.scrapeByHashtag(mainTag, liveTarget * 4, undefined, true, true);
+        const freshResult = await tiktokApi.scrapeByHashtag(mainTag, liveTarget * 8, undefined, true, true);
         if (freshResult.next_cursor) {
           singleScrapeCursorRef.current.cursor = freshResult.next_cursor;
           saveCursor(mainTag, freshResult.next_cursor);
@@ -1328,7 +1328,7 @@ const Index = () => {
           singleScrapeCursorRef.current.cursor = null;
           try { localStorage.removeItem(`cursor_${mainTag}`); } catch {}
         }
-        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 4, undefined, true, true, deficitCursor);
+        const deficitResult = await tiktokApi.scrapeByHashtag(mainTag, deficit * 8, undefined, true, true, deficitCursor);
         if (deficitResult.next_cursor) {
           deficitCursor = deficitResult.next_cursor;
           singleScrapeCursorRef.current.cursor = deficitResult.next_cursor;
