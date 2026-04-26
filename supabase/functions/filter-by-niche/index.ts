@@ -217,7 +217,7 @@ ${videoList}`;
       Deno.env.get("GEMINI_API_KEY_2"),
       Deno.env.get("GEMINI_API_KEY_3"),
     ].filter(Boolean) as string[];
-    const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
+    const MODELS = ["gemini-2.0-flash-lite", "gemini-2.5-flash"];
     let response: Response | null = null;
     for (const model of MODELS) {
       for (const key of allKeys) {
