@@ -86,8 +86,10 @@ Deno.serve(async (req) => {
     console.log(`[pool-serve] group=${groupKey} user=${user_id.slice(0, 8)}... limit=${safeLimit} exclude=${excludeIds.size} seen=${seenTotal} used=${usedTotal}`);
 
     // ── 2. Query pool: approved videos, overfetch to compensate exclusions ──
-    // Only serve videos with fresh CDN URLs (fetched within last 8 hours)
-    const freshCutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+    // 24h: TikTok URLs expiram em ~8h MAS frontend tem auto-renovação
+    // (isCdnUrlExpired + proxy-video + refresh-video-url são self-healing)
+    // Cliente vê apenas ~1-2s extra por URL expirada — totalmente transparente
+    const freshCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const overfetch = Math.min(safeLimit + excludeIds.size + 200, 8000);
     let poolQuery = adminClient
       .from('hashtag_pool')
