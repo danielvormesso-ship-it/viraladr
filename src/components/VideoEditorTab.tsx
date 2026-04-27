@@ -816,6 +816,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           requirePopupMedia: editMode !== 'audio_only' && (Boolean(popupMedia) || (rotationEnabled && rotationPopups.length > 0)),
           effects: effectiveEffects,
           mode: editMode,
+          pulseEffect: pulseEnabled ? { enabled: true, intensity: pulseIntensity, speed: pulseSpeed } : undefined,
         };
 
         console.log('[processConfig-debug]', {
@@ -2026,6 +2027,14 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                 </div>
                 <Switch checked={pulseEnabled} onCheckedChange={setPulseEnabled} />
               </div>
+              {pulseEnabled && popupFullscreen && (
+                <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-[11px] text-amber-200 leading-tight">
+                    Pulsação em tela inteira pode cortar bordas do popup. Recomendamos desativar fullscreen ou reduzir intensidade.
+                  </span>
+                </div>
+              )}
               {pulseEnabled && (
                 <div className="space-y-3 pt-1">
                   <div className="space-y-2">

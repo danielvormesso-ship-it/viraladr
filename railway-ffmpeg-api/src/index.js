@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const { execFile, spawn } = require('child_process');
+const { execFile, execSync, spawn } = require('child_process');
 const { promisify } = require('util');
 const fs = require('fs');
 const path = require('path');
@@ -733,6 +733,77 @@ app.get('/health', (req, res) => {
     hasLibx264: ffmpegRuntime.hasLibx264,
   });
 });
+
+// ====== TEMPORARY: Test pulse effect endpoint (remove after validation) ======
+app.get('/api/test-pulse', auth, async (req, res) => {
+  const testDir = path.join(UPLOAD_DIR, 'pulse-test-' + Date.now());
+  const fs = require('fs');
+  fs.mkdirSync(testDir, { recursive: true });
+
+  const baseMp4 = path.join(testDir, 'base.mp4');
+  const popupPng = path.join(testDir, 'popup.png');
+  const output = path.join(testDir, 'output_pulse.mp4');
+
+  const intensity = parseFloat(req.query.intensity) || 0.06;
+  const speed = parseFloat(req.query.speed) || 0.6;
+  const size = parseInt(req.query.size) || 540;
+
+  try {
+    // Step 0: FFmpeg version
+    const versionResult = execSync('ffmpeg -version 2>&1 | head -1').toString().trim();
+
+    // Step 1: Generate test base video (blue 1080x1920, 5s)
+    execSync(`ffmpeg -y -f lavfi -i "color=c=0x1a1a2e:s=1080x1920:d=5:r=30" -c:v libx264 -preset ultrafast -t 5 "${baseMp4}"`, { timeout: 30000 });
+
+    // Step 2: Generate test popup PNG (red square)
+    execSync(`ffmpeg -y -f lavfi -i "color=c=red:s=${size}x${size}:d=1" -frames:v 1 "${popupPng}"`, { timeout: 10000 });
+
+    // Step 3: Run pulse command — THE ACTUAL TEST
+    const pulseExpr = `2*trunc(${size}*(1+${intensity}*sin(2*PI*t/${speed}))/2)`;
+    const filterComplex = [
+      `[1:v]scale=w='${pulseExpr}':h='${pulseExpr}':eval=frame:flags=lanczos,format=rgba[scaled]`,
+      `[0:v][scaled]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:enable='between(t,0,4)'[vout]`
+    ].join(';');
+
+    const cmd = `ffmpeg -y -i "${baseMp4}" -i "${popupPng}" -filter_complex "${filterComplex}" -map "[vout]" -c:v libx264 -preset ultrafast -t 5 "${output}"`;
+
+    const startTime = Date.now();
+    const ffmpegOutput = execSync(cmd + ' 2>&1', { timeout: 120000 }).toString();
+    const elapsed = Date.now() - startTime;
+
+    // Step 4: Probe output
+    const probeCmd = `ffprobe -v error -show_entries format=duration,size:stream=width,height,codec_name,r_frame_rate -of json "${output}"`;
+    const probeResult = JSON.parse(execSync(probeCmd).toString());
+
+    // Step 5: Get file size
+    const stats = fs.statSync(output);
+
+    res.json({
+      success: true,
+      ffmpegVersion: versionResult,
+      command: cmd,
+      filterComplex,
+      params: { intensity, speed, size },
+      elapsed: `${elapsed}ms`,
+      output: {
+        fileSize: `${(stats.size / 1024).toFixed(1)}KB`,
+        probe: probeResult,
+      },
+      ffmpegLog: ffmpegOutput.split('\n').slice(-10).join('\n'),
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stderr: err.stderr?.toString()?.split('\n').slice(-20).join('\n') || '',
+      command: `intensity=${intensity} speed=${speed} size=${size}`,
+    });
+  } finally {
+    // Cleanup
+    try { fs.rmSync(testDir, { recursive: true, force: true }); } catch (_) {}
+  }
+});
+// ====== END TEMPORARY TEST ENDPOINT ======
 
 const sessionAssets = new Map();
 const normalizedPopupCache = new Map();
