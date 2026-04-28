@@ -1020,7 +1020,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         let completedCount = 0;
         let startedCount = 0;
         const successfulVideoIds = new Set<string>();
-        const SERVER_PARALLEL = 10; // Railway satura com 12+ (27% falha em batch grande)
+        const SERVER_PARALLEL = pulseEnabled ? 4 : 10; // Railway satura com eval=frame em 10+ paralelos
         const retryableFailedVideos: typeof finalTargets = [];
 
         const processQueue: typeof finalTargets = [];
