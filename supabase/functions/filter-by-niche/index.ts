@@ -230,6 +230,8 @@ ${videoList}`;
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: prompt }],
+            // Disable thinking tokens on 2.5-flash ($3.50/1M → $0) — passed through by OpenAI compat layer
+            ...(model.includes('2.5') ? { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } } : {}),
           }),
         });
         if (response.ok) break;

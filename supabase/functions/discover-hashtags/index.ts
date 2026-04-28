@@ -81,16 +81,25 @@ Exemplos de boas hashtags para nichos:
 - Satisfying: satisfying, relaxante, oddlysatisfying, asmrbr
 - Curiosidade: vocesabia, curiosidade, fatocurioso, mundocurioso`;
 
+    const MODELS = ['gemini-2.0-flash-lite', 'gemini-2.5-flash'];
     let response: Response | null = null;
-    for (const key of GEMINI_KEYS) {
-      response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'gemini-2.5-flash', messages: [{ role: 'user', content: discoverPrompt }] }),
-        signal: AbortSignal.timeout(30000),
-      });
-      if (response.ok || response.status !== 429) break;
-      console.warn(`[discover-hashtags] 429 with key ...${key.slice(-6)}, trying next`);
+    for (const model of MODELS) {
+      for (const key of GEMINI_KEYS) {
+        response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: discoverPrompt }] }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (response.ok) break;
+        if (response.status === 429) {
+          console.warn(`[discover-hashtags] 429 with ${model} key ...${key.slice(-6)}, trying next`);
+        } else if (response.status === 503) {
+          console.warn(`[discover-hashtags] 503 with ${model}, trying fallback model`);
+          break;
+        }
+      }
+      if (response?.ok) break;
     }
 
     if (!response || !response.ok) {
