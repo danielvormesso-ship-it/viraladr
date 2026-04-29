@@ -2027,11 +2027,11 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                 </div>
                 <Switch checked={pulseEnabled} onCheckedChange={setPulseEnabled} />
               </div>
-              {pulseEnabled && (
-                <div className="flex items-start gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/30">
-                  <AlertTriangle className="h-3.5 w-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-[11px] text-blue-200 leading-tight">
-                    Beta — Preview apenas. Efeito visível aqui, em breve no resultado final.
+              {pulseEnabled && popupFullscreen && (
+                <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-[11px] text-amber-200 leading-tight">
+                    Pulsação em tela inteira pode cortar bordas do popup. Recomendamos desativar fullscreen ou reduzir intensidade.
                   </span>
                 </div>
               )}
