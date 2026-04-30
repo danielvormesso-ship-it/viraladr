@@ -26,11 +26,6 @@ export interface ServerProcessConfig {
     pixCount?: number;
   };
   mode?: 'popup_audio' | 'popup_only' | 'audio_only';
-  pulseEffect?: {
-    enabled: boolean;
-    intensity: number;  // 1-15 (% scale oscillation)
-    speed: number;      // 0.3-2.0 (seconds per cycle)
-  };
 }
 
 export interface JobStatus {

@@ -111,11 +111,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 3. Filter out seen/used, split into measured-vertical vs unmeasured ──
+    // ── 3. Filter out seen/used + dedup reposts (same title from different authors) ──
     const measuredVertical: typeof poolRows = [];
     const unmeasured: typeof poolRows = [];
+    const seenTitles = new Set<string>();
     for (const v of (poolRows || [])) {
       if (excludeIds.has(v.tiktok_id)) continue;
+      // Dedup reposts: same title (trimmed, >15 chars) = likely same video content
+      const titleKey = ((v.title as string) || '').trim().toLowerCase();
+      if (titleKey.length > 15) {
+        if (seenTitles.has(titleKey)) continue;
+        seenTitles.add(titleKey);
+      }
       const w = v.video_width as number | null;
       const h = v.video_height as number | null;
       if (w && h && w > 0 && h > 0) {

@@ -32,77 +32,78 @@ const DANCINHA_TRAP_RE = /\b(dana do momento|dancinha do momento|coreografia do 
 const STREAMING_RE = /\b(disponivel na netflix|prime video|disney plus|hbo max|globoplay|paramount plus|trailer oficial|teaser oficial|filme oficial)\b/i;
 const SHEIN_AD_RE = /\b(shein|shopee)\b.*\b(link|compre|cupom|desconto)\b/i;
 const CONSPIRACAO_RE = /\b(terra plana|iluminati|illuminati|nibiru|reptiliano|nova ordem mundial|maçonaria secreta)\b/i;
+const COOKING_RE = /\b(receita|receitinha|ingredientes|cozinhando|frigideira|liquidificador|temperar|tempero|assar|misture|adicione|despeje|fritar|cozer|modo de preparo|colher de sopa|xicara|pitada|untar|batedeira)\b/i;
 
 const GROUP_BLOCKLIST: Record<string, RegExp[]> = {
   // HUMOR GROUP
-  pegadinha:    [SENSUAL_RE, DANCINHA_TRAP_RE],
-  humor:        [SENSUAL_RE, DANCINHA_TRAP_RE],
-  'comédia':    [SENSUAL_RE, DANCINHA_TRAP_RE],
-  memes:        [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  zoeira:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  risada:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  fail:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  trollagem:    [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  // VIRAL GROUP — sensual-soft OK
-  viral:        [STREAMING_RE],
-  fyp:          [STREAMING_RE],
-  trending:     [STREAMING_RE],
-  storytime:    [STREAMING_RE],
-  parati:       [STREAMING_RE],
-  viraltiktok:  [STREAMING_RE],
-  // LIFESTYLE — dancinha/música: sem bloqueio extra
-  dancinha:     [/^(foi mal|cad o|comenta a |esse foi o pior|n[aã]o deixe|cuidado redobrado|um dia n[oô]is|pense nisso|caçador de|al[oô] mam[aã]e)/i],
-  'música':     [],
-  // LIFESTYLE — novelinha: sem sensual explícito
-  novelinha:    [SENSUAL_LIGHT_RE],
+  pegadinha:    [SENSUAL_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  humor:        [SENSUAL_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  'comédia':    [SENSUAL_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  memes:        [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  zoeira:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  risada:       [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  fail:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  trollagem:    [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  // VIRAL GROUP
+  viral:        [STREAMING_RE, COOKING_RE],
+  fyp:          [STREAMING_RE, COOKING_RE],
+  trending:     [STREAMING_RE, COOKING_RE],
+  storytime:    [STREAMING_RE, COOKING_RE],
+  parati:       [STREAMING_RE, COOKING_RE],
+  viraltiktok:  [STREAMING_RE, COOKING_RE],
+  // LIFESTYLE — dancinha/música
+  dancinha:     [COOKING_RE, /^(foi mal|cad o|comenta a |esse foi o pior|n[aã]o deixe|cuidado redobrado|um dia n[oô]is|pense nisso|caçador de|al[oô] mam[aã]e)/i],
+  'música':     [COOKING_RE],
+  // LIFESTYLE — novelinha
+  novelinha:    [SENSUAL_LIGHT_RE, COOKING_RE],
   // LIFESTYLE — satisfying/asmr
-  satisfying:   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  asmr:         [/\b(sensual asmr|sexy asmr|kiss asmr|mouth sounds sensual)\b/i],
-  // LIFESTYLE — rotina/viagem: sem sensual
-  rotina:       [SENSUAL_LIGHT_RE],
-  viagem:       [SENSUAL_LIGHT_RE],
+  satisfying:   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  asmr:         [COOKING_RE, /\b(sensual asmr|sexy asmr|kiss asmr|mouth sounds sensual)\b/i],
+  // LIFESTYLE — rotina/viagem
+  rotina:       [SENSUAL_LIGHT_RE, COOKING_RE],
+  viagem:       [SENSUAL_LIGHT_RE, COOKING_RE],
   // IA/NOVELA
-  'ia transforma': [SENSUAL_LIGHT_RE, STREAMING_RE],
-  'filtro ia':     [SENSUAL_LIGHT_RE],
-  'novela ia':     [SENSUAL_LIGHT_RE],
-  'frutas ia':     [SENSUAL_LIGHT_RE],
-  'novela antiga': [SENSUAL_LIGHT_RE, STREAMING_RE],
-  'cenas icônicas':[SENSUAL_LIGHT_RE, STREAMING_RE],
-  'animalia ia':   [SENSUAL_LIGHT_RE],
+  'ia transforma': [SENSUAL_LIGHT_RE, STREAMING_RE, COOKING_RE],
+  'filtro ia':     [SENSUAL_LIGHT_RE, COOKING_RE],
+  'novela ia':     [SENSUAL_LIGHT_RE, COOKING_RE],
+  'frutas ia':     [SENSUAL_LIGHT_RE, COOKING_RE],
+  'novela antiga': [SENSUAL_LIGHT_RE, STREAMING_RE, COOKING_RE],
+  'cenas icônicas':[SENSUAL_LIGHT_RE, STREAMING_RE, COOKING_RE],
+  'animalia ia':   [SENSUAL_LIGHT_RE, COOKING_RE],
   // NOVELAS
-  frutinovela:     [SENSUAL_LIGHT_RE],
-  mininovela:      [SENSUAL_LIGHT_RE],
-  cortesdenovela:  [SENSUAL_LIGHT_RE],
-  novelaglobo:     [SENSUAL_LIGHT_RE],
-  // CASA — unboxing: shein/shopee OK (é conteúdo), mas sem sensual
-  unboxing:        [SENSUAL_LIGHT_RE],
-  'organização':   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  'decoração':     [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  reforma:         [SENSUAL_LIGHT_RE],
-  faxina:          [SENSUAL_LIGHT_RE],
-  diarista:        [SENSUAL_LIGHT_RE],
-  // DICAS — fitness sem bloqueio sensual (é estético)
-  'motivação':     [SENSUAL_LIGHT_RE],
+  frutinovela:     [SENSUAL_LIGHT_RE, COOKING_RE],
+  mininovela:      [SENSUAL_LIGHT_RE, COOKING_RE],
+  cortesdenovela:  [SENSUAL_LIGHT_RE, COOKING_RE],
+  novelaglobo:     [SENSUAL_LIGHT_RE, COOKING_RE],
+  // CASA — unboxing
+  unboxing:        [SENSUAL_LIGHT_RE, COOKING_RE],
+  'organização':   [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  'decoração':     [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  reforma:         [SENSUAL_LIGHT_RE, COOKING_RE],
+  faxina:          [SENSUAL_LIGHT_RE, COOKING_RE],
+  diarista:        [SENSUAL_LIGHT_RE, COOKING_RE],
+  // DICAS
+  'motivação':     [SENSUAL_LIGHT_RE, COOKING_RE],
   receita:         [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, /\b(recette|cuisine|magret|canard|patate douce|lavaş|tavuk|yemek|gastronomía peruana|cocina casera|ricetta|risotto fatto|plat du jour|cuisine terminé|receta fácil|ne yemek yapsam|gastronomía mexicana|pasta al dente)\b/i],
-  dica:            [SENSUAL_LIGHT_RE],
-  curiosidade:     [SENSUAL_LIGHT_RE, CONSPIRACAO_RE],
-  fitness:         [],
+  dica:            [SENSUAL_LIGHT_RE, COOKING_RE],
+  curiosidade:     [SENSUAL_LIGHT_RE, CONSPIRACAO_RE, COOKING_RE],
+  fitness:         [COOKING_RE],
   'saúde':         [SENSUAL_LIGHT_RE],
-  hack:            [SENSUAL_LIGHT_RE],
-  tutorial:        [SENSUAL_LIGHT_RE],
+  hack:            [SENSUAL_LIGHT_RE, COOKING_RE],
+  tutorial:        [SENSUAL_LIGHT_RE, COOKING_RE],
   // HOOK
-  react:           [SENSUAL_LIGHT_RE],
-  desafio:         [SENSUAL_LIGHT_RE],
-  'antes e depois':[SENSUAL_LIGHT_RE],
-  'transformação': [SENSUAL_LIGHT_RE],
-  chocante:        [SENSUAL_LIGHT_RE],
-  exposed:         [SENSUAL_LIGHT_RE],
-  'polêmico':      [SENSUAL_LIGHT_RE],
-  'ninguém esperava': [SENSUAL_LIGHT_RE],
+  react:           [SENSUAL_LIGHT_RE, COOKING_RE],
+  desafio:         [SENSUAL_LIGHT_RE, COOKING_RE],
+  'antes e depois':[SENSUAL_LIGHT_RE, COOKING_RE],
+  'transformação': [SENSUAL_LIGHT_RE, COOKING_RE],
+  chocante:        [SENSUAL_LIGHT_RE, COOKING_RE],
+  exposed:         [SENSUAL_LIGHT_RE, COOKING_RE],
+  'polêmico':      [SENSUAL_LIGHT_RE, COOKING_RE],
+  'ninguém esperava': [SENSUAL_LIGHT_RE, COOKING_RE],
   // SATISFYING GROUP
-  'oddly satisfying': [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE],
-  relaxante:       [SENSUAL_LIGHT_RE],
-  'você sabia?':   [SENSUAL_LIGHT_RE],
+  'oddly satisfying': [SENSUAL_LIGHT_RE, DANCINHA_TRAP_RE, COOKING_RE],
+  relaxante:       [SENSUAL_LIGHT_RE, COOKING_RE],
+  'você sabia?':   [SENSUAL_LIGHT_RE, COOKING_RE],
   'fato curioso':  [SENSUAL_LIGHT_RE],
 };
 
@@ -131,27 +132,27 @@ const NICHE_REJECT_MAP: Record<string, string> = {
 };
 
 const NICHE_INSTRUCTIONS: Record<string, string> = {
-  humor: "APROVAR SE o titulo contém: pegadinha, trote (de rua/adulto/entre amigos), susto, armadilha, zoeira, zueira, trolagem, trolou, trolei, humor, piada, engraçado, engraçada, meme, comedia, fail, queda, rir, risada, kkkk, kkkkk, viral com contexto de reacao, fyp com humor. REJEITAR SEMPRE conteúdo sensual/sexualizado (sensual, biquíni, decote, sexy, gostosa, adulto) MESMO SE mencionar pegadinha. REJEITAR palavras ambíguas: 'pegar pegar' NÃO é pegadinha, 'toptop' NÃO é top qualidade, 'dana do momento' é dancinha NÃO é pegadinha. REJEITAR SE CLARAMENTE é: dancinha coreográfica sem humor (incluindo 'dana do momento'), receita culinária, tutorial técnico, review de produto, cena de filme/série comercial, promoção Netflix/Disney/Prime, videoclipe musical oficial, vlog de viagem, política/eleição, trote de faculdade/terceirão/formatura/calouro/medicina/direito/engenharia (trote ACADÊMICO não serve), exame médico/consulta/clínica real (contexto médico sério não é humor). NA DÚVIDA: APROVAR (exceto sensual/adulto que SEMPRE rejeita).",
-  viral: "APROVAR SE tem sinais de conteúdo viral brasileiro: trend, viral, BR, engajamento visível, formato curto impactante, reação genuína. REJEITAR SEMPRE conteúdo sensual/sexualizado (biquíni, sensual, decote, gostosa, sexy, adulto, bikini). REJEITAR SE: receita longa detalhada, tutorial técnico, gameplay de partida completa, política, filme promoção oficial. NA DÚVIDA: APROVAR (exceto sensual/adulto que SEMPRE rejeita).",
+  humor: "APROVAR SE o titulo contém: pegadinha, trote (de rua/adulto/entre amigos), susto, armadilha, zoeira, zueira, trolagem, trolou, trolei, humor, piada, engraçado, engraçada, meme, comedia, fail, queda, rir, risada, kkkk, kkkkk, viral com contexto de reacao, fyp com humor. REJEITAR SEMPRE conteúdo sensual/sexualizado (sensual, biquíni, decote, sexy, gostosa, adulto) MESMO SE mencionar pegadinha. REJEITAR palavras ambíguas: 'pegar pegar' NÃO é pegadinha, 'toptop' NÃO é top qualidade, 'dana do momento' é dancinha NÃO é pegadinha. REJEITAR SE CLARAMENTE é: dancinha coreográfica sem humor (incluindo 'dana do momento'), receita culinária, tutorial técnico, review de produto, cena de filme/série comercial, promoção Netflix/Disney/Prime, videoclipe musical oficial, vlog de viagem, política/eleição, trote de faculdade/terceirão/formatura/calouro/medicina/direito/engenharia (trote ACADÊMICO não serve), exame médico/consulta/clínica real (contexto médico sério não é humor). NA DÚVIDA: REJEITAR (exceto sensual/adulto que SEMPRE rejeita).",
+  viral: "APROVAR SE tem sinais de conteúdo viral brasileiro: trend, viral, BR, engajamento visível, formato curto impactante, reação genuína. REJEITAR SEMPRE conteúdo sensual/sexualizado (biquíni, sensual, decote, gostosa, sexy, adulto, bikini). REJEITAR SE: receita longa detalhada, tutorial técnico, gameplay de partida completa, política, filme promoção oficial. NA DÚVIDA: REJEITAR (exceto sensual/adulto que SEMPRE rejeita).",
   lifestyle_danca: "OBRIGATÓRIO: o título DEVE mencionar dança/movimento. APROVAR SE contém: dancinha, dance, dançando, dançou, bailando, baile, coreografia, passinho, dance challenge, trend de dança, mulher dançando, casal dançando, funk dance, sertanejo dance, hit dance, dança viral, choreography, rebolado, rebolando, passinho do jamal, dançarina, bailarina. REJEITAR SE: humor doméstico sem dança, fail/queda sem dança, opinião/conselho, texto motivacional, 'foi mal'/'cuidado'/'comenta' como contexto principal, receita, tutorial. NA DÚVIDA SOBRE DANÇA: REJEITAR (preferir falso negativo).",
-  lifestyle_musica: "APROVAR SE menciona: musica, cover, cantando, tocando, instrumento, show, performance, BR musical. REJEITAR APENAS SE: dancinha sem musica destacada, pegadinha, tutorial culinario, filme. NA DUVIDA: APROVAR.",
-  lifestyle_rotina: "APROVAR SE menciona: rotina, dia a dia, morning, noite, GRWM, dayinmylife, dia na vida, produtividade, bastidores. REJEITAR APENAS SE: pegadinha, tutorial tecnico, filme completo, receita longa. NA DUVIDA: APROVAR.",
-  lifestyle_viagem: "APROVAR SE menciona: viagem, destino, hotel, praia, cidade, turismo, passeio, tour, mochilao, trip. REJEITAR APENAS SE: pegadinha durante viagem, dancinha em viagem, filme sobre viagem. NA DUVIDA: APROVAR.",
-  ia_novela: "APROVAR SE menciona: IA, inteligencia artificial, filtro, transformacao IA, novela, drama, personagem, midjourney, chatgpt, filtro AI. REJEITAR APENAS SE: pegadinha real sem IA, receita sem tema IA, tutorial tecnico longo. NA DUVIDA: APROVAR.",
-  casa_unboxing: "APROVAR SE menciona: unboxing, abrindo, compras, haul, recebidos, review, produto novo, primeira impressao. REJEITAR APENAS SE: pegadinha, comida, dancinha, musica principal. NA DUVIDA: APROVAR.",
-  casa_organizacao: "APROVAR SE menciona: organizar, organizacao, arrumando, limpeza, antes e depois de comodo, home, casa, gaveta, armario. REJEITAR APENAS SE: pegadinha, dancinha, filme, receita. NA DUVIDA: APROVAR.",
-  casa_decoracao: "APROVAR SE menciona: decoracao, decor, reforma, antes e depois, moveis, home, casa, quarto, sala. REJEITAR APENAS SE: pegadinha, dancinha principal, receita, filme. NA DUVIDA: APROVAR.",
-  casa_faxina: "APROVAR SE menciona: faxina, limpeza, diarista, limpando, cleaning, produto limpeza, casa limpa. REJEITAR APENAS SE: pegadinha, dancinha, receita, filme. NA DUVIDA: APROVAR.",
-  novelas_fruta: "APROVAR SE menciona: frutinha, frutas com IA, moranguete, abacatudo, bananildo, novela de frutas. REJEITAR APENAS SE: receita real de fruta sem drama, suco. NA DUVIDA: APROVAR.",
-  novelas_drama: "APROVAR SE menciona: mininovela, drama, novela, drama vertical, historia romantica, personagem encenado, cena de drama. REJEITAR APENAS SE: pegadinha real, dancinha, receita. NA DUVIDA: APROVAR.",
-  novelas_cortes: "APROVAR SE menciona: corte de novela, cena de novela, cenas, trecho de novela, melhores momentos novela, novela BR. REJEITAR APENAS SE: novela estrangeira em outra lingua, pegadinha, dancinha. NA DUVIDA: APROVAR.",
-  dicas_receita: "APROVAR SE menciona: receita, cozinhando, prato, ingredientes, culinaria, preparando, sobremesa, lanche, refeicao. REJEITAR APENAS SE: dancinha na cozinha como foco, pegadinha, filme. NA DUVIDA: APROVAR.",
-  dicas_fitness: "APROVAR SE menciona: treino, exercicio, academia, musculacao, cardio, shape, fitness, agachamento, corrida, abdominal. REJEITAR APENAS SE: dancinha como exercicio, pegadinha na academia, filme. NA DUVIDA: APROVAR.",
-  dicas_tutorial: "APROVAR SE menciona: tutorial, ensinando, como fazer, passo a passo, DIY, dica, hack, truque, aprenda. REJEITAR APENAS SE: dancinha com texto tutorial, pegadinha disfarcada, curso pago longo. NA DUVIDA: APROVAR.",
-  dicas_motivacao: "APROVAR SE menciona: superacao, motivacao, mindset, inspiracao, frase motivacional, forca de vontade, sonho, meta. REJEITAR APENAS SE: dancinha com frase, pegadinha, gospel explicito, coach vendendo curso. NA DUVIDA: APROVAR.",
-  dicas_curiosidade: "APROVAR SE menciona: fato curioso, voce sabia, ciencia, descoberta, informacao, fato interessante, sabia que. REJEITAR APENAS SE: conspiracao teorizada, dancinha com texto curioso, pegadinha. NA DUVIDA: APROVAR.",
-  hook: "APROVAR SE tem gancho forte: chocante, desafio, react, revelacao, transformacao, exposed, polemico, plot twist, ninguem esperava. REJEITAR APENAS SE: receita detalhada, tutorial tecnico, fitness longo, meditacao. NA DUVIDA: APROVAR.",
-  satisfying: "APROVAR SE menciona: satisfying, satisfatorio, organizado, limpeza, ASMR visual, slime, corte preciso, relaxante, hipnotizante. REJEITAR APENAS SE: agitado, pegadinha, politica, filme. NA DUVIDA: APROVAR.",
+  lifestyle_musica: "APROVAR SE menciona: musica, cover, cantando, tocando, instrumento, show, performance, BR musical. REJEITAR APENAS SE: dancinha sem musica destacada, pegadinha, tutorial culinario, filme. NA DUVIDA: REJEITAR.",
+  lifestyle_rotina: "APROVAR SE menciona: rotina, dia a dia, morning, noite, GRWM, dayinmylife, dia na vida, produtividade, bastidores. REJEITAR APENAS SE: pegadinha, tutorial tecnico, filme completo, receita longa. NA DUVIDA: REJEITAR.",
+  lifestyle_viagem: "APROVAR SE menciona: viagem, destino, hotel, praia, cidade, turismo, passeio, tour, mochilao, trip. REJEITAR APENAS SE: pegadinha durante viagem, dancinha em viagem, filme sobre viagem. NA DUVIDA: REJEITAR.",
+  ia_novela: "APROVAR SE menciona: IA, inteligencia artificial, filtro, transformacao IA, novela, drama, personagem, midjourney, chatgpt, filtro AI. REJEITAR APENAS SE: pegadinha real sem IA, receita sem tema IA, tutorial tecnico longo. NA DUVIDA: REJEITAR.",
+  casa_unboxing: "APROVAR SE menciona: unboxing, abrindo, compras, haul, recebidos, review, produto novo, primeira impressao. REJEITAR APENAS SE: pegadinha, comida, dancinha, musica principal. NA DUVIDA: REJEITAR.",
+  casa_organizacao: "APROVAR SE menciona: organizar, organizacao, arrumando, limpeza, antes e depois de comodo, home, casa, gaveta, armario. REJEITAR APENAS SE: pegadinha, dancinha, filme, receita. NA DUVIDA: REJEITAR.",
+  casa_decoracao: "APROVAR SE menciona: decoracao, decor, reforma, antes e depois, moveis, home, casa, quarto, sala. REJEITAR APENAS SE: pegadinha, dancinha principal, receita, filme. NA DUVIDA: REJEITAR.",
+  casa_faxina: "APROVAR SE menciona: faxina, limpeza, diarista, limpando, cleaning, produto limpeza, casa limpa. REJEITAR APENAS SE: pegadinha, dancinha, receita, filme. NA DUVIDA: REJEITAR.",
+  novelas_fruta: "APROVAR SE menciona: frutinha, frutas com IA, moranguete, abacatudo, bananildo, novela de frutas. REJEITAR APENAS SE: receita real de fruta sem drama, suco. NA DUVIDA: REJEITAR.",
+  novelas_drama: "APROVAR SE menciona: mininovela, drama, novela, drama vertical, historia romantica, personagem encenado, cena de drama. REJEITAR APENAS SE: pegadinha real, dancinha, receita. NA DUVIDA: REJEITAR.",
+  novelas_cortes: "APROVAR SE menciona: corte de novela, cena de novela, cenas, trecho de novela, melhores momentos novela, novela BR. REJEITAR APENAS SE: novela estrangeira em outra lingua, pegadinha, dancinha. NA DUVIDA: REJEITAR.",
+  dicas_receita: "APROVAR SE menciona: receita, cozinhando, prato, ingredientes, culinaria, preparando, sobremesa, lanche, refeicao. REJEITAR APENAS SE: dancinha na cozinha como foco, pegadinha, filme. NA DUVIDA: REJEITAR.",
+  dicas_fitness: "APROVAR SE menciona: treino, exercicio, academia, musculacao, cardio, shape, fitness, agachamento, corrida, abdominal. REJEITAR APENAS SE: dancinha como exercicio, pegadinha na academia, filme. NA DUVIDA: REJEITAR.",
+  dicas_tutorial: "APROVAR SE menciona: tutorial, ensinando, como fazer, passo a passo, DIY, dica, hack, truque, aprenda. REJEITAR APENAS SE: dancinha com texto tutorial, pegadinha disfarcada, curso pago longo. NA DUVIDA: REJEITAR.",
+  dicas_motivacao: "APROVAR SE menciona: superacao, motivacao, mindset, inspiracao, frase motivacional, forca de vontade, sonho, meta. REJEITAR APENAS SE: dancinha com frase, pegadinha, gospel explicito, coach vendendo curso. NA DUVIDA: REJEITAR.",
+  dicas_curiosidade: "APROVAR SE menciona: fato curioso, voce sabia, ciencia, descoberta, informacao, fato interessante, sabia que. REJEITAR APENAS SE: conspiracao teorizada, dancinha com texto curioso, pegadinha. NA DUVIDA: REJEITAR.",
+  hook: "APROVAR SE tem gancho forte: chocante, desafio, react, revelacao, transformacao, exposed, polemico, plot twist, ninguem esperava. REJEITAR APENAS SE: receita detalhada, tutorial tecnico, fitness longo, meditacao. NA DUVIDA: REJEITAR.",
+  satisfying: "APROVAR SE menciona: satisfying, satisfatorio, organizado, limpeza, ASMR visual, slime, corte preciso, relaxante, hipnotizante. REJEITAR APENAS SE: agitado, pegadinha, politica, filme. NA DUVIDA: REJEITAR.",
 };
 
 function getGroupFromKeywords(nicheKeywords: string[] | undefined, nicheDescription: string): string {
@@ -189,7 +190,7 @@ async function filterBatch(batch: VideoToFilter[], nicheDescription: string, nic
     `${idx + 1}. [${v.id}] "${v.title}" (autor: ${v.author || 'desconhecido'})`
   ).join('\n');
 
-  const prompt = `Você é um filtro de nicho PERMISSIVO para vídeos do TikTok brasileiro.
+  const prompt = `Você é um filtro de nicho RIGOROSO para vídeos do TikTok brasileiro.
 
 O editor busca: "${nicheDescription}"
 ${nicheKeywords?.length ? `Palavras-chave do nicho: ${nicheKeywords.join(', ')}` : ''}
@@ -200,10 +201,10 @@ ${nicheInstructions}
 REGRAS:
 - Título em idioma estrangeiro sem contexto BR → REJEITAR
 - Conteúdo CLARAMENTE de outro nicho (${rejectList}) → REJEITAR
-- Título curto/genérico em PT ("kkk", "olha", "#fyp") → APROVAR se não for claramente de outro nicho
+- Título curto/genérico em PT ("kkk", "olha", "#fyp") sem sinal do nicho → REJEITAR
 - Título com hashtag do nicho (#pegadinha, #humor, #trolagem etc) → APROVAR
 
-REGRA CRÍTICA: Na DÚVIDA entre aprovar e rejeitar → APROVAR. Só rejeite se tiver CERTEZA que é de outro nicho.
+REGRA CRÍTICA: Na DÚVIDA entre aprovar e rejeitar → REJEITAR. Prefira falso negativo (rejeitar vídeo bom) a falso positivo (aprovar vídeo errado).
 
 Responda APENAS com JSON puro sem markdown:
 {"approved": ["id1", "id2"], "rejected": ["id3"]}
@@ -230,6 +231,8 @@ ${videoList}`;
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: prompt }],
+            // Disable thinking tokens on 2.5-flash ($3.50/1M → $0) — passed through by OpenAI compat layer
+            ...(model.includes('2.5') ? { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } } : {}),
           }),
         });
         if (response.ok) break;
