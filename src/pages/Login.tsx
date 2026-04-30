@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -18,19 +18,6 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const formRef = useRef<HTMLDivElement>(null);
-
-  // Capture UTM params on page load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const utm = {
-      source: params.get('utm_source'),
-      medium: params.get('utm_medium'),
-      campaign: params.get('utm_campaign'),
-    };
-    if (utm.source || utm.medium || utm.campaign) {
-      sessionStorage.setItem('utm', JSON.stringify(utm));
-    }
-  }, []);
 
   const toEmail = (u: string) => `${u.toLowerCase().trim()}@viralapp.local`;
 
