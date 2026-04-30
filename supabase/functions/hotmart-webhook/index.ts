@@ -71,11 +71,23 @@ Deno.serve(async (req) => {
   const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
 
   try {
-    // 1. Validate webhook secret via hottok header
+    // 1. Validate webhook secret via hottok header (timing-safe)
     const secret = Deno.env.get('HOTMART_WEBHOOK_SECRET');
     const hottok = req.headers.get('hottok');
 
-    if (!secret || hottok !== secret) {
+    const isValid = secret && hottok && secret.length === hottok.length &&
+      crypto.subtle && await (async () => {
+        const enc = new TextEncoder();
+        const a = enc.encode(secret);
+        const b = enc.encode(hottok);
+        // Constant-time compare via HMAC (prevents timing attacks)
+        const key = await crypto.subtle.importKey('raw', a, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sigA = await crypto.subtle.sign('HMAC', key, a);
+        const sigB = await crypto.subtle.sign('HMAC', key, b);
+        return new Uint8Array(sigA).every((v, i) => v === new Uint8Array(sigB)[i]);
+      })().catch(() => secret === hottok);
+
+    if (!isValid) {
       console.error('[hotmart-webhook] Invalid hottok');
       await logWebhook(supabase, {
         event: 'AUTH_FAILED',
@@ -84,7 +96,7 @@ Deno.serve(async (req) => {
         ip: clientIp,
       });
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 200,
+        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -123,6 +135,23 @@ Deno.serve(async (req) => {
     const productName: string = body.data?.product?.name ?? '';
     const transactionId: string = body.data?.purchase?.transaction ?? '';
     const plan = offerToPlan(productId, productName);
+
+    // 3.1 Idempotency: reject duplicate webhooks
+    if (transactionId) {
+      const { data: alreadyProcessed } = await supabase
+        .from('processed_webhooks')
+        .select('id')
+        .eq('transaction_id', `${transactionId}_${event}`)
+        .maybeSingle();
+      if (alreadyProcessed) {
+        console.log(`[hotmart-webhook] Already processed txn=${transactionId} event=${event}, skipping`);
+        await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'duplicate webhook (idempotency)', ip: clientIp });
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // 4. Find user — try SCK first, then email
     let profile: { id: string; plan: string } | null = null;
@@ -264,6 +293,14 @@ Deno.serve(async (req) => {
       default:
         console.log(`[hotmart-webhook] Unhandled event: ${event}`);
         await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'Unhandled event', ip: clientIp });
+    }
+
+    // Mark webhook as processed (idempotency)
+    if (transactionId) {
+      await supabase.from('processed_webhooks').insert({
+        transaction_id: `${transactionId}_${event}`,
+        event_type: event,
+      }).catch(() => {}); // non-blocking
     }
 
     return new Response(JSON.stringify({ ok: true }), {

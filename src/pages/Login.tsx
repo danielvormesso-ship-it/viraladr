@@ -19,6 +19,19 @@ const Login = () => {
   const { toast } = useToast();
   const formRef = useRef<HTMLDivElement>(null);
 
+  // Capture UTM params on page load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = {
+      source: params.get('utm_source'),
+      medium: params.get('utm_medium'),
+      campaign: params.get('utm_campaign'),
+    };
+    if (utm.source || utm.medium || utm.campaign) {
+      sessionStorage.setItem('utm', JSON.stringify(utm));
+    }
+  }, []);
+
   const toEmail = (u: string) => `${u.toLowerCase().trim()}@viralapp.local`;
 
   const toggleMode = () => {
@@ -52,13 +65,18 @@ const Login = () => {
         if (error) {
           toast({ title: 'Erro ao cadastrar', description: error.message, variant: 'destructive' });
         } else {
-          // Save email and phone to profile
+          // Save email, phone, and UTM to profile
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
+            const utm = JSON.parse(sessionStorage.getItem('utm') || '{}');
             await (supabase.from('profiles') as any).update({
               email: email.trim() || null,
               phone: phone.trim() || null,
+              ...(utm.source && { utm_source: utm.source }),
+              ...(utm.medium && { utm_medium: utm.medium }),
+              ...(utm.campaign && { utm_campaign: utm.campaign }),
             }).eq('id', user.id);
+            sessionStorage.removeItem('utm');
           }
           toast({ title: 'Conta criada!', description: 'Você já está logado.' });
           navigate('/');
