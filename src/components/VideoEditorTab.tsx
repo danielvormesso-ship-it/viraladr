@@ -1482,7 +1482,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
               .filter(v => successfulVideoIds.has(v.id) && v.tiktok_id)
               .map(v => v.tiktok_id!);
             if (usedTiktokIds.length > 0) {
-              tiktokApi.markVideosUsed(usedTiktokIds).catch(err => console.warn('Erro ao marcar vídeos como usados:', err));
+              await tiktokApi.markVideosUsed(usedTiktokIds);
             }
             setVideos(prev => prev.filter(v => !successfulVideoIds.has(v.id)));
             addLog(`${successfulVideoIds.size} vídeos editados removidos da lista.`, 'success');

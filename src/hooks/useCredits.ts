@@ -44,6 +44,16 @@ export function useCredits() {
     await refreshProfile();
   };
 
+  /** Refund 1 credit if download/delivery failed after charge */
+  const refundCredits = async (tiktokId: string) => {
+    if (!profile || isUnlimited) return;
+    await supabase.rpc('refund_credit', {
+      p_user_id: profile.id,
+      p_tiktok_id: tiktokId,
+    });
+    await refreshProfile();
+  };
+
   /** Filter out tiktok_ids already paid for (present in used_videos).
    *  Returns only the IDs that have NOT been paid yet. */
   const filterAlreadyPaid = async (tiktokIds: string[]): Promise<string[]> => {
@@ -67,6 +77,7 @@ export function useCredits() {
     isExhausted,
     canUseCredits,
     deductCredits,
+    refundCredits,
     filterAlreadyPaid,
   };
 }
