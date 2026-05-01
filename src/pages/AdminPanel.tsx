@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus, KeyRound } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus, KeyRound, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getPlanLimits, ALL_PLANS, type PlanType } from '@/lib/plans';
 
@@ -466,6 +466,27 @@ const AdminPanel = () => {
                         {resettingUser === editor.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                         {resettingUser === editor.id ? 'Resetando...' : 'Reset'}
                       </button>
+                      {editor.id !== profile?.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            if (!confirm(`EXCLUIR conta de ${editor.username}?\n\nEsta ação é IRREVERSÍVEL e remove:\n- Conta de auth\n- Profile\n- Histórico de uso`)) return;
+                            const { data, error } = await supabase.functions.invoke('admin-delete-user', {
+                              body: { user_id: editor.id }
+                            });
+                            if (data?.ok) {
+                              toast({ title: 'Conta excluída', description: `${editor.username} foi removido.` });
+                              setEditors(prev => prev.filter(e => e.id !== editor.id));
+                            } else {
+                              toast({ title: 'Erro ao excluir', description: data?.error || error?.message || 'Tente novamente', variant: 'destructive' });
+                            }
+                          }}
+                          className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
