@@ -17,6 +17,7 @@ import Termos from "./pages/Termos.tsx";
 import Privacidade from "./pages/Privacidade.tsx";
 import { PlanSelection } from "./components/PlanSelection.tsx";
 import CookieConsent from "./components/CookieConsent.tsx";
+import WhatsAppButton from "./components/WhatsAppButton.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -57,6 +58,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <CookieConsent />
+        <WhatsAppButton />
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />

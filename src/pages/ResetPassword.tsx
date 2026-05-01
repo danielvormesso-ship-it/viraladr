@@ -21,12 +21,9 @@ const ResetPassword = () => {
       let email = cleanInput.includes('@') ? cleanInput : null;
 
       if (!email) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('username', cleanInput)
-          .maybeSingle();
-        email = profile?.email || null;
+        const { data: emailFromRpc } = await supabase
+          .rpc('lookup_email_by_username', { p_username: cleanInput });
+        email = emailFromRpc || null;
       }
 
       if (!email) {
@@ -81,9 +78,14 @@ const ResetPassword = () => {
             </form>
             <div className="text-center text-xs text-muted-foreground/60">
               Sem email cadastrado?{' '}
-              <button onClick={() => window.Tawk_API?.maximize?.()} className="text-primary hover:underline inline-flex items-center gap-1">
-                <MessageCircle className="h-3 w-3" /> Suporte
-              </button>
+              <a
+                href={`https://wa.me/5511922242002?text=${encodeURIComponent('Olá! Preciso resetar minha senha. Meu username é: ')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-400 hover:underline inline-flex items-center gap-1"
+              >
+                <MessageCircle className="h-3 w-3" /> WhatsApp
+              </a>
             </div>
           </>
         ) : (

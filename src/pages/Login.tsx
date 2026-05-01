@@ -41,18 +41,10 @@ const Login = () => {
         if (isEmail) {
           authEmail = input;
         } else {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('email, id')
-            .eq('username', input)
-            .maybeSingle();
+          const { data: emailFromRpc } = await supabase
+            .rpc('lookup_email_by_username', { p_username: input });
 
-          if (!prof) {
-            toast({ title: 'Usuário não encontrado', variant: 'destructive' });
-            setLoading(false);
-            return;
-          }
-          authEmail = prof.email || `${input}@viralapp.local`;
+          authEmail = emailFromRpc || `${input}@viralapp.local`;
         }
 
         const { error } = await signIn(authEmail, password);
