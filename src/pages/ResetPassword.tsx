@@ -21,12 +21,9 @@ const ResetPassword = () => {
       let email = cleanInput.includes('@') ? cleanInput : null;
 
       if (!email) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('username', cleanInput)
-          .maybeSingle();
-        email = profile?.email || null;
+        const { data: emailFromRpc } = await supabase
+          .rpc('lookup_email_by_username', { p_username: cleanInput });
+        email = emailFromRpc || null;
       }
 
       if (!email) {
