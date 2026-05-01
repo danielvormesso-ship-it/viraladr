@@ -16,33 +16,21 @@ const ResetPassword = () => {
     if (!username.trim()) return;
     setLoading(true);
     try {
-      // Look up user's real email from profile
-      const fakeEmail = `${username.toLowerCase().trim()}@viralapp.local`;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('username', username.trim())
-        .maybeSingle();
+      const { data, error } = await supabase.functions.invoke('send-reset-password', {
+        body: { username: username.toLowerCase().trim() },
+      });
 
-      const targetEmail = profile?.email;
-      if (!targetEmail) {
+      if (data?.no_email) {
         toast({
-          title: 'Email não encontrado',
+          title: 'Email não cadastrado',
           description: 'Este usuário não tem email cadastrado. Entre em contato com o suporte.',
           variant: 'destructive',
         });
-        return;
+      } else {
+        setSent(true);
       }
-
-      // Supabase needs the auth email (fake), but will send to the redirect URL
-      await supabase.auth.resetPasswordForEmail(fakeEmail, {
-        redirectTo: `${window.location.origin}/reset-password-confirm`,
-      });
-
-      setSent(true);
-      toast({ title: 'Link enviado!', description: `Verifique o email ${targetEmail.replace(/(.{2}).+(@.+)/, '$1***$2')}` });
     } catch (err) {
-      toast({ title: 'Erro', description: 'Não foi possível enviar o link.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Não foi possível processar a solicitação.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -57,7 +45,9 @@ const ResetPassword = () => {
           <KeyRound className="h-10 w-10 mx-auto text-primary/60" />
           <h1 className="text-2xl font-bold text-foreground">Recuperar senha</h1>
           <p className="text-sm text-muted-foreground/60">
-            {sent ? 'Verifique seu email para redefinir a senha.' : 'Informe seu usuário para receber o link de redefinição.'}
+            {sent
+              ? 'Se a conta existir e tiver email cadastrado, enviamos o link de recuperação.'
+              : 'Informe seu usuário para receber o link de redefinição.'}
           </p>
         </div>
 
@@ -78,8 +68,9 @@ const ResetPassword = () => {
             </Button>
           </form>
         ) : (
-          <div className="text-center text-sm text-muted-foreground/60">
-            Não recebeu? Verifique a caixa de spam ou entre em contato com o suporte.
+          <div className="text-center text-sm text-muted-foreground/60 space-y-2">
+            <p>Verifique sua caixa de entrada e spam.</p>
+            <p>O link expira em 1 hora.</p>
           </div>
         )}
 
