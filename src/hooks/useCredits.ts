@@ -8,7 +8,8 @@ export function useCredits() {
   const plan = profile?.plan || 'free';
   const limits = getPlanLimits(plan);
   const creditsUsed = profile?.credits_used || 0;
-  const creditsTotal = limits.credits;
+  const creditsBonus = profile?.credits_bonus || 0;
+  const creditsTotal = limits.credits === Infinity ? Infinity : limits.credits + creditsBonus;
   const creditsRemaining = creditsTotal === Infinity ? Infinity : Math.max(0, creditsTotal - creditsUsed);
   const isUnlimited = plan === 'unlimited';
   const isExhausted = !isUnlimited && creditsRemaining <= 0;
@@ -75,6 +76,7 @@ export function useCredits() {
     plan,
     limits,
     creditsUsed,
+    creditsBonus,
     creditsTotal,
     creditsRemaining,
     isUnlimited,

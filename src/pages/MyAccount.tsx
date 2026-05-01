@@ -286,7 +286,14 @@ const MyAccount = () => {
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">
-                {credits.isUnlimited ? 'Ilimitado' : `${credits.creditsUsed} usados de ${credits.creditsTotal}`}
+                {credits.isUnlimited ? 'Ilimitado' : (
+                  <>
+                    {credits.creditsUsed} usados de {credits.creditsTotal}
+                    {(profile.credits_bonus || 0) > 0 && (
+                      <span className="text-emerald-400 ml-1">(+{profile.credits_bonus} bônus)</span>
+                    )}
+                  </>
+                )}
               </span>
               <span className="font-semibold text-foreground">
                 {credits.isUnlimited ? '∞' : `${credits.creditsRemaining} restantes`}

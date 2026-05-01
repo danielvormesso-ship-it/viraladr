@@ -29,6 +29,10 @@ function offerToPlan(productId: string | number | undefined, productName: string
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const PLAN_CREDITS: Record<string, number> = {
+  free: 10, starter: 300, pro: 1000, agency: 8000, unlimited: 999999,
+};
+
 /** Helper to log webhook events to webhook_logs table */
 async function logWebhook(
   supabase: ReturnType<typeof createClient>,
@@ -41,18 +45,35 @@ async function logWebhook(
   }
 }
 
-/** Activate plan on an existing profile */
+/** Activate plan on an existing profile.
+ *  On upgrade/downgrade (different plan): carry over remaining credits as bonus.
+ *  On renewal (same plan): reset credits, bonus expires. */
 async function activatePlan(
   supabase: ReturnType<typeof createClient>,
   profileId: string,
-  plan: string,
+  newPlan: string,
 ) {
+  const { data: current } = await supabase
+    .from('profiles')
+    .select('plan, credits_used, credits_bonus')
+    .eq('id', profileId)
+    .single();
+
+  let newBonus = 0;
+
+  if (current && current.plan !== newPlan && current.plan !== 'free') {
+    const oldLimit = PLAN_CREDITS[current.plan] || 0;
+    const remaining = Math.max(0, oldLimit - (current.credits_used || 0)) + (current.credits_bonus || 0);
+    newBonus = remaining;
+  }
+
   return supabase
     .from('profiles')
     .update({
-      plan,
+      plan: newPlan,
       plan_selected: true,
       credits_used: 0,
+      credits_bonus: newBonus,
       credits_reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
     .eq('id', profileId);
