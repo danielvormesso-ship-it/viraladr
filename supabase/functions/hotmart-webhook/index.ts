@@ -153,26 +153,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4. Find user — try SCK first, then email
+    // 4. Find user — SCK with email validation, then email fallback
     let profile: { id: string; plan: string } | null = null;
-    let matchedBy: 'sck' | 'email' | null = null;
+    let matchedBy: 'sck_email_match' | 'sck_no_email' | 'email' | null = null;
 
+    // 4a. Try SCK — only trust if email matches or profile has no email
     if (sck) {
-      const { data } = await supabase
+      const { data: sckProfile } = await supabase
         .from('profiles')
-        .select('id, plan')
+        .select('id, email, plan')
         .eq('id', sck)
         .maybeSingle();
-      if (data) {
-        profile = data;
-        matchedBy = 'sck';
+      if (sckProfile) {
+        if (sckProfile.email === buyerEmail) {
+          profile = sckProfile;
+          matchedBy = 'sck_email_match';
+        } else if (!sckProfile.email) {
+          profile = sckProfile;
+          matchedBy = 'sck_no_email';
+        } else {
+          // SCK points to different user — likely shared link, ignore SCK
+          console.warn(`[hotmart-webhook] SCK ${sck} -> ${sckProfile.email}, but buyer=${buyerEmail}. Ignoring SCK.`);
+        }
       }
     }
 
-    if (!profile) {
+    // 4b. Fallback: match by buyer email
+    if (!profile && buyerEmail) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, plan')
+        .select('id, email, plan')
         .eq('email', buyerEmail)
         .maybeSingle();
       if (error) {
