@@ -6,16 +6,18 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useCredits } from '@/hooks/useCredits';
 import { getPlanLimits } from '@/lib/plans';
-import { ArrowLeft, Camera, Save, Loader2, KeyRound, Trash2, User, CreditCard, Shield, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Camera, Save, Loader2, KeyRound, Trash2, User, CreditCard, Shield, BarChart3, Search, Shuffle, Download } from 'lucide-react';
 
 interface DailyUsage {
   date: string;
   count: number;
 }
 
-interface UsageRecord {
-  used_at: string;
-  tiktok_id: string;
+interface ActivityRecord {
+  id: string;
+  action_type: string;
+  details: any;
+  created_at: string;
 }
 
 const MyAccount = () => {
@@ -33,7 +35,7 @@ const MyAccount = () => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([]);
-  const [recentUsage, setRecentUsage] = useState<UsageRecord[]>([]);
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [loadingUsage, setLoadingUsage] = useState(true);
 
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'typing' | 'deleting'>('idle');
@@ -60,7 +62,7 @@ const MyAccount = () => {
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [dailyRes, recentRes] = await Promise.all([
+    const [dailyRes, activityRes] = await Promise.all([
       supabase
         .from('used_videos')
         .select('used_at')
@@ -68,10 +70,11 @@ const MyAccount = () => {
         .gte('used_at', thirtyDaysAgo)
         .order('used_at', { ascending: false }),
       supabase
-        .from('used_videos')
-        .select('used_at, tiktok_id')
+        .from('editor_activity')
+        .select('id, action_type, details, created_at')
         .eq('user_id', user.id)
-        .order('used_at', { ascending: false })
+        .in('action_type', ['search', 'merge', 'batch_download'])
+        .order('created_at', { ascending: false })
         .limit(50),
     ]);
 
@@ -82,7 +85,7 @@ const MyAccount = () => {
       byDate[date] = (byDate[date] || 0) + 1;
     });
     setDailyUsage(Object.entries(byDate).map(([date, count]) => ({ date, count })));
-    setRecentUsage((recentRes.data || []) as UsageRecord[]);
+    setActivities((activityRes.data || []) as ActivityRecord[]);
     setLoadingUsage(false);
   };
 
@@ -332,20 +335,58 @@ const MyAccount = () => {
             </div>
           )}
 
-          {/* Recent history */}
-          {!loadingUsage && recentUsage.length > 0 && (
+          {/* Activity history */}
+          {!loadingUsage && (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground font-medium">Últimos downloads</p>
-              <div className="max-h-[200px] overflow-y-auto space-y-1">
-                {recentUsage.map((r, i) => (
-                  <div key={i} className="flex justify-between items-center text-xs px-2 py-1.5 rounded-lg hover:bg-secondary/20">
-                    <span className="text-muted-foreground font-mono truncate max-w-[200px]">{r.tiktok_id}</span>
-                    <span className="text-muted-foreground/60 flex-shrink-0 ml-2">
-                      {new Date(r.used_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-muted-foreground font-medium">Atividade recente</p>
+              {activities.length > 0 ? (
+                <div className="max-h-[300px] overflow-y-auto space-y-1.5">
+                  {activities.map((act) => {
+                    const d = act.details || {};
+                    const dateStr = new Date(act.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+                    let Icon = BarChart3;
+                    let title = act.action_type;
+                    let meta = '';
+                    let color = 'text-muted-foreground';
+
+                    if (act.action_type === 'search') {
+                      Icon = Search;
+                      title = `Busca "${d.hashtag || '?'}"`;
+                      color = 'text-blue-400';
+                    } else if (act.action_type === 'merge') {
+                      Icon = Shuffle;
+                      const raw = (d.hashtags || [])[0] || '';
+                      const tags = raw.split(',').filter(Boolean);
+                      const preview = tags.slice(0, 3).map((t: string) => `#${t}`).join(' ');
+                      const extra = tags.length > 3 ? ` +${tags.length - 3}` : '';
+                      title = 'Mesclagem';
+                      meta = `${preview}${extra}`;
+                      color = 'text-purple-400';
+                    } else if (act.action_type === 'batch_download') {
+                      Icon = Download;
+                      title = 'Download em lote';
+                      meta = `${d.count || '?'} vídeos`;
+                      color = 'text-green-400';
+                    }
+
+                    return (
+                      <div key={act.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition">
+                        <div className={`h-8 w-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0`}>
+                          <Icon className={`h-3.5 w-3.5 ${color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${color} truncate`}>{title}</p>
+                          {meta && <p className="text-xs text-muted-foreground/60 truncate">{meta}</p>}
+                        </div>
+                        <span className="text-xs text-muted-foreground/50 whitespace-nowrap">{dateStr}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground/60 text-center py-6">Nenhuma atividade ainda.</p>
+              )}
             </div>
           )}
 
