@@ -219,9 +219,12 @@ const Index = () => {
     } catch { return null; }
   }, []);
 
+  const creditsCapRef = useRef<{ remaining: number; unlimited: boolean }>({ remaining: Infinity, unlimited: true });
   const addVideosToUI = useCallback((newVideos: TikTokVideo[], replace = false) => {
+    const { remaining, unlimited } = creditsCapRef.current;
     if (replace) {
-      const deduped = dedupeVideos(newVideos);
+      let deduped = dedupeVideos(newVideos);
+      if (!unlimited) deduped = deduped.slice(0, remaining);
       videosInUIRef.current = { keys: new Set(deduped.map(getVideoKey)), metas: new Set() };
       setVideos(deduped);
       return;
@@ -232,7 +235,13 @@ const Index = () => {
       videosInUIRef.current.keys.add(key);
       return true;
     });
-    if (filtered.length > 0) setVideos(prev => [...prev, ...filtered]);
+    if (filtered.length > 0) {
+      setVideos(prev => {
+        const merged = [...prev, ...filtered];
+        if (!unlimited && merged.length > remaining) return merged.slice(0, remaining);
+        return merged;
+      });
+    }
   }, []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -279,6 +288,7 @@ const Index = () => {
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const credits = useCredits();
+  creditsCapRef.current = { remaining: credits.creditsRemaining, unlimited: credits.isUnlimited };
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!profile) return false;
