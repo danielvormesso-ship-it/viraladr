@@ -10,7 +10,13 @@ import AdminPanel from "./pages/AdminPanel.tsx";
 import Upgrade from "./pages/Upgrade.tsx";
 import PendingApproval from "./pages/PendingApproval.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
+import ResetPasswordConfirm from "./pages/ResetPasswordConfirm.tsx";
+import MyAccount from "./pages/MyAccount.tsx";
+import Termos from "./pages/Termos.tsx";
+import Privacidade from "./pages/Privacidade.tsx";
 import { PlanSelection } from "./components/PlanSelection.tsx";
+import CookieConsent from "./components/CookieConsent.tsx";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -50,9 +56,15 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <CookieConsent />
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
+            <Route path="/minha-conta" element={<ProtectedRoute><MyAccount /></ProtectedRoute>} />
+            <Route path="/termos" element={<Termos />} />
+            <Route path="/privacidade" element={<Privacidade />} />
             <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
             <Route path="/upgrade" element={<ProtectedRoute><Upgrade /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

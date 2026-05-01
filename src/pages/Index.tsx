@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Download, ChevronUp, ChevronDown, Eye, Heart, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
+import { Download, ChevronUp, ChevronDown, Eye, Heart, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap, User } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { useAuth } from "@/contexts/AuthContext";
@@ -2089,19 +2089,24 @@ const Index = () => {
     if (!currentVideo) return;
     if (!(await requireCredits())) return;
     setIsDownloading(true);
-    activityTracker.logDownload(currentVideo.title, currentVideo.id);
+    activityTracker.logDownload(currentVideo.title, currentVideo.id, activeTag);
+
+    // Deduct BEFORE download — refund if delivery fails
+    let charged = false;
     try {
+      if (currentVideo.tiktok_id) {
+        const unpaid = await credits.filterAlreadyPaid([currentVideo.tiktok_id]);
+        if (unpaid.length > 0) {
+          await credits.deductCredits(1);
+          charged = true;
+        }
+      }
+
       const result = await tiktokApi.downloadVideo(currentVideo);
       if (result.success) {
-        // Deduct BEFORE marking as used (filterAlreadyPaid checks used_videos)
-        if (currentVideo.tiktok_id) {
-          const unpaid = await credits.filterAlreadyPaid([currentVideo.tiktok_id]);
-          if (unpaid.length > 0) await credits.deductCredits(1);
-        }
-        if (!isDev && currentVideo.tiktok_id) tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]).catch(err => console.error('[markVideosUsed] erro:', err));
+        if (!isDev && currentVideo.tiktok_id) await tiktokApi.markVideosUsed([{ tiktok_id: currentVideo.tiktok_id, video_meta: getVideoMeta(currentVideo) }]);
         setDownloadedCount((prev) => prev + 1);
         toast({ title: "Download concluído!", description: `"${currentVideo.title}" salvo sem marca d'água.` });
-        // Remove downloaded video from preview and DB
         setVideos(prev => prev.filter(v => v.id !== currentVideo.id));
         setCurrentIndex(i => Math.min(i, videos.length - 2));
         tiktokApi.deleteVideos([currentVideo.id]).catch(err => {
@@ -2109,10 +2114,14 @@ const Index = () => {
           toast({ title: 'Erro ao remover vídeo', description: 'Não foi possível remover da base de dados.', variant: 'destructive' });
         });
       } else {
+        // Download failed — refund the charge
+        if (charged && currentVideo.tiktok_id) await credits.refundCredits(currentVideo.tiktok_id);
         toast({ title: "Erro no download", description: result.error || "Não foi possível baixar.", variant: "destructive" });
       }
     } catch (err) {
       console.error('Download error:', err);
+      // Refund on exception
+      if (charged && currentVideo.tiktok_id) await credits.refundCredits(currentVideo.tiktok_id).catch(() => {});
       toast({ title: "Erro no download", description: "Falha ao baixar o vídeo.", variant: "destructive" });
     } finally {
       setIsDownloading(false);
@@ -2151,7 +2160,7 @@ const Index = () => {
 
     setIsDownloading(true);
     setBatchProgress({ current: 0, total: batchCount, active: true });
-    activityTracker.logBatchDownload(batchCount);
+    activityTracker.logBatchDownload(batchCount, activeTag);
     toast({
       title: "Preparando ZIP...",
       description:
@@ -2385,6 +2394,7 @@ const Index = () => {
     };
 
     const seenDownloadUrls = new Set<string>();
+    const successfulTiktokIds: string[] = []; // Track only IDs that actually downloaded
 
     // Continuous worker pool: each worker grabs the next video as soon as it finishes
     const queue = videosToDownload.map((video, i) => ({ video, index: i }));
@@ -2405,6 +2415,7 @@ const Index = () => {
             const paddedNum = String(successCount + 1).padStart(String(batchCount).length, '0');
             zip.file(`${paddedNum}_${result.name}.mp4`, new Uint8Array(await result.blob.arrayBuffer()), { compression: 'STORE' });
             successCount++;
+            if (video.tiktok_id) successfulTiktokIds.push(video.tiktok_id);
           }
         }
 
@@ -2427,20 +2438,22 @@ const Index = () => {
     const totalTime = ((performance.now() - batchStartTime) / 1000).toFixed(1);
     console.log(`[Batch Download] ${successCount}/${batchCount} em ${totalTime}s | Direto: ${directUrlCount} | Edge Fn: ${edgeFnCount}`);
 
-    // Deduct credits BEFORE marking as used (so filterAlreadyPaid works correctly)
-    const successTiktokIds = videosToDownload.filter(v => v.tiktok_id).map(v => v.tiktok_id!);
-    if (successCount > 0) {
+    // Deduct credits ONLY for videos that actually downloaded successfully
+    if (successfulTiktokIds.length > 0) {
       try {
-        const unpaidIds = await credits.filterAlreadyPaid(successTiktokIds);
+        const unpaidIds = await credits.filterAlreadyPaid(successfulTiktokIds);
         if (unpaidIds.length > 0) {
           await credits.deductCredits(unpaidIds.length);
         }
       } catch (err) { console.error('[deductCredits] erro:', err); }
     }
 
-    // Mark downloaded videos as used (persisted in Supabase)
-    const usedItems = videosToDownload.filter(v => v.tiktok_id).map(v => ({ tiktok_id: v.tiktok_id!, video_meta: getVideoMeta(v) }));
-    if (!isDev) await tiktokApi.markVideosUsed(usedItems).catch(err => console.error('[markVideosUsed] erro:', err));
+    // Mark ONLY successfully downloaded videos as used (await to prevent double-charge)
+    const usedItems = successfulTiktokIds.map(id => {
+      const video = videosToDownload.find(v => v.tiktok_id === id);
+      return { tiktok_id: id, video_meta: video ? getVideoMeta(video) : {} };
+    });
+    if (!isDev && usedItems.length > 0) await tiktokApi.markVideosUsed(usedItems);
 
     // Remove downloaded videos from preview and DB
     const downloadedIds = new Set(videosToDownload.map(v => v.id));
@@ -2661,14 +2674,24 @@ const Index = () => {
               )}
             </div>
           </div>
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/80 to-primary/50 flex items-center justify-center text-primary-foreground text-xs font-bold avatar-glow ring-2 ring-primary/10">
-            {(profile?.display_name || profile?.username || 'E').charAt(0).toUpperCase()}
+          <div
+            className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/80 to-primary/50 flex items-center justify-center text-primary-foreground text-xs font-bold avatar-glow ring-2 ring-primary/10 overflow-hidden cursor-pointer hover:scale-105 transition"
+            onClick={() => navigate('/minha-conta')}
+          >
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
+            ) : (
+              (profile?.display_name || profile?.username || 'E').charAt(0).toUpperCase()
+            )}
           </div>
           {role === 'admin' && (
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
               <Settings className="h-3.5 w-3.5" />
             </Button>
           )}
+          <Button variant="ghost" size="sm" onClick={() => navigate('/minha-conta')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+            <User className="h-3.5 w-3.5" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <LogOut className="h-3.5 w-3.5" />
           </Button>

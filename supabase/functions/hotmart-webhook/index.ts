@@ -29,6 +29,10 @@ function offerToPlan(productId: string | number | undefined, productName: string
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const PLAN_CREDITS: Record<string, number> = {
+  free: 10, starter: 300, pro: 1000, agency: 8000, unlimited: 999999,
+};
+
 /** Helper to log webhook events to webhook_logs table */
 async function logWebhook(
   supabase: ReturnType<typeof createClient>,
@@ -41,18 +45,35 @@ async function logWebhook(
   }
 }
 
-/** Activate plan on an existing profile */
+/** Activate plan on an existing profile.
+ *  On upgrade/downgrade (different plan): carry over remaining credits as bonus.
+ *  On renewal (same plan): reset credits, bonus expires. */
 async function activatePlan(
   supabase: ReturnType<typeof createClient>,
   profileId: string,
-  plan: string,
+  newPlan: string,
 ) {
+  const { data: current } = await supabase
+    .from('profiles')
+    .select('plan, credits_used, credits_bonus')
+    .eq('id', profileId)
+    .single();
+
+  let newBonus = 0;
+
+  if (current && current.plan !== newPlan && current.plan !== 'free') {
+    const oldLimit = PLAN_CREDITS[current.plan] || 0;
+    const remaining = Math.max(0, oldLimit - (current.credits_used || 0)) + (current.credits_bonus || 0);
+    newBonus = remaining;
+  }
+
   return supabase
     .from('profiles')
     .update({
-      plan,
+      plan: newPlan,
       plan_selected: true,
       credits_used: 0,
+      credits_bonus: newBonus,
       credits_reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
     .eq('id', profileId);
@@ -71,11 +92,23 @@ Deno.serve(async (req) => {
   const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
 
   try {
-    // 1. Validate webhook secret via hottok header
+    // 1. Validate webhook secret — Hotmart sends it as x-hotmart-hottok header
     const secret = Deno.env.get('HOTMART_WEBHOOK_SECRET');
-    const hottok = req.headers.get('hottok');
+    const hottok = req.headers.get('x-hotmart-hottok') || req.headers.get('hottok');
 
-    if (!secret || hottok !== secret) {
+    const isValid = secret && hottok && secret.length === hottok.length &&
+      crypto.subtle && await (async () => {
+        const enc = new TextEncoder();
+        const a = enc.encode(secret);
+        const b = enc.encode(hottok);
+        // Constant-time compare via HMAC (prevents timing attacks)
+        const key = await crypto.subtle.importKey('raw', a, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sigA = await crypto.subtle.sign('HMAC', key, a);
+        const sigB = await crypto.subtle.sign('HMAC', key, b);
+        return new Uint8Array(sigA).every((v, i) => v === new Uint8Array(sigB)[i]);
+      })().catch(() => secret === hottok);
+
+    if (!isValid) {
       console.error('[hotmart-webhook] Invalid hottok');
       await logWebhook(supabase, {
         event: 'AUTH_FAILED',
@@ -84,7 +117,7 @@ Deno.serve(async (req) => {
         ip: clientIp,
       });
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 200,
+        status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -124,26 +157,53 @@ Deno.serve(async (req) => {
     const transactionId: string = body.data?.purchase?.transaction ?? '';
     const plan = offerToPlan(productId, productName);
 
-    // 4. Find user — try SCK first, then email
-    let profile: { id: string; plan: string } | null = null;
-    let matchedBy: 'sck' | 'email' | null = null;
-
-    if (sck) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, plan')
-        .eq('id', sck)
+    // 3.1 Idempotency: reject duplicate webhooks
+    if (transactionId) {
+      const { data: alreadyProcessed } = await supabase
+        .from('processed_webhooks')
+        .select('id')
+        .eq('transaction_id', `${transactionId}_${event}`)
         .maybeSingle();
-      if (data) {
-        profile = data;
-        matchedBy = 'sck';
+      if (alreadyProcessed) {
+        console.log(`[hotmart-webhook] Already processed txn=${transactionId} event=${event}, skipping`);
+        await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'duplicate webhook (idempotency)', ip: clientIp });
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
     }
 
-    if (!profile) {
+    // 4. Find user — SCK with email validation, then email fallback
+    let profile: { id: string; plan: string } | null = null;
+    let matchedBy: 'sck_email_match' | 'sck_no_email' | 'email' | null = null;
+
+    // 4a. Try SCK — only trust if email matches or profile has no email
+    if (sck) {
+      const { data: sckProfile } = await supabase
+        .from('profiles')
+        .select('id, email, plan')
+        .eq('id', sck)
+        .maybeSingle();
+      if (sckProfile) {
+        if (sckProfile.email === buyerEmail) {
+          profile = sckProfile;
+          matchedBy = 'sck_email_match';
+        } else if (!sckProfile.email) {
+          profile = sckProfile;
+          matchedBy = 'sck_no_email';
+        } else {
+          // SCK points to different user — likely shared link, ignore SCK
+          console.warn(`[hotmart-webhook] SCK ${sck} -> ${sckProfile.email}, but buyer=${buyerEmail}. Ignoring SCK.`);
+        }
+      }
+    }
+
+    // 4b. Fallback: match by buyer email
+    if (!profile && buyerEmail) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, plan')
+        .select('id, email, plan')
         .eq('email', buyerEmail)
         .maybeSingle();
       if (error) {
@@ -261,9 +321,69 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case 'SWITCH_PLAN': {
+        if (!profile || !plan) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: `No profile or unknown plan (id=${productId})`, ip: clientIp });
+          break;
+        }
+        const { error } = await activatePlan(supabase, profile.id, plan);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Plan switched to ${plan} for ${buyerEmail} (matched_by_${matchedBy})`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'ok', detail: `Plan switched to ${plan} matched_by_${matchedBy}`, ip: clientIp });
+        }
+        break;
+      }
+
+      case 'PURCHASE_CHARGEBACK':
+      case 'PURCHASE_PROTEST': {
+        if (!profile) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'No profile found for chargeback', ip: clientIp });
+          break;
+        }
+        const { error } = await supabase
+          .from('profiles')
+          .update({ plan: 'free', credits_used: 0, plan_expires_at: null })
+          .eq('id', profile.id);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Chargeback/protest: downgraded ${buyerEmail} to free`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'fraud_action', detail: `Downgraded due to ${event}. User ${profile.id}`, ip: clientIp });
+        }
+        break;
+      }
+
+      case 'SUBSCRIPTION_REACTIVATION':
+      case 'PURCHASE_SUBSCRIPTION_REACTIVATED': {
+        if (!profile || !plan) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: `No profile or unknown plan for reactivation`, ip: clientIp });
+          break;
+        }
+        const { error } = await activatePlan(supabase, profile.id, plan);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Subscription reactivated to ${plan} for ${buyerEmail}`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'ok', detail: `Reactivated to ${plan} matched_by_${matchedBy}`, ip: clientIp });
+        }
+        break;
+      }
+
       default:
         console.log(`[hotmart-webhook] Unhandled event: ${event}`);
         await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'Unhandled event', ip: clientIp });
+    }
+
+    // Mark webhook as processed (idempotency)
+    if (transactionId) {
+      try {
+        await supabase.from('processed_webhooks').insert({
+          transaction_id: `${transactionId}_${event}`,
+          event_type: event,
+        });
+      } catch {} // non-blocking
     }
 
     return new Response(JSON.stringify({ ok: true }), {

@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus, KeyRound } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getPlanLimits, ALL_PLANS, type PlanType } from '@/lib/plans';
 
@@ -12,6 +12,7 @@ interface EditorProfile {
   id: string;
   username: string;
   display_name: string | null;
+  avatar_url: string | null;
   approved: boolean;
   created_at: string;
   plan: string;
@@ -334,8 +335,12 @@ const AdminPanel = () => {
               {editorStats.map(editor => (
                 <div key={editor.id} className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-sm">
-                      {editor.username?.[0]?.toUpperCase() || '?'}
+                    <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-sm overflow-hidden">
+                      {editor.avatar_url ? (
+                        <img src={editor.avatar_url} alt={editor.username} className="h-full w-full object-cover" />
+                      ) : (
+                        editor.username?.[0]?.toUpperCase() || '?'
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -428,6 +433,30 @@ const AdminPanel = () => {
                           </div>
                         )}
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!confirm(`Resetar senha do usuário ${editor.username}?`)) return;
+                          const { data } = await supabase.functions.invoke('admin-reset-password', {
+                            body: { user_id: editor.id }
+                          });
+                          if (data?.ok) {
+                            navigator.clipboard.writeText(data.temp_password);
+                            toast({
+                              title: 'Senha resetada!',
+                              description: `Nova senha: ${data.temp_password} (copiada pro clipboard)`,
+                              duration: 30000
+                            });
+                          } else {
+                            toast({ title: 'Erro ao resetar', variant: 'destructive' });
+                          }
+                        }}
+                        className="h-8 gap-1.5 text-xs"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Reset senha
+                      </Button>
                       <button
                         onClick={() => setResetDialog({ open: true, userId: editor.id, username: editor.username })}
                         disabled={resettingUser === editor.id}
@@ -460,8 +489,12 @@ const AdminPanel = () => {
                       onClick={() => setExpandedUser(isExpanded ? null : editor.id)}
                       className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-secondary/30 transition-colors"
                     >
-                      <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center text-sm font-medium flex-shrink-0">
-                        {editor.username?.[0]?.toUpperCase() || '?'}
+                      <div className="h-9 w-9 rounded-full bg-secondary flex items-center justify-center text-sm font-medium flex-shrink-0 overflow-hidden">
+                        {editor.avatar_url ? (
+                          <img src={editor.avatar_url} alt={editor.username} className="h-full w-full object-cover" />
+                        ) : (
+                          editor.username?.[0]?.toUpperCase() || '?'
+                        )}
                       </div>
                       <div className="flex-1 text-left min-w-0">
                         <p className="text-sm font-semibold text-foreground">{editor.display_name || editor.username}</p>

@@ -8,7 +8,8 @@ export function useCredits() {
   const plan = profile?.plan || 'free';
   const limits = getPlanLimits(plan);
   const creditsUsed = profile?.credits_used || 0;
-  const creditsTotal = limits.credits;
+  const creditsBonus = profile?.credits_bonus || 0;
+  const creditsTotal = limits.credits === Infinity ? Infinity : limits.credits + creditsBonus;
   const creditsRemaining = creditsTotal === Infinity ? Infinity : Math.max(0, creditsTotal - creditsUsed);
   const isUnlimited = plan === 'unlimited';
   const isExhausted = !isUnlimited && creditsRemaining <= 0;
@@ -34,12 +35,26 @@ export function useCredits() {
     return await checkAndResetCredits();
   };
 
-  /** Deduct credits after successful download (atomic via RPC) */
-  const deductCredits = async (amount: number) => {
-    if (!profile || isUnlimited) return;
-    await supabase.rpc('deduct_credits', {
+  /** Deduct credits after successful download (atomic via RPC).
+   *  Returns { success, error?, available? } — rejects if limit exceeded. */
+  const deductCredits = async (amount: number): Promise<{ success: boolean; error?: string; available?: number }> => {
+    if (!profile || isUnlimited) return { success: true };
+    const { data, error } = await supabase.rpc('deduct_credits', {
       p_user_id: profile.id,
       p_amount: amount,
+    });
+    await refreshProfile();
+    if (error) return { success: false, error: error.message };
+    if (data && !data.success) return { success: false, error: data.error, available: data.available };
+    return { success: true };
+  };
+
+  /** Refund 1 credit if download/delivery failed after charge */
+  const refundCredits = async (tiktokId: string) => {
+    if (!profile || isUnlimited) return;
+    await supabase.rpc('refund_credit', {
+      p_user_id: profile.id,
+      p_tiktok_id: tiktokId,
     });
     await refreshProfile();
   };
@@ -61,12 +76,14 @@ export function useCredits() {
     plan,
     limits,
     creditsUsed,
+    creditsBonus,
     creditsTotal,
     creditsRemaining,
     isUnlimited,
     isExhausted,
     canUseCredits,
     deductCredits,
+    refundCredits,
     filterAlreadyPaid,
   };
 }

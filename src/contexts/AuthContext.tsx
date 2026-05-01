@@ -10,9 +10,14 @@ interface Profile {
   approved: boolean;
   plan: string;
   credits_used: number;
+  credits_bonus: number;
   credits_reset_at: string | null;
   plan_expires_at: string | null;
   plan_selected: boolean;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+  utm_source: string | null;
 }
 
 interface AuthContextType {

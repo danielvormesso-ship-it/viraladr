@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -19,8 +19,6 @@ const Login = () => {
   const { toast } = useToast();
   const formRef = useRef<HTMLDivElement>(null);
 
-  const toEmail = (u: string) => `${u.toLowerCase().trim()}@viralapp.local`;
-
   const toggleMode = () => {
     setTransitioning(true);
     setTimeout(() => {
@@ -36,7 +34,28 @@ const Login = () => {
     setLoading(true);
     try {
       if (isLogin) {
-        const { error } = await signIn(toEmail(username), password);
+        const input = username.toLowerCase().trim();
+        const isEmail = input.includes('@');
+
+        let authEmail: string;
+        if (isEmail) {
+          authEmail = input;
+        } else {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('email, id')
+            .eq('username', input)
+            .maybeSingle();
+
+          if (!prof) {
+            toast({ title: 'Usuário não encontrado', variant: 'destructive' });
+            setLoading(false);
+            return;
+          }
+          authEmail = prof.email || `${input}@viralapp.local`;
+        }
+
+        const { error } = await signIn(authEmail, password);
         if (error) {
           toast({ title: 'Erro ao entrar', description: 'Usuário ou senha incorretos.', variant: 'destructive' });
         } else {
@@ -48,17 +67,56 @@ const Login = () => {
           setLoading(false);
           return;
         }
-        const { error } = await signUp(toEmail(username), password, username.trim());
+
+        const cleanUsername = username.toLowerCase().trim();
+        const cleanEmail = email.trim().toLowerCase();
+
+        if (!cleanEmail || !cleanEmail.includes('@')) {
+          toast({ title: 'Email obrigatório', description: 'Para recuperação de senha', variant: 'destructive' });
+          setLoading(false);
+          return;
+        }
+
+        const { data: existingUsername } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', cleanUsername)
+          .maybeSingle();
+
+        if (existingUsername) {
+          toast({ title: 'Username já existe', variant: 'destructive' });
+          setLoading(false);
+          return;
+        }
+
+        const { data: existingEmail } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (existingEmail) {
+          toast({ title: 'Email já cadastrado', variant: 'destructive' });
+          setLoading(false);
+          return;
+        }
+
+        const { error } = await signUp(cleanEmail, password, username.trim());
         if (error) {
           toast({ title: 'Erro ao cadastrar', description: error.message, variant: 'destructive' });
         } else {
-          // Save email and phone to profile
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
+            const utm = JSON.parse(sessionStorage.getItem('utm') || '{}');
             await (supabase.from('profiles') as any).update({
-              email: email.trim() || null,
+              username: cleanUsername,
+              email: cleanEmail,
               phone: phone.trim() || null,
+              ...(utm.source && { utm_source: utm.source }),
+              ...(utm.medium && { utm_medium: utm.medium }),
+              ...(utm.campaign && { utm_campaign: utm.campaign }),
             }).eq('id', user.id);
+            sessionStorage.removeItem('utm');
           }
           toast({ title: 'Conta criada!', description: 'Você já está logado.' });
           navigate('/');
@@ -132,13 +190,13 @@ const Login = () => {
           >
             {/* Username */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Usuário</label>
+              <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">{isLogin ? 'Email ou usuário' : 'Usuário'}</label>
               <div className="relative group">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 group-focus-within:text-primary/60 transition-colors duration-200" />
                 <input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Seu nome de usuário"
+                  placeholder={isLogin ? 'Email ou username' : 'Seu nome de usuário'}
                   autoComplete="username"
                   disabled={loading}
                   className="w-full h-11 pl-10 pr-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none transition-all duration-200 focus:bg-secondary/60 input-glow disabled:opacity-40"
@@ -201,6 +259,15 @@ const Login = () => {
               </div>
             </div>
 
+            {/* Forgot password */}
+            {isLogin && (
+              <div className="text-right -mt-2">
+                <Link to="/reset-password" className="text-[11px] text-muted-foreground/40 hover:text-primary/60 transition-colors">
+                  Esqueci minha senha
+                </Link>
+              </div>
+            )}
+
             {/* Submit */}
             <Button
               type="submit"
@@ -234,10 +301,16 @@ const Login = () => {
           </button>
         </div>
 
-        {/* Footer subtle */}
-        <p className="text-center text-[10px] text-muted-foreground/25 font-medium tracking-wide">
-          Crie conteúdo em massa com IA
-        </p>
+        {/* Footer */}
+        <div className="text-center space-y-1">
+          <p className="text-[10px] text-muted-foreground/25 font-medium tracking-wide">
+            Crie conteúdo em massa com IA
+          </p>
+          <div className="flex justify-center gap-3">
+            <Link to="/termos" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">Termos de Uso</Link>
+            <Link to="/privacidade" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">Privacidade</Link>
+          </div>
+        </div>
       </div>
     </div>
   );
