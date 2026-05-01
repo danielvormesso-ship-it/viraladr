@@ -335,10 +335,12 @@ Deno.serve(async (req) => {
 
     // Mark webhook as processed (idempotency)
     if (transactionId) {
-      await supabase.from('processed_webhooks').insert({
-        transaction_id: `${transactionId}_${event}`,
-        event_type: event,
-      }).catch(() => {}); // non-blocking
+      try {
+        await supabase.from('processed_webhooks').insert({
+          transaction_id: `${transactionId}_${event}`,
+          event_type: event,
+        });
+      } catch {} // non-blocking
     }
 
     return new Response(JSON.stringify({ ok: true }), {
