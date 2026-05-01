@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Download, ChevronUp, ChevronDown, Eye, Heart, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap } from "lucide-react";
+import { Download, ChevronUp, ChevronDown, Eye, Heart, Volume2, VolumeX, Loader2, Play, Search, Hash, Shuffle, AlertTriangle, Check, Filter, LogOut, Settings, Archive, RefreshCw, Trash2, Film, Scissors, Sparkles, Wand2, X, TrendingUp, Star, Compass, Zap, User } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
 import { WelcomeModal } from "@/components/WelcomeModal";
-import DeleteAccountButton from "@/components/DeleteAccountButton";
 import { useCredits } from "@/hooks/useCredits";
 import { getPlanLimits, canUpgrade } from "@/lib/plans";
 import { supabase } from "@/integrations/supabase/client";
@@ -2683,7 +2682,9 @@ const Index = () => {
               <Settings className="h-3.5 w-3.5" />
             </Button>
           )}
-          <DeleteAccountButton />
+          <Button variant="ghost" size="sm" onClick={() => navigate('/minha-conta')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+            <User className="h-3.5 w-3.5" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <LogOut className="h-3.5 w-3.5" />
           </Button>

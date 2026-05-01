@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -11,60 +11,44 @@ const ResetPasswordConfirm = () => {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const [sessionReady, setSessionReady] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const token = new URLSearchParams(window.location.search).get('token');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSessionReady(!!session);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (password.length < 6) {
-      setError('Mínimo 6 caracteres.');
-      return;
-    }
-    if (password !== confirm) {
-      setError('As senhas não coincidem.');
-      return;
-    }
-    if (!token) {
-      setError('Link inválido. Solicite um novo link de recuperação.');
-      return;
-    }
+    if (password.length < 6) return setError('Mínimo 6 caracteres.');
+    if (password !== confirm) return setError('Senhas não coincidem.');
 
     setLoading(true);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke('reset-password-confirm', {
-        body: { token, new_password: password },
-      });
-
-      if (fnError || !data?.ok) {
-        const msg = data?.error === 'invalid_or_expired_token' || data?.error === 'token_expired'
-          ? 'Link expirado ou já utilizado. Solicite um novo.'
-          : 'Erro ao redefinir senha. Tente novamente.';
-        setError(msg);
-      } else {
-        setDone(true);
-        toast({ title: 'Senha atualizada!' });
-        setTimeout(() => navigate('/login'), 3000);
-      }
-    } catch {
-      setError('Erro de conexão. Tente novamente.');
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      setDone(true);
+      toast({ title: 'Senha atualizada!' });
+      setTimeout(() => navigate('/login'), 3000);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!token) {
+  if (!sessionReady) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4"
         style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 40%, hsl(220 60% 8%), hsl(220 25% 5%) 60%, hsl(260 20% 6%) 100%)' }}
       >
-        <div className="w-full max-w-[380px] text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">Link inválido</h1>
-          <p className="text-sm text-muted-foreground">Este link de recuperação é inválido ou expirou.</p>
-          <Link to="/reset-password" className="text-sm text-primary hover:underline">Solicitar novo link</Link>
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold text-foreground">Link inválido ou expirado</h1>
+          <Link to="/reset-password" className="text-primary hover:underline">Solicitar novo link</Link>
         </div>
       </div>
     );
@@ -87,27 +71,11 @@ const ResetPasswordConfirm = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Nova senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                autoComplete="new-password"
-                disabled={loading}
-                className="w-full h-11 px-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none focus:bg-secondary/60"
-              />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" disabled={loading} className="w-full h-11 px-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none focus:bg-secondary/60" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider">Confirmar senha</label>
-              <input
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Repita a senha"
-                autoComplete="new-password"
-                disabled={loading}
-                className="w-full h-11 px-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none focus:bg-secondary/60"
-              />
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Repita a senha" autoComplete="new-password" disabled={loading} className="w-full h-11 px-4 rounded-xl text-sm text-foreground placeholder:text-muted-foreground/25 bg-secondary/40 border-0 outline-none focus:bg-secondary/60" />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading || !password || !confirm} className="w-full h-11 rounded-xl font-bold">
