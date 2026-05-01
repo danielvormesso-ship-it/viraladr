@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -206,6 +206,15 @@ const Login = () => {
               </div>
             </div>
 
+            {/* Forgot password */}
+            {isLogin && (
+              <div className="text-right -mt-2">
+                <Link to="/reset-password" className="text-[11px] text-muted-foreground/40 hover:text-primary/60 transition-colors">
+                  Esqueci minha senha
+                </Link>
+              </div>
+            )}
+
             {/* Submit */}
             <Button
               type="submit"
@@ -239,10 +248,16 @@ const Login = () => {
           </button>
         </div>
 
-        {/* Footer subtle */}
-        <p className="text-center text-[10px] text-muted-foreground/25 font-medium tracking-wide">
-          Crie conteúdo em massa com IA
-        </p>
+        {/* Footer */}
+        <div className="text-center space-y-1">
+          <p className="text-[10px] text-muted-foreground/25 font-medium tracking-wide">
+            Crie conteúdo em massa com IA
+          </p>
+          <div className="flex justify-center gap-3">
+            <Link to="/termos" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">Termos de Uso</Link>
+            <Link to="/privacidade" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">Privacidade</Link>
+          </div>
+        </div>
       </div>
     </div>
   );

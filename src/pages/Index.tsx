@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { tiktokApi, TikTokVideo, getVideoKey, getVideoMeta, dedupeVideos } from "@/lib/api/tiktok";
 import { VideoEditorTab } from "@/components/VideoEditorTab";
 import { WelcomeModal } from "@/components/WelcomeModal";
+import DeleteAccountButton from "@/components/DeleteAccountButton";
 import { useCredits } from "@/hooks/useCredits";
 import { getPlanLimits, canUpgrade } from "@/lib/plans";
 import { supabase } from "@/integrations/supabase/client";
@@ -2682,6 +2683,7 @@ const Index = () => {
               <Settings className="h-3.5 w-3.5" />
             </Button>
           )}
+          <DeleteAccountButton />
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <LogOut className="h-3.5 w-3.5" />
           </Button>
