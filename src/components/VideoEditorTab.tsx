@@ -19,6 +19,7 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCredits } from "@/hooks/useCredits";
+import { activityTracker } from "@/lib/activityTracker";
 
 interface EditorConfig {
   appearAt: number;
@@ -1486,6 +1487,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             }
             setVideos(prev => prev.filter(v => !successfulVideoIds.has(v.id)));
             addLog(`${successfulVideoIds.size} vídeos editados removidos da lista.`, 'success');
+            activityTracker.logEditBatch(successfulVideoIds.size, editorTag || undefined);
           }
         }
         addLog(`Concluído: ${successCount} sucesso, ${failCount} falhas`, successCount > 0 ? 'success' : 'error');

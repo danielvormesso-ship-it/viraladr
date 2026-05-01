@@ -2089,7 +2089,7 @@ const Index = () => {
     if (!currentVideo) return;
     if (!(await requireCredits())) return;
     setIsDownloading(true);
-    activityTracker.logDownload(currentVideo.title, currentVideo.id);
+    activityTracker.logDownload(currentVideo.title, currentVideo.id, activeTag);
 
     // Deduct BEFORE download — refund if delivery fails
     let charged = false;
@@ -2160,7 +2160,7 @@ const Index = () => {
 
     setIsDownloading(true);
     setBatchProgress({ current: 0, total: batchCount, active: true });
-    activityTracker.logBatchDownload(batchCount);
+    activityTracker.logBatchDownload(batchCount, activeTag);
     toast({
       title: "Preparando ZIP...",
       description:

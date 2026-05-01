@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useCredits } from '@/hooks/useCredits';
 import { getPlanLimits } from '@/lib/plans';
-import { ArrowLeft, Camera, Save, Loader2, KeyRound, Trash2, User, CreditCard, Shield, BarChart3, Search, Shuffle, Download } from 'lucide-react';
+import { ArrowLeft, Camera, Save, Loader2, KeyRound, Trash2, User, CreditCard, Shield, BarChart3, Search, Shuffle, Download, Scissors } from 'lucide-react';
 
 interface DailyUsage {
   date: string;
@@ -73,7 +73,7 @@ const MyAccount = () => {
         .from('editor_activity')
         .select('id, action_type, details, created_at')
         .eq('user_id', user.id)
-        .in('action_type', ['search', 'merge', 'batch_download'])
+        .in('action_type', ['search', 'merge', 'batch_download', 'edit_batch', 'download'])
         .order('created_at', { ascending: false })
         .limit(50),
     ]);
@@ -352,7 +352,8 @@ const MyAccount = () => {
 
                     if (act.action_type === 'search') {
                       Icon = Search;
-                      title = `Busca "${d.hashtag || '?'}"`;
+                      title = d.count ? `Buscou ${d.count} vídeos` : 'Busca';
+                      meta = d.hashtag ? `#${d.hashtag}` : '';
                       color = 'text-blue-400';
                     } else if (act.action_type === 'merge') {
                       Icon = Shuffle;
@@ -365,9 +366,19 @@ const MyAccount = () => {
                       color = 'text-purple-400';
                     } else if (act.action_type === 'batch_download') {
                       Icon = Download;
-                      title = 'Download em lote';
-                      meta = `${d.count || '?'} vídeos`;
+                      title = `Baixou ${d.count || '?'} vídeos`;
+                      meta = d.hashtag ? `#${d.hashtag}` : '';
                       color = 'text-green-400';
+                    } else if (act.action_type === 'edit_batch') {
+                      Icon = Scissors;
+                      title = `Editou ${d.count || '?'} vídeos`;
+                      meta = d.hashtag ? `tag: ${d.hashtag}` : '';
+                      color = 'text-orange-400';
+                    } else if (act.action_type === 'download') {
+                      Icon = Download;
+                      title = 'Download individual';
+                      meta = d.title || (d.hashtag ? `#${d.hashtag}` : '');
+                      color = 'text-emerald-400';
                     }
 
                     return (
