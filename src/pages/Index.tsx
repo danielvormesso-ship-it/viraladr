@@ -2674,8 +2674,15 @@ const Index = () => {
               )}
             </div>
           </div>
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/80 to-primary/50 flex items-center justify-center text-primary-foreground text-xs font-bold avatar-glow ring-2 ring-primary/10">
-            {(profile?.display_name || profile?.username || 'E').charAt(0).toUpperCase()}
+          <div
+            className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/80 to-primary/50 flex items-center justify-center text-primary-foreground text-xs font-bold avatar-glow ring-2 ring-primary/10 overflow-hidden cursor-pointer hover:scale-105 transition"
+            onClick={() => navigate('/minha-conta')}
+          >
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
+            ) : (
+              (profile?.display_name || profile?.username || 'E').charAt(0).toUpperCase()
+            )}
           </div>
           {role === 'admin' && (
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
