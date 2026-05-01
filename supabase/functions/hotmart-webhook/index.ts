@@ -71,37 +71,9 @@ Deno.serve(async (req) => {
   const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
 
   try {
-    // DEBUG: save all incoming data to DB to find where hottok is
-    const debugHeaders: Record<string, string> = {};
-    req.headers.forEach((v, k) => debugHeaders[k] = v);
-
-    const debugUrl = new URL(req.url);
-    const debugQuery: Record<string, string> = {};
-    debugUrl.searchParams.forEach((v, k) => debugQuery[k] = v);
-
-    const bodyText = await req.clone().text();
-    let bodyHottok = null;
-    try {
-      const bodyObj = JSON.parse(bodyText);
-      bodyHottok = bodyObj.hottok || null;
-    } catch {}
-
-    const debugDetail = [
-      `headers=${JSON.stringify(Object.keys(debugHeaders))}`,
-      bodyHottok ? `body_hottok=${bodyHottok.slice(0, 10)}...` : 'body_hottok=none',
-      Object.keys(debugQuery).length > 0 ? `query=${JSON.stringify(debugQuery)}` : '',
-    ].filter(Boolean).join(' | ');
-
-    await logWebhook(supabase, {
-      event: 'DEBUG_INCOMING',
-      status: 'ok',
-      detail: debugDetail.slice(0, 500),
-      ip: clientIp,
-    });
-
     // 1. Validate webhook secret — Hotmart sends it as x-hotmart-hottok header
     const secret = Deno.env.get('HOTMART_WEBHOOK_SECRET');
-    const hottok = req.headers.get('x-hotmart-hottok') || req.headers.get('hottok') || bodyHottok;
+    const hottok = req.headers.get('x-hotmart-hottok') || req.headers.get('hottok');
 
     const isValid = secret && hottok && secret.length === hottok.length &&
       crypto.subtle && await (async () => {
@@ -325,6 +297,56 @@ Deno.serve(async (req) => {
       case 'PURCHASE_SUBSCRIPTION_CANCELING': {
         console.log(`[hotmart-webhook] Subscription canceling (keeping plan) for ${buyerEmail}`);
         await logWebhook(supabase, { event, email: buyerEmail, status: 'ok', detail: 'Keeping plan until period ends', ip: clientIp });
+        break;
+      }
+
+      case 'SWITCH_PLAN': {
+        if (!profile || !plan) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: `No profile or unknown plan (id=${productId})`, ip: clientIp });
+          break;
+        }
+        const { error } = await activatePlan(supabase, profile.id, plan);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Plan switched to ${plan} for ${buyerEmail} (matched_by_${matchedBy})`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'ok', detail: `Plan switched to ${plan} matched_by_${matchedBy}`, ip: clientIp });
+        }
+        break;
+      }
+
+      case 'PURCHASE_CHARGEBACK':
+      case 'PURCHASE_PROTEST': {
+        if (!profile) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: 'No profile found for chargeback', ip: clientIp });
+          break;
+        }
+        const { error } = await supabase
+          .from('profiles')
+          .update({ plan: 'free', credits_used: 0, plan_expires_at: null })
+          .eq('id', profile.id);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Chargeback/protest: downgraded ${buyerEmail} to free`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'fraud_action', detail: `Downgraded due to ${event}. User ${profile.id}`, ip: clientIp });
+        }
+        break;
+      }
+
+      case 'SUBSCRIPTION_REACTIVATION':
+      case 'PURCHASE_SUBSCRIPTION_REACTIVATED': {
+        if (!profile || !plan) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'skipped', detail: `No profile or unknown plan for reactivation`, ip: clientIp });
+          break;
+        }
+        const { error } = await activatePlan(supabase, profile.id, plan);
+        if (error) {
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'error', detail: error.message, ip: clientIp });
+        } else {
+          console.log(`[hotmart-webhook] Subscription reactivated to ${plan} for ${buyerEmail}`);
+          await logWebhook(supabase, { event, email: buyerEmail, status: 'ok', detail: `Reactivated to ${plan} matched_by_${matchedBy}`, ip: clientIp });
+        }
         break;
       }
 
