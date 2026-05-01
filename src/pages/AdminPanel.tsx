@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Search, Download, Filter, Shuffle, Loader2, RefreshCw, User, Activity, ChevronDown, ChevronRight, Crown, AlertTriangle, CreditCard, Plus, KeyRound } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getPlanLimits, ALL_PLANS, type PlanType } from '@/lib/plans';
 
@@ -428,6 +428,30 @@ const AdminPanel = () => {
                           </div>
                         )}
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!confirm(`Resetar senha do usuário ${editor.username}?`)) return;
+                          const { data } = await supabase.functions.invoke('admin-reset-password', {
+                            body: { user_id: editor.id }
+                          });
+                          if (data?.ok) {
+                            navigator.clipboard.writeText(data.temp_password);
+                            toast({
+                              title: 'Senha resetada!',
+                              description: `Nova senha: ${data.temp_password} (copiada pro clipboard)`,
+                              duration: 30000
+                            });
+                          } else {
+                            toast({ title: 'Erro ao resetar', variant: 'destructive' });
+                          }
+                        }}
+                        className="h-8 gap-1.5 text-xs"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Reset senha
+                      </Button>
                       <button
                         onClick={() => setResetDialog({ open: true, userId: editor.id, username: editor.username })}
                         disabled={resettingUser === editor.id}

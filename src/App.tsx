@@ -11,7 +11,6 @@ import Upgrade from "./pages/Upgrade.tsx";
 import PendingApproval from "./pages/PendingApproval.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
-import ResetPasswordConfirm from "./pages/ResetPasswordConfirm.tsx";
 import Termos from "./pages/Termos.tsx";
 import Privacidade from "./pages/Privacidade.tsx";
 import { PlanSelection } from "./components/PlanSelection.tsx";
@@ -60,7 +59,6 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
-            <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
             <Route path="/termos" element={<Termos />} />
             <Route path="/privacidade" element={<Privacidade />} />
             <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
