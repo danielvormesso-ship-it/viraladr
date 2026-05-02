@@ -199,17 +199,6 @@ const Index = () => {
   const isDev = window.location.hostname.includes('dev--');
   // Keep ref in sync with state so async closures always read latest
   useEffect(() => { videosRef.current = videos; }, [videos]);
-  // Persist videos to localStorage for F5/reload recovery
-  useEffect(() => {
-    if (!profile?.id) return;
-    try {
-      if (videos.length === 0) {
-        localStorage.removeItem(`videos_session_${profile.id}`);
-      } else {
-        localStorage.setItem(`videos_session_${profile.id}`, JSON.stringify(videos));
-      }
-    } catch {}
-  }, [videos, profile?.id]);
   // Backstop dedup: tracks all keys+metas currently in the UI
   const videosInUIRef = useRef<{ keys: Set<string>; metas: Set<string> }>({ keys: new Set(), metas: new Set() });
   // Cursor for single hashtag scrape — persists between searches of same tag
@@ -300,6 +289,17 @@ const Index = () => {
   const navigate = useNavigate();
   const credits = useCredits();
   creditsCapRef.current = { remaining: credits.creditsRemaining, unlimited: credits.isUnlimited };
+  // Persist videos to localStorage for F5/reload recovery
+  useEffect(() => {
+    if (!profile?.id) return;
+    try {
+      if (videos.length === 0) {
+        localStorage.removeItem(`videos_session_${profile.id}`);
+      } else {
+        localStorage.setItem(`videos_session_${profile.id}`, JSON.stringify(videos));
+      }
+    } catch {}
+  }, [videos, profile?.id]);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!profile) return false;
