@@ -26,6 +26,9 @@ interface PopupPreviewEditorProps {
   popupAudioVolume: number;
   videoVolumeAfterPopup: number;
   effects?: VisualEffects;
+  pulseEnabled?: boolean;
+  pulseIntensity?: number;
+  pulseSpeed?: number;
 }
 
 type DragMode = 'move' | 'resize-br' | 'resize-bl' | 'resize-tr' | 'resize-tl' | 'rotate' | null;
@@ -46,6 +49,9 @@ export const PopupPreviewEditor = ({
   popupAudioVolume,
   videoVolumeAfterPopup,
   effects = defaultEffects,
+  pulseEnabled = false,
+  pulseIntensity = 4,
+  pulseSpeed = 0.8,
 }: PopupPreviewEditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -296,8 +302,18 @@ export const PopupPreviewEditor = ({
   const isVideoSrc = videoSrc && !videoError && !videoSrc.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i);
   const fallbackImg = thumbnailSrc || videoSrc;
 
+  const pulseScale = 1 + (pulseIntensity / 100);
+
   return (
     <div className="space-y-3">
+      {pulseEnabled && (
+        <style>{`
+          @keyframes popup-pulse-breathe {
+            0%, 100% { transform: scale(1)${!popupFullscreen && transform.rotation ? ` rotate(${transform.rotation}deg)` : ''}; }
+            50% { transform: scale(${pulseScale})${!popupFullscreen && transform.rotation ? ` rotate(${transform.rotation}deg)` : ''}; }
+          }
+        `}</style>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground tracking-wide uppercase">Preview do Popup</p>
         {!popupFullscreen && (
@@ -436,6 +452,9 @@ export const PopupPreviewEditor = ({
             style={{
               ...popupStyle,
               zIndex: 12,
+              ...(pulseEnabled ? {
+                animation: `popup-pulse-breathe ${(1 / pulseSpeed).toFixed(2)}s ease-in-out infinite`,
+              } : {}),
             }}
             className={`${!popupFullscreen ? 'cursor-move' : ''} transition-shadow duration-200`}
             onPointerDown={!popupFullscreen ? (e) => handlePointerDown(e, 'move') : undefined}

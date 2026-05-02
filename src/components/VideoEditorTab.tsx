@@ -1906,6 +1906,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
             popupAudioVolume={popupAudioVolume}
             videoVolumeAfterPopup={videoVolumeAfterPopup}
             effects={effects}
+            pulseEnabled={pulseEnabled}
+            pulseIntensity={pulseIntensity}
+            pulseSpeed={pulseSpeed}
           />
         </div>
       </div>
