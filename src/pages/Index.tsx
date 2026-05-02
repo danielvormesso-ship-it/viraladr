@@ -199,6 +199,17 @@ const Index = () => {
   const isDev = window.location.hostname.includes('dev--');
   // Keep ref in sync with state so async closures always read latest
   useEffect(() => { videosRef.current = videos; }, [videos]);
+  // Persist videos to localStorage for F5/reload recovery
+  useEffect(() => {
+    if (!profile?.id) return;
+    try {
+      if (videos.length === 0) {
+        localStorage.removeItem(`videos_session_${profile.id}`);
+      } else {
+        localStorage.setItem(`videos_session_${profile.id}`, JSON.stringify(videos));
+      }
+    } catch {}
+  }, [videos, profile?.id]);
   // Backstop dedup: tracks all keys+metas currently in the UI
   const videosInUIRef = useRef<{ keys: Set<string>; metas: Set<string> }>({ keys: new Set(), metas: new Set() });
   // Cursor for single hashtag scrape — persists between searches of same tag
@@ -393,12 +404,27 @@ const Index = () => {
   };
 
   useEffect(() => {
-    // Não carregar vídeos persistidos ao dar F5: sessão sempre começa limpa
+    // Restaurar vídeos da sessão anterior (F5 / recarregar)
+    if (profile?.id) {
+      try {
+        const saved = localStorage.getItem(`videos_session_${profile.id}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setVideos(parsed);
+            videosInUIRef.current = { keys: new Set(parsed.map(getVideoKey)), metas: new Set() };
+            setCurrentIndex(0);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
     setVideos([]);
     videosInUIRef.current = { keys: new Set(), metas: new Set() };
     setCurrentIndex(0);
     setIsLoading(false);
-  }, []);
+  }, [profile?.id]);
 
   // Parse duration string "M:SS" to seconds
   const parseDuration = (d: string | null) => {
@@ -2702,7 +2728,7 @@ const Index = () => {
           <Button variant="ghost" size="sm" onClick={() => navigate('/minha-conta')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <User className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+          <Button variant="ghost" size="sm" onClick={() => { try { localStorage.removeItem(`videos_session_${profile?.id}`); } catch {} signOut(); }} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <LogOut className="h-3.5 w-3.5" />
           </Button>
         </div>
