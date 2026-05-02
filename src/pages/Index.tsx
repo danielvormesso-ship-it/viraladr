@@ -289,6 +289,17 @@ const Index = () => {
   const navigate = useNavigate();
   const credits = useCredits();
   creditsCapRef.current = { remaining: credits.creditsRemaining, unlimited: credits.isUnlimited };
+  // Persist videos to localStorage for F5/reload recovery
+  useEffect(() => {
+    if (!profile?.id) return;
+    try {
+      if (videos.length === 0) {
+        localStorage.removeItem(`videos_session_${profile.id}`);
+      } else {
+        localStorage.setItem(`videos_session_${profile.id}`, JSON.stringify(videos));
+      }
+    } catch {}
+  }, [videos, profile?.id]);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!profile) return false;
@@ -393,12 +404,27 @@ const Index = () => {
   };
 
   useEffect(() => {
-    // Não carregar vídeos persistidos ao dar F5: sessão sempre começa limpa
+    // Restaurar vídeos da sessão anterior (F5 / recarregar)
+    if (profile?.id) {
+      try {
+        const saved = localStorage.getItem(`videos_session_${profile.id}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setVideos(parsed);
+            videosInUIRef.current = { keys: new Set(parsed.map(getVideoKey)), metas: new Set() };
+            setCurrentIndex(0);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
     setVideos([]);
     videosInUIRef.current = { keys: new Set(), metas: new Set() };
     setCurrentIndex(0);
     setIsLoading(false);
-  }, []);
+  }, [profile?.id]);
 
   // Parse duration string "M:SS" to seconds
   const parseDuration = (d: string | null) => {
@@ -809,7 +835,7 @@ const Index = () => {
 
   const maxQty = 500;
   const setTagQty = (tag: string, qty: number) => {
-    setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(maxQty, qty)) }));
+    setTagQuantities(q => ({ ...q, [tag]: Math.max(1, Math.min(maxQty, qty)) }));
   };
 
   // Single hashtag scrape with confirmation
@@ -2702,7 +2728,7 @@ const Index = () => {
           <Button variant="ghost" size="sm" onClick={() => navigate('/minha-conta')} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <User className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
+          <Button variant="ghost" size="sm" onClick={() => { try { localStorage.removeItem(`videos_session_${profile?.id}`); } catch {} signOut(); }} className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]">
             <LogOut className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -2899,7 +2925,7 @@ const Index = () => {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground/50 font-semibold uppercase tracking-wider">Qty</span>
                 <div className="flex gap-1">
-                  {[50, 100, 200, 300, 500].map(qty => {
+                  {[1, 50, 100, 200, 300, 500].map(qty => {
                     const locked = false; // Credits deducted on download, not search
                     return (
                       <button
@@ -3130,7 +3156,7 @@ const Index = () => {
                                     const raw = e.target.value.replace(/\D/g, '');
                                     setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
                                   }}
-                                  onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                  onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 1) setTagQty(tag, 1); }}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
                                 />
@@ -3218,7 +3244,7 @@ const Index = () => {
                                   const raw = e.target.value.replace(/\D/g, '');
                                   setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
                                 }}
-                                onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 1) setTagQty(tag, 1); }}
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
                               />
