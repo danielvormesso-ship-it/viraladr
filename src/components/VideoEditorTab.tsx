@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, Volume2, VolumeX, Music, Eye, Image, Loader2, Download, Clock, Percent, AlertTriangle, Scissors, Save, Server, Wifi, WifiOff, Cloud, Sparkles, Flame, Circle, Settings2, ChevronLeft, ChevronRight, Activity } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -1978,29 +1979,46 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
               </div>
             )}
             {editMode !== 'audio_only' && (
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 space-y-2">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 space-y-2 col-span-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-medium text-foreground block">Pulsar popup</span>
-                    <span className="text-[10px] text-muted-foreground/70">Efeito respiração suave</span>
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-foreground">Pulsação</span>
+                    {pulseEnabled && <span className="text-[10px] text-primary font-bold">ON</span>}
                   </div>
                   <Switch checked={pulseEnabled} onCheckedChange={setPulseEnabled} />
                 </div>
                 {pulseEnabled && (
-                  <div className="space-y-2 pt-1">
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-[10px] text-muted-foreground/70">Intensidade</span>
-                        <span className="text-[10px] font-semibold text-foreground">{pulseIntensity}%</span>
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Intensidade</label>
+                        <span className="text-[11px] font-mono font-semibold text-primary">{pulseIntensity}%</span>
                       </div>
-                      <input type="range" min={1} max={15} step={1} value={pulseIntensity} onChange={(e) => setPulseIntensity(Number(e.target.value))} className="w-full h-1 bg-secondary/50 rounded-full appearance-none cursor-pointer accent-primary" />
+                      <div className="flex gap-1.5">
+                        {[{ label: 'Sutil', value: 3 }, { label: 'Médio', value: 6 }, { label: 'Forte', value: 10 }].map(p => (
+                          <button key={p.label} onClick={() => setPulseIntensity(p.value)}
+                            className={`flex-1 h-7 text-[10px] rounded-lg font-medium transition-all ${pulseIntensity === p.value ? 'bg-primary text-primary-foreground' : 'bg-secondary/40 text-muted-foreground hover:bg-secondary/60'}`}>
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Slider value={[pulseIntensity]} onValueChange={([v]) => setPulseIntensity(v)} min={1} max={15} step={1} />
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-[10px] text-muted-foreground/70">Velocidade</span>
-                        <span className="text-[10px] font-semibold text-foreground">{pulseSpeed.toFixed(1)}Hz</span>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Velocidade</label>
+                        <span className="text-[11px] font-mono font-semibold text-primary">{pulseSpeed.toFixed(1)}Hz</span>
                       </div>
-                      <input type="range" min={3} max={30} step={1} value={Math.round(pulseSpeed * 10)} onChange={(e) => setPulseSpeed(Number(e.target.value) / 10)} className="w-full h-1 bg-secondary/50 rounded-full appearance-none cursor-pointer accent-primary" />
+                      <div className="flex gap-1.5">
+                        {[{ label: 'Lenta', value: 0.5 }, { label: 'Média', value: 0.8 }, { label: 'Rápida', value: 1.5 }].map(p => (
+                          <button key={p.label} onClick={() => setPulseSpeed(p.value)}
+                            className={`flex-1 h-7 text-[10px] rounded-lg font-medium transition-all ${pulseSpeed === p.value ? 'bg-primary text-primary-foreground' : 'bg-secondary/40 text-muted-foreground hover:bg-secondary/60'}`}>
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Slider value={[pulseSpeed * 10]} onValueChange={([v]) => setPulseSpeed(v / 10)} min={3} max={30} step={1} />
                     </div>
                   </div>
                 )}
