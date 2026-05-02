@@ -809,7 +809,7 @@ const Index = () => {
 
   const maxQty = 500;
   const setTagQty = (tag: string, qty: number) => {
-    setTagQuantities(q => ({ ...q, [tag]: Math.max(10, Math.min(maxQty, qty)) }));
+    setTagQuantities(q => ({ ...q, [tag]: Math.max(1, Math.min(maxQty, qty)) }));
   };
 
   // Single hashtag scrape with confirmation
@@ -2899,7 +2899,7 @@ const Index = () => {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground/50 font-semibold uppercase tracking-wider">Qty</span>
                 <div className="flex gap-1">
-                  {[50, 100, 200, 300, 500].map(qty => {
+                  {[1, 50, 100, 200, 300, 500].map(qty => {
                     const locked = false; // Credits deducted on download, not search
                     return (
                       <button
@@ -3130,7 +3130,7 @@ const Index = () => {
                                     const raw = e.target.value.replace(/\D/g, '');
                                     setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
                                   }}
-                                  onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                  onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 1) setTagQty(tag, 1); }}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
                                 />
@@ -3218,7 +3218,7 @@ const Index = () => {
                                   const raw = e.target.value.replace(/\D/g, '');
                                   setTagQuantities(q => ({ ...q, [tag]: raw === '' ? 0 : Math.min(500, parseInt(raw)) }));
                                 }}
-                                onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 10) setTagQty(tag, 10); }}
+                                onBlur={() => { if (!tagQuantities[tag] || tagQuantities[tag] < 1) setTagQty(tag, 1); }}
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-10 text-center text-[10px] font-bold text-primary bg-transparent outline-none"
                               />
