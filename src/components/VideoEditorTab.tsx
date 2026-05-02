@@ -101,6 +101,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
   const [videoVolumeAfterPopup, setVideoVolumeAfterPopup] = useState(100);
   const [muteEntireAudio, setMuteEntireAudio] = useState(false);
   const [popupFullscreen, setPopupFullscreen] = useState(false);
+  const [pulseEnabled, setPulseEnabled] = useState(true);
+  const [pulseIntensity, setPulseIntensity] = useState(4);
+  const [pulseSpeed, setPulseSpeed] = useState(0.8);
   const [popupTransform, setPopupTransform] = useState<PopupTransform>(normalizePopupTransform());
   const [effects, setEffects] = useState<VisualEffects>({ ...defaultEffects });
   const [confettiGold, setConfettiGold] = useState(false);
@@ -249,6 +252,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
         if (c.editBatchQuantity !== undefined) setEditBatchQuantity(toNum(c.editBatchQuantity, 50, 1, 1000));
         if (c.parallelWorkers !== undefined) setParallelWorkers(toNum(c.parallelWorkers, 2, 1, 32));
         if (c.popupFullscreen !== undefined) setPopupFullscreen(toBool(c.popupFullscreen, true));
+        if (c.pulseEnabled !== undefined) setPulseEnabled(toBool(c.pulseEnabled, true));
+        if (c.pulseIntensity !== undefined) setPulseIntensity(toNum(c.pulseIntensity, 4, 1, 15));
+        if (c.pulseSpeed !== undefined) setPulseSpeed(toNum(c.pulseSpeed, 0.8, 0.3, 3));
         if (c.popupTransform) setPopupTransform(normalizePopupTransform(c.popupTransform));
         if (c.effects && typeof c.effects === 'object') setEffects({ ...defaultEffects, ...c.effects });
         if (c.confettiGold !== undefined) setConfettiGold(toBool(c.confettiGold, false));
@@ -373,7 +379,7 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
   const latestConfigRef = useRef({
     appearAt, popupDuration, endVideoWithPopup, opacity,
     popupAudioVolume, videoVolumeAfterPopup, muteEntireAudio, bgMusicVolume,
-    editBatchQuantity, parallelWorkers, popupFullscreen, popupTransform, effects,
+    editBatchQuantity, parallelWorkers, popupFullscreen, pulseEnabled, pulseIntensity, pulseSpeed, popupTransform, effects,
     confettiGold, pixNotifications, pixBank, pixCount,
   });
   useEffect(() => {
@@ -812,6 +818,9 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
           requirePopupMedia: editMode !== 'audio_only' && (Boolean(popupMedia) || (rotationEnabled && rotationPopups.length > 0)),
           effects: effectiveEffects,
           mode: editMode,
+          pulseEnabled,
+          pulseIntensity: pulseIntensity / 100,
+          pulseSpeed,
         };
 
         console.log('[processConfig-debug]', {
@@ -1966,6 +1975,35 @@ const VideoEditorTabInner = ({ videos, setVideos }: VideoEditorTabProps) => {
                   <span className="text-[10px] text-muted-foreground/70">Popup ocupa todo o vídeo</span>
                 </div>
                 <Switch checked={popupFullscreen} onCheckedChange={setPopupFullscreen} />
+              </div>
+            )}
+            {editMode !== 'audio_only' && (
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-medium text-foreground block">Pulsar popup</span>
+                    <span className="text-[10px] text-muted-foreground/70">Efeito respiração suave</span>
+                  </div>
+                  <Switch checked={pulseEnabled} onCheckedChange={setPulseEnabled} />
+                </div>
+                {pulseEnabled && (
+                  <div className="space-y-2 pt-1">
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-[10px] text-muted-foreground/70">Intensidade</span>
+                        <span className="text-[10px] font-semibold text-foreground">{pulseIntensity}%</span>
+                      </div>
+                      <input type="range" min={1} max={15} step={1} value={pulseIntensity} onChange={(e) => setPulseIntensity(Number(e.target.value))} className="w-full h-1 bg-secondary/50 rounded-full appearance-none cursor-pointer accent-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-[10px] text-muted-foreground/70">Velocidade</span>
+                        <span className="text-[10px] font-semibold text-foreground">{pulseSpeed.toFixed(1)}Hz</span>
+                      </div>
+                      <input type="range" min={3} max={30} step={1} value={Math.round(pulseSpeed * 10)} onChange={(e) => setPulseSpeed(Number(e.target.value) / 10)} className="w-full h-1 bg-secondary/50 rounded-full appearance-none cursor-pointer accent-primary" />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {editMode !== 'popup_only' && (

@@ -26,6 +26,9 @@ export interface ServerProcessConfig {
     pixCount?: number;
   };
   mode?: 'popup_audio' | 'popup_only' | 'audio_only';
+  pulseEnabled?: boolean;
+  pulseIntensity?: number;
+  pulseSpeed?: number;
 }
 
 export interface JobStatus {
