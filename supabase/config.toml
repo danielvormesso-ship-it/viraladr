@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.hotmart-webhook]
 verify_jwt = false
+
+[functions.pool-diagnostic]
+verify_jwt = false
